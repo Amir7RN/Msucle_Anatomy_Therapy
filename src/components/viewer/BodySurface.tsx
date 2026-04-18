@@ -147,72 +147,79 @@ export function BodySurface() {
       </mesh>
 
       {/*
-        ── RIGHT ARM CHAIN — all segments on a SINGLE collinear axis ─────────
-        Axis: x = −0.205,  z = 0.070  (constant for every piece below).
-        Upper arm → elbow → forearm → wrist → hand all share x and z,
-        so their centerlines are collinear in world space.
-        y varies per segment as before (anatomy height unchanged).
+        ── RIGHT ARM GROUP — tilted outward ~16° to align with muscle axis.
+        Pivot: shoulder attachment point. All segments in group-local space.
+        rotation.z = −0.28 rad swings the forearm/hand outward (−X direction).
       */}
+      <group position={[-0.164, 0.368, 0.060]} rotation={[0, 0, -0.28]}>
+        {/* Upper arm */}
+        <mesh {...m} position={[0, -0.143, 0.010]} scale={[1, 1, 0.84]}>
+          <latheGeometry args={[upperArmProfile, SEG_LIMB]} />
+        </mesh>
+        {/* Elbow */}
+        <mesh {...m} position={[0, -0.250, 0.010]}>
+          <sphereGeometry args={[0.026, 10, 8]} />
+        </mesh>
+        {/* Forearm */}
+        <mesh {...m} position={[0, -0.332, 0.010]} scale={[1, 1, 0.78]}>
+          <latheGeometry args={[forearmProfile, SEG_THIN]} />
+        </mesh>
+        {/* Wrist */}
+        <mesh {...m} position={[0, -0.501, 0.010]}>
+          <sphereGeometry args={[0.017, 8, 6]} />
+        </mesh>
+        {/* Palm */}
+        <mesh {...m} position={[0, -0.555, 0.010]}>
+          <boxGeometry args={[0.074, 0.090, 0.026]} />
+        </mesh>
+        {/* Thumb — radial/lateral side (−X for right arm) */}
+        <mesh {...m} position={[-0.038, -0.535, 0.010]} rotation={[0, 0, 0.62]}>
+          <capsuleGeometry args={[0.011, 0.034, 4, 8]} />
+        </mesh>
+        {/* Fingertip bar */}
+        <mesh {...m} position={[0, -0.615, 0.010]}>
+          <boxGeometry args={[0.072, 0.036, 0.024]} />
+        </mesh>
+      </group>
 
-      {/* Upper arm */}
-      <mesh {...m} position={[-0.205, 0.225, 0.070]} scale={[1, 1, 0.84]}>
-        <latheGeometry args={[upperArmProfile, SEG_LIMB]} />
-      </mesh>
-
-      {/* Elbow connector — exactly on the arm axis */}
-      <mesh {...m} position={[-0.205, 0.118, 0.070]}>
-        <sphereGeometry args={[0.026, 10, 8]} />
-      </mesh>
-
-      {/* Forearm — same x, same z */}
-      <mesh {...m} position={[-0.205, 0.036, 0.070]} scale={[1, 1, 0.78]}>
-        <latheGeometry args={[forearmProfile, SEG_THIN]} />
-      </mesh>
-
-      {/* Wrist cap — same axis */}
-      <mesh {...m} position={[-0.205, -0.133, 0.070]}>
-        <sphereGeometry args={[0.017, 8, 6]} />
-      </mesh>
-
-      {/* Hand: palm on axis, thumb on radial (lateral) side, fingers at distal edge */}
-      <mesh {...m} position={[-0.205, -0.193, 0.068]}>
-        <boxGeometry args={[0.074, 0.090, 0.026]} />
-      </mesh>
-      {/* Thumb — lateral/radial side (more-negative x = away from body for right arm) */}
-      <mesh {...m} position={[-0.236, -0.172, 0.068]} rotation={[0, 0, 0.62]}>
-        <capsuleGeometry args={[0.011, 0.034, 4, 8]} />
-      </mesh>
-      {/* Finger group bar */}
-      <mesh {...m} position={[-0.205, -0.112, 0.068]}>
-        <boxGeometry args={[0.072, 0.036, 0.024]} />
-      </mesh>
-
-      {/* ── LEFT ARM CHAIN (x-mirrored, same collinear axis: x=+0.205, z=0.070) ── */}
+      {/* ── LEFT SHOULDER ─────────────────────────────────────────────────────── */}
       <mesh {...m} position={[0.164, 0.368, 0.060]} scale={[1.10, 1.05, 0.78]}>
         <sphereGeometry args={[0.058, 16, 12]} />
       </mesh>
 
-      <mesh {...m} position={[0.205, 0.225, 0.070]} scale={[1, 1, 0.84]}>
-        <latheGeometry args={[upperArmProfile, SEG_LIMB]} />
-      </mesh>
-      <mesh {...m} position={[0.205, 0.118, 0.070]}>
-        <sphereGeometry args={[0.026, 10, 8]} />
-      </mesh>
-      <mesh {...m} position={[0.205, 0.036, 0.070]} scale={[1, 1, 0.78]}>
-        <latheGeometry args={[forearmProfile, SEG_THIN]} />
-      </mesh>
-      <mesh {...m} position={[0.205, -0.133, 0.070]}>
-        <sphereGeometry args={[0.017, 8, 6]} />
-      </mesh>
-      <mesh {...m} position={[0.205, -0.193, 0.068]}>
-        <boxGeometry args={[0.074, 0.090, 0.026]} />
-      </mesh>
-      <mesh {...m} position={[0.236, -0.172, 0.068]} rotation={[0, 0, -0.62]}>
-        <capsuleGeometry args={[0.011, 0.034, 4, 8]} />
-      </mesh>
-      <mesh {...m} position={[0.205, -0.112, 0.068]}>
-        <boxGeometry args={[0.072, 0.036, 0.024]} />
-      </mesh>
+      {/*
+        ── LEFT ARM GROUP (x-mirrored, rotation.z = +0.28) ──────────────────
+      */}
+      <group position={[0.164, 0.368, 0.060]} rotation={[0, 0, 0.28]}>
+        {/* Upper arm */}
+        <mesh {...m} position={[0, -0.143, 0.010]} scale={[1, 1, 0.84]}>
+          <latheGeometry args={[upperArmProfile, SEG_LIMB]} />
+        </mesh>
+        {/* Elbow */}
+        <mesh {...m} position={[0, -0.250, 0.010]}>
+          <sphereGeometry args={[0.026, 10, 8]} />
+        </mesh>
+        {/* Forearm */}
+        <mesh {...m} position={[0, -0.332, 0.010]} scale={[1, 1, 0.78]}>
+          <latheGeometry args={[forearmProfile, SEG_THIN]} />
+        </mesh>
+        {/* Wrist */}
+        <mesh {...m} position={[0, -0.501, 0.010]}>
+          <sphereGeometry args={[0.017, 8, 6]} />
+        </mesh>
+        {/* Palm */}
+        <mesh {...m} position={[0, -0.555, 0.010]}>
+          <boxGeometry args={[0.074, 0.090, 0.026]} />
+        </mesh>
+        {/* Thumb — radial/lateral side (+X for left arm) */}
+        <mesh {...m} position={[0.038, -0.535, 0.010]} rotation={[0, 0, -0.62]}>
+          <capsuleGeometry args={[0.011, 0.034, 4, 8]} />
+        </mesh>
+        {/* Fingertip bar */}
+        <mesh {...m} position={[0, -0.615, 0.010]}>
+          <boxGeometry args={[0.072, 0.036, 0.024]} />
+        </mesh>
+      </group>
 
       {/* ── RIGHT LEG ─────────────────────────────────────────────────────────── */}
 
