@@ -1,0 +1,476 @@
+Muscle Pain Referral Atlas (52 Muscles)
+Table of Contents
+
+HEAD / NECK
+
+Sternocleidomastoid (right)
+Sternocleidomastoid (left)
+Masseter (right)
+Masseter (left)
+Temporalis (right)
+Temporalis (left)
+
+TRUNK
+7. Pectoralis major (right)
+
+8. Pectoralis major (left)
+
+9. Rectus abdominis
+
+10. External oblique (right)
+
+11. External oblique (left)
+
+12. Trapezius
+
+13. Latissimus dorsi (right)
+
+14. Latissimus dorsi (left)
+
+15. Serratus anterior (right)
+
+16. Serratus anterior (left)
+
+17. Erector spinae (right)
+
+18. Erector spinae (left)
+
+UPPER LIMB
+19. Biceps brachii (right)
+
+20. Biceps brachii (left)
+
+21. Triceps brachii (right)
+
+22. Triceps brachii (left)
+
+23. Deltoid (right)
+
+24. Deltoid (left)
+
+25. Brachioradialis (right)
+
+26. Brachioradialis (left)
+
+27. Infraspinatus (right)
+
+28. Infraspinatus (left)
+
+29. Brachialis (right)
+
+30. Brachialis (left)
+
+31. Coracobrachialis (right)
+
+32. Coracobrachialis (left)
+
+LOWER LIMB
+33. Gluteus maximus (right)
+
+34. Gluteus maximus (left)
+
+35. Gluteus medius (right)
+
+36. Gluteus medius (left)
+
+37. Rectus femoris (right)
+
+38. Rectus femoris (left)
+
+39. Vastus lateralis (right)
+
+40. Vastus lateralis (left)
+
+41. Biceps femoris (right)
+
+42. Biceps femoris (left)
+
+43. Gastrocnemius (right)
+
+44. Gastrocnemius (left)
+
+45. Soleus (right)
+
+46. Soleus (left)
+
+47. Tibialis anterior (right)
+
+48. Tibialis anterior (left)
+
+49. Vastus medialis (right)
+
+50. Vastus medialis (left)
+
+51. Sartorius (right)
+
+52. Sartorius (left)
+
+Sternocleidomastoid (right)
+
+Description: The sternocleidomastoid (SCM) is a paired neck muscle that runs from the sternum and clavicle up to the mastoid process behind the ear. It is the largest superficial muscle at the front of the neck and helps bend the neck and rotate or tilt the head. Two heads (sternal and clavicular) merge and insert on the mastoid process.
+
+Pain pattern: Trigger points in the SCM have characteristic referral zones. The sternal head refers pain to the vertex, occiput, cheek, over the eye, throat and sternum; autonomic symptoms such as lacrimation or sinus congestion may occur. The clavicular head refers pain to the frontal region, deep into the ear and post‑auricular area, sometimes involving the maxilla and molar teeth. Clinically, people may feel pain in the face, forehead, eyes, cheek, ears, sinuses, throat when swallowing and shoulders.
+
+Clinical notes: SCM pain can result from trigger points caused by poor posture (forward head), stress, sleeping awkwardly or overuse. Conditions such as temporomandibular joint disorder, torticollis and prolonged smartphone use may irritate the SCM. Management includes stretching, massage and addressing postural habits.
+
+Image: The MedLink illustration (Travell & Simons) shows solid red and stippled areas indicating referred pain from sternal and clavicular divisions (requires a free account to view).
+
+Sternocleidomastoid (left)
+
+The left SCM mirrors the right. Location, function and pain patterns are the same as the right side. Pain typically refers to the same regions on the left (vertex, temple, ear, cheek, throat and chest). Management is identical.
+
+Masseter (right)
+
+Description: The masseter is one of the four primary muscles of mastication. It is a thick, quadrilateral muscle on each side of the jaw, originating from the zygomatic arch and inserting on the mandibular angle. It elevates and protracts the mandible to close the jaw.
+
+Pain pattern: Trigger points in the masseter can produce deep aching or toothache‑like pain in the upper and lower molar teeth, the mandible and maxilla, the cheek, the temple and sometimes the ear. Pain can radiate to the TMJ, mimicking temporomandibular joint dysfunction. (Typical patterns described in myofascial trigger point manuals and clinical reports.)
+
+Clinical notes: Common triggers include bruxism (clenching/grinding teeth), chewing tough foods, gum chewing, poor occlusion or stress. Treatment involves dental evaluation, addressing bruxism, massage and stretching.
+
+Image: Many trigger‑point charts depict referred pain over the jaw and teeth for masseter trigger points (see standard myofascial pain referral diagrams).
+
+Masseter (left)
+
+The left masseter shares the same structure, function and referral pattern as the right. Pain often mimics dental pathology on the left side and may radiate to the ear or temple.
+
+Temporalis (right)
+
+Description: The temporalis is a thin, fan‑shaped muscle occupying the temporal fossa of the skull. It arises from the temporal bone and temporal fascia and inserts onto the coronoid process of the mandible. As one of the muscles of mastication, it elevates and retracts the mandible to close the jaw.
+
+Pain pattern: According to Travell & Simons (via MedLink), trigger points in the temporalis have four characteristic pain zones: (A) pain in the temple and supraorbital ridge that may extend to the upper incisor teeth; (B) pain in the mid‑temporal region extending to intermediate maxillary teeth; (C) pain in the molar teeth and temporomandibular joint; and (D) pain in the temporoparietal scalp with deep tenderness.
+
+Clinical notes: Temporalis trigger points are often associated with headaches (temporal or tension‑type) and toothache‑like pain. Clenching, grinding, chewing on one side and stress are common aggravating factors. Treatment includes dental assessment, reducing parafunctional habits, muscle release and stress management.
+
+Image: The Travell & Simons diagram (MedLink) illustrates the four zones of referred pain.
+
+Temporalis (left)
+
+The left temporalis is anatomically and functionally identical to the right. Pain referral follows the same zones on the left side. Management is the same.
+
+Pectoralis major (right)
+
+Description: The pectoralis major is a large, fan‑shaped muscle that forms the anterior wall of the axilla. It has clavicular and sternocostal heads originating from the clavicle, sternum and upper costal cartilages; both heads insert on the crest of the greater tubercle of the humerus. It adducts and internally rotates the humerus and assists in flexion and forced inspiration.
+
+Pain pattern: Trigger points in the pectoralis major can mimic angina. Referred pain is experienced in the chest, front of the shoulder, down the inside of the arm and along the inside of the elbow; tenderness in the breast and nipple hypersensitivity may also occur.
+
+Clinical notes: Pectoralis major trigger points may be activated by poor posture (rounded shoulders), overuse (bench pressing), stress or respiratory conditions. Pain that resembles heart attack should be medically evaluated. Therapy includes stretching, postural correction and manual release.
+
+Image: Trigger‑point diagrams show red shading over the anterior chest and medial arm for pectoralis major pain referral.
+
+Pectoralis major (left)
+
+Anatomically and functionally identical to the right side. Pain referral patterns and management are the same.
+
+Rectus abdominis
+
+Description: The rectus abdominis is a pair of long, vertical muscles running from the pubic bone to the lower ribs. It flexes the trunk, stabilises the pelvis and assists in forced expiration. Its segmented appearance creates the “six‑pack.”
+
+Pain pattern: Trigger points in the rectus abdominis refer pain to the upper or lower abdomen (often mimicking digestive pain or cramps), the lower back and sacral region and occasionally the ribs and sternum. Pain may also present as tightness or deep aching across the abdomen or back.
+
+Clinical notes: Trigger points develop from overuse (excessive sit‑ups), prolonged sitting, weak core, pregnancy or post‑surgical scarring. Pain is often misinterpreted as gastrointestinal or spinal pathology. Treatment includes core strengthening, correcting posture, stretching and manual therapy.
+
+Image: Trigger‑point charts depict horizontal bands of pain across the abdomen and low back.
+
+External oblique (right)
+
+Description: The external oblique is a broad, thin muscle forming the outer layer of the lateral abdominal wall. It originates from the lower eight ribs and inserts into the iliac crest and linea alba, functioning to rotate and flex the trunk and compress the abdominal contents.
+
+Pain pattern: Trigger points in the external oblique may refer pain to the lower chest, flank, groin or testicular area on the same side. Pain can wrap around the torso and mimic abdominal or visceral pain.
+
+Clinical notes: Overuse from twisting, coughing or chronic postural strain may activate trigger points. Treatment includes stretching, breathing exercises and correcting posture.
+
+Image: Referral diagrams show pain bands wrapping around the side of the torso.
+
+External oblique (left)
+
+Same anatomy and referral pattern as the right external oblique. Pain is mirrored on the left side.
+
+Trapezius
+
+Description: The trapezius is a large, diamond‑shaped muscle covering the upper back and neck. It originates from the occipital bone, nuchal ligament and spinous processes of the cervical and thoracic vertebrae and inserts on the clavicle, acromion and spine of the scapula. It elevates, retracts and depresses the scapula and extends the neck.
+
+Pain pattern: Trigger points in the upper trapezius commonly refer pain to the temples, forehead or back of the head, mimicking tension headaches. Pain may radiate into the neck and shoulders and cause tightness around the head and temple.
+
+Clinical notes: Poor posture, prolonged computer work, stress and carrying heavy bags can strain the trapezius, leading to trigger points. Management involves ergonomic correction, massage, stretching and stress reduction.
+
+Image: Referral diagrams depict red areas over the temple, occiput and shoulder corresponding to trapezius trigger points.
+
+Latissimus dorsi (right)
+
+Description: The latissimus dorsi is a large, flat muscle covering the lower back. Originating from the thoracolumbar fascia, iliac crest and lower ribs, it inserts into the intertubercular groove of the humerus. It adducts, extends and internally rotates the arm.
+
+Pain pattern: Trigger points may refer pain to the mid‑back, inferior angle of the scapula, posterior shoulder and down the medial arm to the fourth and fifth fingers. Pain can mimic scapular or shoulder pathology.
+
+Clinical notes: Overuse (pull‑ups, rowing), prolonged overhead work or sudden overload can activate trigger points. Management includes stretching, strengthening antagonists and myofascial release.
+
+Image: Diagrams show referral pain in a sweeping band along the posterior shoulder and arm.
+
+Latissimus dorsi (left)
+
+Same anatomy and referral pattern as the right latissimus dorsi. Pain is mirrored on the left side.
+
+Serratus anterior (right)
+
+Description: The serratus anterior arises from the upper eight or nine ribs and inserts on the medial border of the scapula. It protracts and stabilises the scapula against the thoracic wall and assists in upward rotation.
+
+Pain pattern: Trigger points may cause pain along the lateral chest wall and around the scapula, sometimes radiating to the medial arm. Pain can mimic cardiac or rib dysfunction.
+
+Clinical notes: Overuse from repetitive reaching or breathing disorders may activate trigger points. Strengthening and postural correction are key in management.
+
+Image: Referral charts show pain along the rib cage and around the scapula.
+
+Serratus anterior (left)
+
+Same anatomy and referral pattern as the right serratus anterior.
+
+Erector spinae (right)
+
+Description: The erector spinae is a group of muscles (iliocostalis, longissimus and spinalis) running along the vertebral column. They extend and laterally flex the spine and help maintain posture.
+
+Pain pattern: Trigger points can produce deep, aching pain along the thoracic or lumbar spine, with referral across the back or into the buttocks. Pain may mimic disc or facet joint pathology.
+
+Clinical notes: Prolonged sitting, poor posture, lifting injuries or weak core muscles can contribute. Treatment involves strengthening, stretching and manual therapy.
+
+Image: Referral diagrams show vertical bands of pain along the spine.
+
+Erector spinae (left)
+
+Mirrors the right side; pain pattern and management are the same.
+
+Biceps brachii (right)
+
+Description: The biceps brachii has two heads originating from the scapula (supraglenoid tubercle and coracoid process) and inserting on the radial tuberosity. It flexes the elbow and supinates the forearm.
+
+Pain pattern: Trigger points may refer pain to the front of the shoulder, the elbow crease and down the forearm to the radial side of the hand. Pain may be mistaken for bicipital tendinitis or epicondylalgia.
+
+Clinical notes: Overuse from lifting, repetitive elbow flexion or sudden load can activate trigger points. Treatment includes rest, stretching and strengthening.
+
+Image: Referred pain charts show pain in the anterior shoulder and along the forearm.
+
+Biceps brachii (left)
+
+Same anatomy and referral pattern as the right biceps brachii.
+
+Triceps brachii (right)
+
+Description: The triceps brachii has three heads originating from the scapula and humerus and inserting on the olecranon of the ulna. It extends the elbow.
+
+Pain pattern: Trigger points can refer pain to the posterior shoulder, posterior arm and forearm, and sometimes the dorsal hand. Pain may mimic tennis elbow or bursitis.
+
+Clinical notes: Overhead activities, pushing or repetitive elbow extension may create trigger points. Treatment involves stretching, strengthening and myofascial release.
+
+Image: Charts show pain along the posterior upper limb.
+
+Triceps brachii (left)
+
+Mirrors the right triceps brachii.
+
+Deltoid (right)
+
+Description: The deltoid is a thick, triangular shoulder muscle originating from the clavicle, acromion and spine of the scapula and inserting on the deltoid tuberosity of the humerus. It abducts, flexes and extends the arm.
+
+Pain pattern: Trigger points may cause pain at the deltoid insertion and radiate down the arm, often producing a dull ache when raising the arm.
+
+Clinical notes: Overuse from lifting or repetitive shoulder movements may provoke trigger points. Therapy includes stretching, strengthening rotator cuff and correcting biomechanics.
+
+Image: Referral diagrams show pain over the deltoid region and down the arm.
+
+Deltoid (left)
+
+Same as right side.
+
+Brachioradialis (right)
+
+Description: This forearm muscle originates from the lateral supracondylar ridge of the humerus and inserts on the radial styloid process. It flexes the elbow, especially in a neutral forearm position (thumbs‑up).
+
+Pain pattern: Trigger points can refer pain along the lateral forearm into the thumb and index finger. Pain may mimic tennis elbow or radial tunnel syndrome.
+
+Clinical notes: Overuse from gripping, typing or lifting heavy objects can activate trigger points. Treatment includes stretching, ergonomic correction and massage.
+
+Image: Charts show pain along the radial forearm into the thumb.
+
+Brachioradialis (left)
+
+Mirrors the right.
+
+Infraspinatus (right)
+
+Description: A rotator cuff muscle originating from the infraspinous fossa of the scapula and inserting on the greater tubercle of the humerus. It externally rotates the humerus.
+
+Pain pattern: Trigger points often refer pain deep in the shoulder joint, across the deltoid region and down the lateral arm to the forearm. Pain may be felt in the anterior shoulder and can mimic bursitis or cuff tears.
+
+Clinical notes: Overuse from repetitive overhead activities, throwing or poor posture can activate trigger points. Treatment includes strengthening other rotator cuff muscles and stretching.
+
+Image: Diagrams depict referral pain over the posterior shoulder and lateral arm.
+
+Infraspinatus (left)
+
+Same as right.
+
+Brachialis (right)
+
+Description: The brachialis lies deep to the biceps brachii. It originates from the humeral shaft and inserts on the coronoid process and tuberosity of the ulna, acting as a primary elbow flexor.
+
+Pain pattern: Trigger points can refer pain to the anterior elbow and sometimes down to the thumb. Pain may mimic elbow tendinitis.
+
+Clinical notes: Heavy lifting or repetitive elbow flexion can activate trigger points. Treatment includes rest and manual therapy.
+
+Image: Charts show pain in the front of the elbow.
+
+Brachialis (left)
+
+Same as right.
+
+Coracobrachialis (right)
+
+Description: A small muscle originating from the coracoid process of the scapula and inserting on the medial surface of the humerus. It assists with shoulder flexion and adduction.
+
+Pain pattern: Trigger points may refer pain to the front of the shoulder and down the posterior arm, sometimes mimicking triceps pain.
+
+Clinical notes: Overuse in activities like throwing or push‑ups can activate trigger points. Management involves stretching and strengthening.
+
+Image: Diagrams show pain along the anterior shoulder and posterior arm.
+
+Coracobrachialis (left)
+
+Same as right.
+
+Gluteus maximus (right)
+
+Description: The gluteus maximus is the largest muscle of the buttock, originating from the ilium, sacrum and coccyx and inserting on the iliotibial tract and gluteal tuberosity of the femur. It extends and laterally rotates the hip.
+
+Pain pattern: Trigger points in the gluteus maximus refer pain to the buttock, sacrum and sometimes the posterior thigh. Pain can radiate down toward the hip joint.
+
+Clinical notes: Prolonged sitting, climbing stairs or sudden overload can activate trigger points. Strengthening and hip mobility exercises are beneficial.
+
+Image: Charts show pain in the buttocks and posterior thigh.
+
+Gluteus maximus (left)
+
+Same as right.
+
+Gluteus medius (right)
+
+Description: Located on the lateral hip, the gluteus medius originates from the ilium and inserts on the greater trochanter. It abducts and medially rotates the hip and stabilises the pelvis during walking.
+
+Pain pattern: Trigger points can cause pain in the lateral hip, buttock and sometimes down the side of the leg to the knee. Pain may mimic trochanteric bursitis.
+
+Clinical notes: Weakness or overuse during running or standing on one leg can trigger points. Treatment focuses on strengthening and stretching.
+
+Image: Referral diagrams show pain over the lateral hip and thigh.
+
+Gluteus medius (left)
+
+Same as right.
+
+Rectus femoris (right)
+
+Description: One of the quadriceps muscles, originating from the anterior inferior iliac spine and supra‑acetabular groove and inserting on the patella and tibial tuberosity. It flexes the hip and extends the knee.
+
+Pain pattern: Trigger points refer pain to the anterior thigh and knee and may radiate down the quadriceps muscle. Pain can mimic patellar tendinopathy.
+
+Clinical notes: Overuse from running or kicking sports and tight hip flexors can cause trigger points. Treatment includes stretching and strengthening.
+
+Image: Referral diagrams show pain along the front of the thigh and knee.
+
+Rectus femoris (left)
+
+Same as right.
+
+Vastus lateralis (right)
+
+Description: The largest quadriceps muscle, originating from the greater trochanter and lateral linea aspera and inserting on the patella and tibial tuberosity. It extends the knee.
+
+Pain pattern: Trigger points may refer pain to the lateral thigh and knee. Pain can mimic iliotibial band syndrome.
+
+Clinical notes: Overuse from running or squatting and imbalanced leg strength can activate trigger points. Stretching and strengthening are important.
+
+Image: Charts show pain along the lateral thigh.
+
+Vastus lateralis (left)
+
+Same as right.
+
+Biceps femoris (right)
+
+Description: A hamstring muscle with long and short heads originating from the ischial tuberosity and femoral shaft and inserting on the head of the fibula. It flexes the knee and extends the hip.
+
+Pain pattern: Trigger points can refer pain to the lateral hamstring, posterior lateral knee and sometimes the calf. Pain may mimic lateral knee tendon problems.
+
+Clinical notes: Sprinting or sudden acceleration can cause trigger points. Treatment includes hamstring stretching and strengthening.
+
+Image: Referral charts show pain along the lateral posterior thigh.
+
+Biceps femoris (left)
+
+Same as right.
+
+Gastrocnemius (right)
+
+Description: The gastrocnemius has medial and lateral heads originating from the femoral condyles and inserting via the Achilles tendon onto the calcaneus. It plantarflexes the foot and assists in knee flexion.
+
+Pain pattern: Trigger points refer pain to the calf, behind the knee and sometimes the sole of the foot. Pain may mimic deep vein thrombosis or plantar fasciitis.
+
+Clinical notes: Overuse from running, high heels or sudden jumping can activate trigger points. Treatment includes stretching and self‑massage.
+
+Image: Charts show pain in the calf and heel.
+
+Gastrocnemius (left)
+
+Same as right.
+
+Soleus (right)
+
+Description: The soleus lies deep to the gastrocnemius. It originates from the tibia and fibula and inserts via the Achilles tendon. It plantarflexes the foot and provides postural stability.
+
+Pain pattern: Trigger points can refer pain to the lower calf and heel and sometimes the arch of the foot.
+
+Clinical notes: Overuse from standing, running or worn‑out shoes may trigger points. Treatment focuses on calf stretching and strengthening.
+
+Image: Charts show pain deep in the calf.
+
+Soleus (left)
+
+Same as right.
+
+Tibialis anterior (right)
+
+Description: Originating from the lateral tibia and interosseous membrane and inserting on the medial cuneiform and first metatarsal, tibialis anterior dorsiflexes and inverts the foot.
+
+Pain pattern: Trigger points may refer pain to the anterior shin and down to the big toe and medial arch, often mimicking shin splints.
+
+Clinical notes: Overuse in running, walking downhill or wearing high heels can activate trigger points. Treatment includes stretching and strengthening.
+
+Image: Charts show pain along the shin and into the first toe.
+
+Tibialis anterior (left)
+
+Same as right.
+
+Vastus medialis (right)
+
+Description: A quadriceps muscle originating from the medial femur and inserting on the patella and tibial tuberosity. It extends the knee and stabilises the patella.
+
+Pain pattern: Trigger points refer pain to the medial knee and lower thigh. Pain may mimic medial meniscus injury.
+
+Clinical notes: Weakness or imbalance with other quadriceps muscles may trigger points. Strengthening and correcting patellar tracking are important.
+
+Image: Charts show pain along the medial thigh and knee.
+
+Vastus medialis (left)
+
+Same as right.
+
+Sartorius (right)
+
+Description: The sartorius is the longest muscle in the body. It originates from the anterior superior iliac spine and inserts on the medial tibia (pes anserinus). It flexes and externally rotates the hip and flexes the knee.
+
+Pain pattern: Trigger points may refer pain to the medial thigh and knee and sometimes to the medial calf. Pain can mimic medial knee ligament injury.
+
+Clinical notes: Activities involving repetitive hip flexion or prolonged sitting cross‑legged may activate trigger points. Treatment includes stretching and strengthening.
+
+Image: Charts show pain along the medial thigh.
+
+Sartorius (left)
+
+Same as right.

@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base resets ─────────────────────────────────────────────────────────── */
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body, #root {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  /* Scrollbar styling — thin and subtle */
+  ::-webkit-scrollbar        { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track  { background: transparent; }
+  ::-webkit-scrollbar-thumb  { background: #cbd5e1; border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+  .dark ::-webkit-scrollbar-thumb { background: #475569; }
+  .dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+  /* Remove default button/input focus ring in favour of our own */
+  button, input { outline: none; }
+
+  /* Three.js canvas should fill its container */
+  canvas { display: block; }
+}
+
+/* ── Utility layer ───────────────────────────────────────────────────────── */
+@layer utilities {
+  /* Panel scrollable region */
+  .panel-scroll {
+    @apply overflow-y-auto overflow-x-hidden;
+  }
+
+  /* Smooth transition for visibility states */
+  .muscle-mesh {
+    transition: color 120ms ease, opacity 120ms ease;
+  }
+}
