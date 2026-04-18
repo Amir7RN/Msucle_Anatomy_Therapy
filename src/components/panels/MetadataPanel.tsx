@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { MousePointerClick, Tag, Layers, MapPin, ArrowRightLeft, Zap, Brain, StickyNote, Hash, Activity, Play, Pause, RotateCcw } from 'lucide-react'
 import { useAtlasStore } from '../../store/atlasStore'
 import { Badge, systemBadgeColor, layerBadgeColor } from '../ui/Badge'
@@ -28,117 +28,115 @@ const EXERCISE_MAP: Record<string, ExerciseDef[]> = {
   ],
 }
 
-// ── Exercise video section ────────────────────────────────────────────────────
+// ── Individual video thumbnail card ──────────────────────────────────────────
+// The <video> element IS the thumbnail and the player.
+// preload="auto" loads the first frame so it's visible immediately.
+// Clicking anywhere on the card toggles play / pause.
+// When another card becomes active this card auto-pauses via useEffect.
 
-function ExerciseVideos({ muscleId }: { muscleId: string }) {
-  const exercises = EXERCISE_MAP[muscleId]
-  if (!exercises) return null
+function VideoCard({
+  ex,
+  isActive,
+  onSelect,
+}: {
+  ex:       ExerciseDef
+  isActive: boolean
+  onSelect: () => void
+}) {
+  const videoRef            = useRef<HTMLVideoElement>(null)
+  const [playing, setPlaying] = useState(false)
 
-  const [activeId, setActiveId] = useState<string | null>(null)
-  const [playing,  setPlaying]  = useState(false)
-  const videoRef = useRef<HTMLVideoElement>(null)
+  // Auto-pause when a sibling card is selected
+  useEffect(() => {
+    if (!isActive) {
+      videoRef.current?.pause()
+      setPlaying(false)
+    }
+  }, [isActive])
 
-  const activeEx = exercises.find((e) => e.id === activeId) ?? null
-
-  function selectExercise(ex: ExerciseDef) {
-    if (activeId === ex.id) return   // already open
-    setActiveId(ex.id)
-    setPlaying(false)
-    // Brief timeout so the src can update before we reference the element
-    setTimeout(() => { videoRef.current?.load() }, 0)
+  // Seek to first frame so the video shows a real thumbnail before any click
+  function handleLoaded() {
+    const v = videoRef.current
+    if (v && v.currentTime === 0) v.currentTime = 0.05
   }
 
-  function togglePlay() {
+  function handleClick() {
+    onSelect()                          // mark this card active (pauses siblings)
     const v = videoRef.current
     if (!v) return
-    if (v.paused) { v.play(); setPlaying(true) }
+    if (v.paused) { v.play();  setPlaying(true)  }
     else          { v.pause(); setPlaying(false) }
   }
 
-  function restart() {
-    const v = videoRef.current
-    if (!v) return
-    v.currentTime = 0
-    v.play()
-    setPlaying(true)
-  }
+  return (
+    <div
+      onClick={handleClick}
+      className={[
+        'relative cursor-pointer rounded-lg overflow-hidden border transition-colors group',
+        isActive
+          ? 'border-emerald-500 dark:border-emerald-500'
+          : 'border-slate-200 dark:border-slate-700 hover:border-emerald-400/60 dark:hover:border-emerald-600/60',
+      ].join(' ')}
+    >
+      {/* Video — doubles as thumbnail (first frame) and inline player */}
+      <video
+        ref={videoRef}
+        src={ex.src}
+        preload="auto"
+        playsInline
+        className="w-full block bg-black"
+        onLoadedData={handleLoaded}
+        onEnded={() => setPlaying(false)}
+      />
+
+      {/* Play-icon overlay — fades out while playing */}
+      <div
+        className={[
+          'absolute inset-0 flex items-center justify-center transition-opacity duration-150',
+          playing
+            ? 'opacity-0 pointer-events-none'
+            : 'opacity-100 bg-black/38 group-hover:bg-black/28',
+        ].join(' ')}
+      >
+        <div className="w-10 h-10 rounded-full bg-white/22 backdrop-blur-sm flex items-center justify-center ring-1 ring-white/30">
+          <Play size={15} className="text-white ml-0.5" fill="white" />
+        </div>
+      </div>
+
+      {/* Label bar — always visible at bottom */}
+      <div className="absolute bottom-0 left-0 right-0 px-2.5 py-2 bg-gradient-to-t from-black/80 to-transparent">
+        <p className="text-xs font-semibold text-white leading-tight">{ex.label}</p>
+        <p className="text-[10px] text-white/58 leading-tight">{ex.subtitle}</p>
+      </div>
+    </div>
+  )
+}
+
+// ── Exercise video section ────────────────────────────────────────────────────
+
+function ExerciseVideos({ muscleId }: { muscleId: string }) {
+  const [activeId, setActiveId] = useState<string | null>(null)
+
+  const exercises = EXERCISE_MAP[muscleId]
+  if (!exercises) return null
 
   return (
     <div className="py-2 border-b border-slate-100 dark:border-slate-700/60">
-      {/* Section header */}
       <div className="flex items-center gap-1.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-2">
         <Play size={10} />
         Exercises
       </div>
 
-      {/* Exercise list */}
-      <div className="flex flex-col gap-1 mb-2">
-        {exercises.map((ex) => {
-          const isActive = ex.id === activeId
-          return (
-            <button
-              key={ex.id}
-              onClick={() => selectExercise(ex)}
-              className={[
-                'w-full text-left px-2.5 py-2 rounded-md border transition-colors',
-                isActive
-                  ? 'border-emerald-400 dark:border-emerald-600 bg-emerald-50 dark:bg-emerald-900/25'
-                  : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 hover:border-slate-300 dark:hover:border-slate-600',
-              ].join(' ')}
-            >
-              <div className="flex items-center gap-2">
-                <div className={[
-                  'flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center',
-                  isActive
-                    ? 'bg-emerald-500 text-white'
-                    : 'bg-slate-200 dark:bg-slate-600 text-slate-500 dark:text-slate-300',
-                ].join(' ')}>
-                  <Play size={8} />
-                </div>
-                <div>
-                  <p className={[
-                    'text-xs font-medium leading-none mb-0.5',
-                    isActive
-                      ? 'text-emerald-700 dark:text-emerald-300'
-                      : 'text-slate-700 dark:text-slate-200',
-                  ].join(' ')}>{ex.label}</p>
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500">{ex.subtitle}</p>
-                </div>
-              </div>
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Inline video player — shown when an exercise is selected */}
-      {activeEx && (
-        <div className="rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-black">
-          <video
-            ref={videoRef}
-            src={activeEx.src}
-            className="w-full"
-            preload="metadata"
-            playsInline
-            onEnded={() => setPlaying(false)}
+      <div className="flex flex-col gap-2">
+        {exercises.map((ex) => (
+          <VideoCard
+            key={ex.id}
+            ex={ex}
+            isActive={activeId === ex.id}
+            onSelect={() => setActiveId(ex.id)}
           />
-          {/* Simple controls */}
-          <div className="flex items-center gap-2 px-3 py-2 bg-slate-900">
-            <button
-              onClick={togglePlay}
-              className="flex items-center justify-center w-7 h-7 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
-            >
-              {playing ? <Pause size={12} /> : <Play size={12} />}
-            </button>
-            <button
-              onClick={restart}
-              className="flex items-center justify-center w-6 h-6 rounded text-slate-400 hover:text-slate-200 transition-colors"
-            >
-              <RotateCcw size={12} />
-            </button>
-            <span className="text-[10px] text-slate-400 font-medium truncate">{activeEx.label}</span>
-          </div>
-        </div>
-      )}
+        ))}
+      </div>
     </div>
   )
 }
