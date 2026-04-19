@@ -15,16 +15,27 @@ interface ExerciseDef {
   src:      string
 }
 
+const DELTOID_EXERCISES: ExerciseDef[] = [
+  { id: 'crab_press',            label: 'Crab Press',               subtitle: 'Shoulder activation',       src: '/videos/Crab_Press.mp4'               },
+  { id: 'doorway_stretch',       label: 'Doorway Stretch',          subtitle: 'Anterior deltoid release',  src: '/videos/DoorWay_Stretch.mp4'          },
+  { id: 'hand_behind_back',      label: 'Hand Behind Back Stretch', subtitle: 'Internal rotation mob.',    src: '/videos/Hand_Behind_Back_Stretch.mp4' },
+  { id: 'seated_cross_arm',      label: 'Seated Cross-Arm Stretch', subtitle: 'Posterior deltoid stretch', src: '/videos/Seated_Cross_Arm_Stretch.mp4' },
+  { id: 'standing_chest',        label: 'Standing Chest Stretch',   subtitle: 'Pec & anterior delt',      src: '/videos/Standing_Chest_Stretch.mp4'   },
+  { id: 'standing_sleeper',      label: 'Sleeper Stretch',          subtitle: 'Posterior capsule mob.',    src: '/videos/Standing_Sleeper_Stretch.mp4' },
+]
+
 const EXERCISE_MAP: Record<string, ExerciseDef[]> = {
+  MUSC_DELTOID_R: DELTOID_EXERCISES,
+  MUSC_DELTOID_L: DELTOID_EXERCISES,
   MUSC_BICEPS_FEMORIS_R: [
-    { id: 'hamstring_squeeze', label: 'Hamstring Squeeze',   subtitle: 'Isometric activation',  src: '/videos/Hamstring_Squeeze.mp4'   },
+    { id: 'hamstring_squeeze', label: 'Hamstring Squeeze',   subtitle: 'Isometric activation',   src: '/videos/Hamstring_Squeeze.mp4'    },
     { id: 'glute_bridge',     label: 'Glute Bridge',        subtitle: 'Hip extension & loading', src: '/videos/Glute_Bridge_Exercise.mp4' },
-    { id: 'hip_hinge',        label: 'Hip Hinge',           subtitle: 'Eccentric hamstring',    src: '/videos/Hip_Hinge_Exercise.mp4'  },
+    { id: 'hip_hinge',        label: 'Hip Hinge',           subtitle: 'Eccentric hamstring',     src: '/videos/Hip_Hinge_Exercise.mp4'   },
   ],
   MUSC_BICEPS_FEMORIS_L: [
-    { id: 'hamstring_squeeze', label: 'Hamstring Squeeze',   subtitle: 'Isometric activation',  src: '/videos/Hamstring_Squeeze.mp4'   },
+    { id: 'hamstring_squeeze', label: 'Hamstring Squeeze',   subtitle: 'Isometric activation',   src: '/videos/Hamstring_Squeeze.mp4'    },
     { id: 'glute_bridge',     label: 'Glute Bridge',        subtitle: 'Hip extension & loading', src: '/videos/Glute_Bridge_Exercise.mp4' },
-    { id: 'hip_hinge',        label: 'Hip Hinge',           subtitle: 'Eccentric hamstring',    src: '/videos/Hip_Hinge_Exercise.mp4'  },
+    { id: 'hip_hinge',        label: 'Hip Hinge',           subtitle: 'Eccentric hamstring',     src: '/videos/Hip_Hinge_Exercise.mp4'   },
   ],
 }
 

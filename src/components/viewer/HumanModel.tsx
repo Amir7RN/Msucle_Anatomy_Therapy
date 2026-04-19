@@ -24,7 +24,7 @@
  *  bubbling to parent objects.
  */
 
-import React, { Component, useEffect, useRef } from 'react'
+import React, { Component, useEffect, useMemo, useRef } from 'react'
 import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import { ThreeEvent, useFrame } from '@react-three/fiber'
@@ -38,6 +38,78 @@ export const MODEL_PATH = '/models/human-muscular-system.glb'
 
 // ── Y coordinate of the floor grid in ViewerCanvas ───────────────────────────
 const GRID_Y = -0.925
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Procedural muscle-fiber normal map
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Generates a tiling tangent-space normal map that simulates the parallel
+// striations of skeletal muscle fiber bundles.
+//
+// Encoding (OpenGL / Three.js convention):
+//   R = X component  G = Y component  B = Z component
+//   Neutral flat surface = (128, 128, 255)
+//
+// The height field is a sum of:
+//  • Primary fibers  — parallel sinusoidal ridges running along V (belly axis)
+//    with gentle lateral waviness that varies along V for biological irregularity.
+//  • Secondary variation — lower-frequency modulation along the fiber length.
+//
+// bumpStrength controls the tilt angle of the normals off the surface.
+// arctan(0.42) ≈ 23° — enough to show clear fiber definition under directional
+// light without over-sharpening on non-ideal UV layouts.
+//
+function makeMuscleFiberNormalMap(width = 512, height = 512): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas')
+  canvas.width  = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')!
+  const img = ctx.createImageData(width, height)
+  const d   = img.data
+
+  const primaryFreq  = 20    // fiber bundles per UV tile
+  const waveAmp      = 0.32  // lateral waviness amplitude
+  const secFreq      = 4     // secondary modulation cycles per tile
+  const bumpStrength = 0.42  // normal tilt magnitude (larger = more pronounced)
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4
+      const u = x / width   // tangent-U direction (across fibers)
+      const v = y / height  // tangent-V direction (along fiber belly)
+
+      // Primary: striation phase in U, with V-dependent waviness
+      const primaryPhase = u * primaryFreq * Math.PI * 2
+                         + Math.sin(v * 8.3) * waveAmp * Math.PI
+                         + Math.sin(v * 3.7 + 1.2) * waveAmp * 0.5 * Math.PI
+
+      // Secondary: gentle modulation along the fiber length
+      const secPhase = v * secFreq * Math.PI * 2 + u * 2.9
+
+      // Normal components (tangent-space, direct parameterisation)
+      // nx tilts the normal across fibers (the visible striation effect)
+      // ny tilts it slightly along fibers (secondary belly variation)
+      const nx  = Math.cos(primaryPhase) * bumpStrength
+      const ny  = Math.cos(secPhase) * 0.16 * bumpStrength
+      const nz  = 1.0
+      const len = Math.sqrt(nx * nx + ny * ny + nz * nz)
+
+      // Pack into 0–255 with 0.5 offset (normal map convention)
+      d[i]     = Math.round((nx / len * 0.5 + 0.5) * 255)  // R → X
+      d[i + 1] = Math.round((ny / len * 0.5 + 0.5) * 255)  // G → Y
+      d[i + 2] = Math.round((nz / len * 0.5 + 0.5) * 255)  // B → Z
+      d[i + 3] = 255
+    }
+  }
+
+  ctx.putImageData(img, 0, 0)
+
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+  tex.repeat.set(3, 6)   // 3× across UV width · 6× down UV height
+  tex.needsUpdate = true
+  return tex
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Material state helper
@@ -59,17 +131,18 @@ function applyMeshState(
     isSelected:  boolean
     isHovered:   boolean
     visState:    'visible' | 'ghosted' | 'hidden'
+    fiberNormalMap?: THREE.Texture
   },
 ) {
-  const { hexColor, roughness, isSelected, isHovered, visState } = opts
+  const { hexColor, roughness, isSelected, isHovered, visState, fiberNormalMap } = opts
 
-  // Clone once per mesh so we never share material across meshes
+  // ── Clone material once per mesh (never share across meshes) ─────────────
   if (!Array.isArray(obj.material)) {
     const mat = obj.material as THREE.MeshStandardMaterial
     if (!mat.userData?.managed) {
-      const cloned       = mat.clone() as THREE.MeshStandardMaterial
+      const cloned            = mat.clone() as THREE.MeshStandardMaterial
       cloned.userData.managed = true
-      obj.material       = cloned
+      obj.material            = cloned
     }
   }
 
@@ -77,31 +150,46 @@ function applyMeshState(
     ? obj.material[0]
     : obj.material) as THREE.MeshStandardMaterial
 
-  // ── Color ────────────────────────────────────────────────────────────────
+  // ── Color ─────────────────────────────────────────────────────────────────
   mat.color.set(hexColor)
 
-  // ── PBR — wet biological tissue ──────────────────────────────────────────
+  // ── PBR — wet biological tissue ───────────────────────────────────────────
+  //  roughness: per-muscle (from muscleRoughness), range 0.28–0.75
+  //  metalness: 0.04 = the tiny wet sheen of fresh tissue without looking metallic
   mat.roughness   = roughness
-  // metalness 0.04: very low, but enough to activate PBR specular reflection
-  // This simulates the slight wet sheen of fresh muscle tissue without
-  // looking metallic. Zero metalness = completely matte, which looks dry.
   mat.metalness   = 0.04
   mat.side        = THREE.FrontSide
   mat.flatShading = false   // smooth normals from real anatomical mesh
 
-  // ── Emissive — selection / hover highlight ───────────────────────────────
+  // ── Normal map — muscle fiber striations ──────────────────────────────────
+  //  Applied once per material (compare reference to avoid redundant updates).
+  //  normalScale (0.65, 0.65) gives clear but not over-sharpened striations
+  //  under the directional anatomy-studio lighting rig.
+  if (fiberNormalMap && mat.normalMap !== fiberNormalMap) {
+    mat.normalMap = fiberNormalMap as THREE.Texture
+    mat.normalScale.set(0.65, 0.65)
+    mat.needsUpdate = true
+  }
+
+  // ── Emissive — selection / hover / SSS approximation ─────────────────────
   if (isSelected) {
+    // Deep blue highlight — clearly communicates "selected"
     mat.emissive.set('#0a2890')
     mat.emissiveIntensity = 0.35
   } else if (isHovered) {
+    // Warm red highlight — hover feedback
     mat.emissive.set('#902010')
     mat.emissiveIntensity = 0.28
   } else {
-    mat.emissive.set('#000000')
-    mat.emissiveIntensity = 0
+    // Subsurface-scattering approximation:
+    // Emit 4% of the muscle's own color as warm inner glow.
+    // This mimics the way real muscle tissue transmits light through superficial
+    // layers, giving it the warm, living-tissue quality rather than painted clay.
+    mat.emissive.set(hexColor)
+    mat.emissiveIntensity = 0.04
   }
 
-  // ── Visibility / transparency ─────────────────────────────────────────────
+  // ── Visibility / transparency ──────────────────────────────────────────────
   if (visState === 'hidden') {
     obj.visible     = false
     mat.transparent = false
@@ -110,7 +198,7 @@ function applyMeshState(
   } else if (visState === 'ghosted') {
     obj.visible     = true
     mat.transparent = true
-    mat.opacity     = 0.18   // slightly more visible on dark background
+    mat.opacity     = 0.18
     mat.depthWrite  = false
   } else {
     obj.visible     = true
@@ -148,6 +236,12 @@ function GLTFScene({ path }: { path: string }) {
   const scene = gltf.scene
 
   useSceneIndex(scene)
+
+  // ── Shared procedural fiber normal map (created once, tiled across all muscles) ──
+  const fiberNormalMap = useMemo(() => makeMuscleFiberNormalMap(), [])
+
+  // Dispose GPU texture when component unmounts
+  useEffect(() => () => { fiberNormalMap.dispose() }, [fiberNormalMap])
 
   const sceneIndex    = useAtlasStore((s) => s.sceneIndex)
   const selectedId    = useAtlasStore((s) => s.selectedId)
@@ -236,9 +330,9 @@ function GLTFScene({ path }: { path: string }) {
       const hexColor = resolveColor(system, isHovered, isSelected, id, meta?.layer as LayerType | undefined)
       const roughness = muscleRoughness(id)
 
-      applyMeshState(obj, { hexColor, roughness, isSelected, isHovered, visState })
+      applyMeshState(obj, { hexColor, roughness, isSelected, isHovered, visState, fiberNormalMap })
     })
-  }, [scene, sceneIndex, selectedId, hoveredId, hiddenIds, hiddenLayers, ghostedLayers, isolateMode, ghostMode])
+  }, [scene, sceneIndex, selectedId, hoveredId, hiddenIds, hiddenLayers, ghostedLayers, isolateMode, ghostMode, fiberNormalMap])
 
   // ── Pointer handlers ──────────────────────────────────────────────────────
   //

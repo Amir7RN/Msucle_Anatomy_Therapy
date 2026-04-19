@@ -2,26 +2,34 @@ import React from 'react'
 import { Environment } from '@react-three/drei'
 
 /**
- * Anatomy-studio lighting rig — v5 (écorché / dark-background edition)
+ * Anatomy-studio lighting rig — v6 (fiber normal-map edition)
  *
- * Designed for a DARK background anatomy viewer that matches professional
- * écorché renders (Sketchfab-style).  The reduced ambient is CRITICAL:
+ * Upgraded from v5 to maximise the visibility of the procedural muscle-fiber
+ * normal maps now applied to every mesh.  Key changes vs v5:
  *
- *   Previous ambient = 1.8 → all surfaces uniformly lit, zero depth
- *   This version     = 0.65 → shadows form between muscle bellies,
- *                              muscle relief becomes clearly visible
+ *  ENVIRONMENT  "studio" preset (clean neutral HDR) replaces "city".
+ *               Studio gives sharp, directionally consistent micro-specular
+ *               highlights that follow the fiber striation normals cleanly.
+ *               intensity raised 0.4 → 0.62 so normal-mapped ridges catch
+ *               the environment reflection and "pop" against the belly valleys.
+ *
+ *  KEY LIGHT    intensity 4.8 → 5.2.  Stronger single source = more
+ *               pronounced shadow across fiber striations.
+ *
+ *  RIM LIGHT    intensity 2.2 → 2.6.  Brighter rim accentuates the
+ *               silhouette fiber texture seen from the back / sides.
+ *
+ * Everything else (positions, ambient, bounce, fill) unchanged from v5.
  *
  * Rig:
- *  AMBIENT       very low neutral — prevents pure-black on shadowed faces
- *  KEY LIGHT     front upper-left, warm white, strong — primary muscle form
- *  SECONDARY KEY front right, slightly softer — opens key shadows just enough
- *  RIM LIGHT     rear-upper, cool blue-white — critical silhouette separation
- *  LOW BACK RIM  rear-lower, neutral — keeps posterior from going flat
- *  WARM BOUNCE   below figure, warm amber — wet tissue warmth from "table"
- *  COLD FILL     below rear, cool — prevents total shadow uniformity
- *
- * Environment (city preset): provides HDR micro-specular on wet muscle surfaces.
- * intensity=0.4 so it supplements rather than dominates the directional rig.
+ *  AMBIENT       very low warm neutral — prevents pure-black on shadow faces
+ *  KEY LIGHT     front upper-left, warm white — primary muscle/fiber form
+ *  SECONDARY KEY front right — fills key shadow side
+ *  RIM LIGHT     rear-upper, cool blue-white — silhouette + fiber separation
+ *  LOW BACK RIM  rear-lower — posterior / Achilles readability
+ *  WARM BOUNCE   below figure — wet tissue warmth from "table"
+ *  COLD FILL     below rear — inter-leg separation
+ *  ENVIRONMENT   studio HDR — micro-specular on fiber-striation normals
  */
 export function Lights() {
   return (
@@ -40,7 +48,7 @@ export function Lights() {
       */}
       <directionalLight
         position={[-2.8, 5.8, 3.2]}
-        intensity={4.8}
+        intensity={5.2}
         color="#fffaf2"
         castShadow
         shadow-mapSize-width={2048}
@@ -74,7 +82,7 @@ export function Lights() {
       */}
       <directionalLight
         position={[0.6, 4.2, -5.5]}
-        intensity={2.2}
+        intensity={2.6}
         color="#c8d8ff"
       />
 
@@ -120,7 +128,7 @@ export function Lights() {
         Intensity 0.4 supplements rather than dominates the directional rig.
         background=false preserves our dark canvas background.
       */}
-      <Environment preset="city" background={false} environmentIntensity={0.4} />
+      <Environment preset="studio" background={false} environmentIntensity={0.62} />
     </>
   )
 }
