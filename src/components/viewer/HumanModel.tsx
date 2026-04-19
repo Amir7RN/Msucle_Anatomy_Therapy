@@ -27,6 +27,7 @@
 import React, { Component, useEffect, useMemo, useRef } from 'react'
 import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
+import { LoopSubdivision } from 'three-subdivide'
 import { ThreeEvent, useFrame } from '@react-three/fiber'
 import { useAtlasStore, resolveStructureVisibility } from '../../store/atlasStore'
 import { useSceneIndex } from '../../hooks/useSceneIndex'
@@ -112,79 +113,112 @@ function makeMuscleFiberNormalMap(width = 512, height = 512): THREE.CanvasTextur
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Anatomy PBR material factory  — MeshPhysicalMaterial with clearcoat
+// ─────────────────────────────────────────────────────────────────────────────
+//
+//  MeshPhysicalMaterial features used (NO onBeforeCompile — that caused the
+//  v15 black-model regression):
+//
+//    clearcoat (0.5)            — second specular lobe on top of the base layer.
+//                                 Mimics the thin fascial membrane that wraps
+//                                 every muscle belly in a wet, reflective sheath.
+//                                 This "medical-grade" layer catches highlights
+//                                 from different angles, visually hiding polygon
+//                                 edges and giving a rounded appearance.
+//
+//    clearcoatRoughness (0.10)  — fairly polished clearcoat → sharp, tight
+//                                 specular peak that reads as "wet tissue."
+//
+//    roughness (0.30)           — base layer: slight wet sheen.  Lower than v17's
+//                                 0.52 so the combined clearcoat+base reads as
+//                                 living muscle rather than dry clay.
+//
+//    metalness (0.04)           — just enough to engage the full PBR specular
+//                                 path without a metallic look.
+//
+//    normalMap / normalScale    — procedural fiber striations at low strength
+//                                 (0.20) so they read as surface texture without
+//                                 distorting the clearcoat highlight.
+//
+function buildMuscleMaterial(normalMap: THREE.Texture): THREE.MeshPhysicalMaterial {
+  return new THREE.MeshPhysicalMaterial({
+    roughness:          0.30,
+    metalness:          0.04,
+    clearcoat:          0.50,
+    clearcoatRoughness: 0.10,
+    normalMap,
+    normalScale:        new THREE.Vector2( 0.20, 0.20 ),
+    side:               THREE.FrontSide,
+    flatShading:        false,
+  })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Material state helper
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Apply full visual state to a mesh in one pass.
- *
- * - Clones material once per mesh (lazy, cached in userData.managed).
- * - Per-muscle roughness from colors.ts (tendons smoother than bellies).
- * - Emissive blue highlight for selection, warm red for hover.
- * - Transparency for ghost state.
- */
 function applyMeshState(
   obj: THREE.Mesh,
   opts: {
-    hexColor:    string
-    roughness:   number
-    isSelected:  boolean
-    isHovered:   boolean
-    visState:    'visible' | 'ghosted' | 'hidden'
+    hexColor:        string
+    roughness:       number
+    isSelected:      boolean
+    isHovered:       boolean
+    visState:        'visible' | 'ghosted' | 'hidden'
     fiberNormalMap?: THREE.Texture
   },
 ) {
   const { hexColor, roughness, isSelected, isHovered, visState, fiberNormalMap } = opts
 
-  // ── Clone material once per mesh (never share across meshes) ─────────────
-  if (!Array.isArray(obj.material)) {
-    const mat = obj.material as THREE.MeshStandardMaterial
-    if (!mat.userData?.managed) {
-      const cloned            = mat.clone() as THREE.MeshStandardMaterial
-      cloned.userData.managed = true
-      obj.material            = cloned
-    }
+  // ── First-time setup: replace GLB material with anatomy PBR ──────────────
+  //  Runs once per mesh.  Handles both single-material and array-material meshes.
+  //  Subsequent calls update uniforms only.
+  const replaceMat = (existing: THREE.Material) => {
+    if (existing.userData?.managed) return existing
+    const fresh = fiberNormalMap
+      ? buildMuscleMaterial(fiberNormalMap)
+      : new THREE.MeshPhysicalMaterial({
+          roughness: 0.30, metalness: 0.04,
+          clearcoat: 0.50, clearcoatRoughness: 0.10,
+          side: THREE.FrontSide, flatShading: false,
+        })
+    fresh.userData.managed = true
+    return fresh
+  }
+
+  if (Array.isArray(obj.material)) {
+    obj.material = obj.material.map(replaceMat) as THREE.Material[]
+  } else {
+    obj.material = replaceMat(obj.material)
   }
 
   const mat = (Array.isArray(obj.material)
     ? obj.material[0]
-    : obj.material) as THREE.MeshStandardMaterial
+    : obj.material) as THREE.MeshPhysicalMaterial
 
   // ── Color ─────────────────────────────────────────────────────────────────
   mat.color.set(hexColor)
 
-  // ── PBR — wet biological tissue ───────────────────────────────────────────
-  //  roughness: per-muscle (from muscleRoughness), range 0.28–0.75
-  //  metalness: 0.04 = the tiny wet sheen of fresh tissue without looking metallic
+  // ── PBR ───────────────────────────────────────────────────────────────────
+  //  roughness: per-muscle override (0.28 smooth face → 0.75 deep fascia)
+  //  metalness: low — natural muscle sheen without metallic look
   mat.roughness   = roughness
   mat.metalness   = 0.04
   mat.side        = THREE.FrontSide
-  mat.flatShading = false   // smooth normals from real anatomical mesh
+  mat.flatShading = false
 
-  // ── Normal map — muscle fiber striations ──────────────────────────────────
-  //  Applied once per material (compare reference to avoid redundant updates).
-  //  normalScale (0.65, 0.65) gives clear but not over-sharpened striations
-  //  under the directional anatomy-studio lighting rig.
-  if (fiberNormalMap && mat.normalMap !== fiberNormalMap) {
-    mat.normalMap = fiberNormalMap as THREE.Texture
-    mat.normalScale.set(0.65, 0.65)
-    mat.needsUpdate = true
-  }
-
-  // ── Emissive — selection / hover / SSS approximation ─────────────────────
+  // ── Emissive ——————————————————————————————————————————————————————————————
+  //  Selected : deep-blue beacon (#0a2890) — unmistakable interaction cue.
+  //  Hovered  : warm-red glow (#902010) — hover preview.
+  //  Default  : 4% of own hue — subsurface-scattering approximation; the
+  //             faint self-glow that distinguishes living tissue from clay.
   if (isSelected) {
-    // Deep blue highlight — clearly communicates "selected"
     mat.emissive.set('#0a2890')
     mat.emissiveIntensity = 0.35
   } else if (isHovered) {
-    // Warm red highlight — hover feedback
     mat.emissive.set('#902010')
     mat.emissiveIntensity = 0.28
   } else {
-    // Subsurface-scattering approximation:
-    // Emit 4% of the muscle's own color as warm inner glow.
-    // This mimics the way real muscle tissue transmits light through superficial
-    // layers, giving it the warm, living-tissue quality rather than painted clay.
     mat.emissive.set(hexColor)
     mat.emissiveIntensity = 0.04
   }
@@ -255,12 +289,59 @@ function GLTFScene({ path }: { path: string }) {
   const setHovered    = useAtlasStore((s) => s.setHovered)
   const setModelStatus = useAtlasStore((s) => s.setModelStatus)
 
-  // ── Shadow casting (once after load) ──────────────────────────────────────
+  // ── Geometry quality pass (once after load) ───────────────────────────────
+  //
+  // Step 1 — Catmull-Clark / Loop subdivision (optional, guarded by poly count)
+  //   LoopSubdivision.modify(geo, 1) — one pass, 4× triangle count.
+  //   Guard: skip meshes already above SUBDIV_TRIANGLE_LIMIT to avoid a
+  //   multi-second stall on dense torso meshes. Most extremity/face muscles
+  //   benefit most and are small enough to subdivide quickly.
+  //
+  // Step 2 — computeVertexNormals()
+  //   The single highest-impact smoothing fix. Forces Three.js to blend normals
+  //   across the polygon boundary using weighted-angle averaging — turns a
+  //   faceted polygon soup into a visually curved surface at zero cost.
+  //   Must run AFTER subdivision (which resets normals to flat) and BEFORE
+  //   computeTangents() (which reads the normals).
+  //
+  // Step 3 — computeTangents()
+  //   MikkTSpace tangents for the normal map.  Required for MeshPhysicalMaterial
+  //   to shade the fiber striations correctly.  Only runs on indexed geometry
+  //   with UV attributes; others are skipped.
+  //
+  const SUBDIV_TRIANGLE_LIMIT = 8_000   // ~32k after one pass — safe for GPU
+
   useEffect(() => {
     scene.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh)) return
       obj.castShadow    = true
       obj.receiveShadow = true
+
+      const geo = obj.geometry as THREE.BufferGeometry
+
+      // Step 1 — Loop subdivision (skip heavy meshes)
+      if (geo.index) {
+        const triCount = geo.index.count / 3
+        if (triCount < SUBDIV_TRIANGLE_LIMIT) {
+          try {
+            const subdivided = LoopSubdivision.modify(geo, 1, {
+              split:       true,   // split long edges for more even tessellation
+              uvSmooth:    false,  // keep UV seams sharp (correct normal-map tiling)
+              preserveEdges: false,
+              flatOnly:    false,
+            })
+            obj.geometry = subdivided
+          } catch (_) { /* non-manifold edge — skip */ }
+        }
+      }
+
+      // Step 2 — Smooth vertex normals (works on any geometry after subdivision)
+      obj.geometry.computeVertexNormals()
+
+      // Step 3 — MikkTSpace tangents for normal map (indexed + UV required)
+      if (obj.geometry.attributes.uv && obj.geometry.index) {
+        try { obj.geometry.computeTangents() } catch (_) { /* skip */ }
+      }
     })
   }, [scene])
 

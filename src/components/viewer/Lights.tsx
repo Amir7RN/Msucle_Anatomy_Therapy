@@ -35,11 +35,24 @@ export function Lights() {
   return (
     <>
       {/*
-        AMBIENT — intentionally low.
-        0.65 is just enough to prevent absolute-black on shadowed muscle faces.
-        This is the single most important change: lower ambient = visible muscle relief.
+        HEMISPHERE LIGHT — faux-volumetric anatomical wrap-around.
+        skyColor  (#ffe4c8): warm ceiling / overhead studio bounce — same warm
+                  tone as the key light, so lit faces read as tissue not plastic.
+        groundColor (#2a3850): cool dark teal from "floor" — pushes shadows toward
+                  a blue-grey that reads as anatomical depth rather than plain black.
+        intensity 1.4: strong enough to fill in the dark polygonal gaps that appear
+                  between facets; the warm-cool gradient creates the illusion of
+                  wrap-around subsurface scatter without any shader complexity.
       */}
-      <ambientLight intensity={0.65} color="#fff0e8" />
+      <hemisphereLight
+        args={['#ffe4c8', '#2a3850', 1.4]}
+      />
+
+      {/*
+        AMBIENT — reduced now that HemisphereLight handles fill.
+        Kept as a hard floor to prevent pure-black on deep-shadowed faces.
+      */}
+      <ambientLight intensity={0.30} color="#fff0e8" />
 
       {/*
         PRIMARY KEY LIGHT — front upper-left, warm anatomy-lab tone.
@@ -120,6 +133,24 @@ export function Lights() {
         color="#b0c8e8"
         distance={4.0}
         decay={2}
+      />
+
+      {/*
+        FRONT FILL SPOTLIGHT — soft, high-intensity, front-centre.
+        Directly addresses the black-model issue: ensures every anterior muscle
+        face receives enough direct irradiance even when directional key misses.
+        penumbra=0.85 gives a very soft, gradual falloff edge (no hard shadows).
+        castShadow=false keeps it a pure fill with no shadow overhead.
+      */}
+      <spotLight
+        position={[0.0, 2.8, 5.0]}
+        angle={Math.PI / 5}
+        penumbra={0.85}
+        intensity={6.0}
+        color="#fff8f0"
+        distance={12}
+        decay={1.8}
+        castShadow={false}
       />
 
       {/*
