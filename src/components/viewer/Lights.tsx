@@ -159,7 +159,7 @@ export function Lights() {
         Intensity 0.4 supplements rather than dominates the directional rig.
         background=false preserves our dark canvas background.
       */}
-      <Environment preset="studio" background={false} environmentIntensity={0.62} />
+      <Environment preset="studio" background={false} environmentIntensity={0.70} />
     </>
   )
 }

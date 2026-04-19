@@ -27,7 +27,7 @@
 import React, { Component, useEffect, useMemo, useRef } from 'react'
 import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
-import { LoopSubdivision } from 'three-subdivide'
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { ThreeEvent, useFrame } from '@react-three/fiber'
 import { useAtlasStore, resolveStructureVisibility } from '../../store/atlasStore'
 import { useSceneIndex } from '../../hooks/useSceneIndex'
@@ -113,44 +113,42 @@ function makeMuscleFiberNormalMap(width = 512, height = 512): THREE.CanvasTextur
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Anatomy PBR material factory  — MeshPhysicalMaterial with clearcoat
+//  Anatomy PBR material factory — stable MeshStandardMaterial
 // ─────────────────────────────────────────────────────────────────────────────
 //
-//  MeshPhysicalMaterial features used (NO onBeforeCompile — that caused the
-//  v15 black-model regression):
+//  MeshStandardMaterial chosen for stability after transmission + clearcoat
+//  caused depth-buffer and "shattered geometry" rendering issues.
 //
-//    clearcoat (0.5)            — second specular lobe on top of the base layer.
-//                                 Mimics the thin fascial membrane that wraps
-//                                 every muscle belly in a wet, reflective sheath.
-//                                 This "medical-grade" layer catches highlights
-//                                 from different angles, visually hiding polygon
-//                                 edges and giving a rounded appearance.
+//  roughness (0.50)    — balanced diffuse/specular for soft anatomical look
+//  metalness (0.00)    — zero metalness: pure dielectric, no metallic sheen
+//  normalMap (0.15)    — micro-fiber striations, very subtle
 //
-//    clearcoatRoughness (0.10)  — fairly polished clearcoat → sharp, tight
-//                                 specular peak that reads as "wet tissue."
+//  polygonOffset       — critical Z-fighting fix.  Muscle meshes sit extremely
+//    factor = -1         close to the body surface mesh.  A negative offset
+//    units  = -1         shifts the depth value slightly toward the camera so
+//                        muscles always win the depth test against the body.
 //
-//    roughness (0.30)           — base layer: slight wet sheen.  Lower than v17's
-//                                 0.52 so the combined clearcoat+base reads as
-//                                 living muscle rather than dry clay.
+//  depthWrite (true)   — muscles write to the depth buffer (solid objects)
+//  depthTest  (true)   — muscles are occluded by nearer geometry (correct)
+//  side (FrontSide)    — only the outward-facing surface renders; DoubleSide
+//                        would expose the mesh interior, adding to the
+//                        jagged / shattered appearance.
 //
-//    metalness (0.04)           — just enough to engage the full PBR specular
-//                                 path without a metallic look.
-//
-//    normalMap / normalScale    — procedural fiber striations at low strength
-//                                 (0.20) so they read as surface texture without
-//                                 distorting the clearcoat highlight.
-//
-function buildMuscleMaterial(normalMap: THREE.Texture): THREE.MeshPhysicalMaterial {
-  return new THREE.MeshPhysicalMaterial({
-    roughness:          0.30,
-    metalness:          0.04,
-    clearcoat:          0.50,
-    clearcoatRoughness: 0.10,
+function buildMuscleMaterial(normalMap: THREE.Texture): THREE.MeshStandardMaterial {
+  const mat = new THREE.MeshStandardMaterial({
+    roughness:   0.50,
+    metalness:   0.00,
     normalMap,
-    normalScale:        new THREE.Vector2( 0.20, 0.20 ),
-    side:               THREE.FrontSide,
-    flatShading:        false,
+    normalScale: new THREE.Vector2( 0.15, 0.15 ),
+    side:        THREE.FrontSide,
+    flatShading: false,
+    depthWrite:  true,
+    depthTest:   true,
   })
+  mat.polygonOffset       = true
+  mat.polygonOffsetFactor = -1
+  mat.polygonOffsetUnits  = -1
+  return mat
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -177,11 +175,17 @@ function applyMeshState(
     if (existing.userData?.managed) return existing
     const fresh = fiberNormalMap
       ? buildMuscleMaterial(fiberNormalMap)
-      : new THREE.MeshPhysicalMaterial({
-          roughness: 0.30, metalness: 0.04,
-          clearcoat: 0.50, clearcoatRoughness: 0.10,
-          side: THREE.FrontSide, flatShading: false,
-        })
+      : (() => {
+          const m = new THREE.MeshStandardMaterial({
+            roughness: 0.50, metalness: 0.00,
+            side: THREE.FrontSide, flatShading: false,
+            depthWrite: true, depthTest: true,
+          })
+          m.polygonOffset       = true
+          m.polygonOffsetFactor = -1
+          m.polygonOffsetUnits  = -1
+          return m
+        })()
     fresh.userData.managed = true
     return fresh
   }
@@ -194,24 +198,31 @@ function applyMeshState(
 
   const mat = (Array.isArray(obj.material)
     ? obj.material[0]
-    : obj.material) as THREE.MeshPhysicalMaterial
+    : obj.material) as THREE.MeshStandardMaterial
 
   // ── Color ─────────────────────────────────────────────────────────────────
   mat.color.set(hexColor)
 
   // ── PBR ───────────────────────────────────────────────────────────────────
   //  roughness: per-muscle override (0.28 smooth face → 0.75 deep fascia)
-  //  metalness: low — natural muscle sheen without metallic look
+  //  metalness: 0 — pure dielectric
   mat.roughness   = roughness
-  mat.metalness   = 0.04
+  mat.metalness   = 0.00
   mat.side        = THREE.FrontSide
   mat.flatShading = false
+  mat.depthTest   = true
 
-  // ── Emissive ——————————————————————————————————————————————————————————————
+  // ── Polygon offset — confirmed every update ───────────────────────────────
+  //  Shifts muscle depth values slightly toward the camera so muscles always
+  //  win the depth test against the underlying body surface (Z-fight fix).
+  mat.polygonOffset       = true
+  mat.polygonOffsetFactor = -1
+  mat.polygonOffsetUnits  = -1
+
+  // ── Emissive ───────────────────────────────────────────────────────────────
   //  Selected : deep-blue beacon (#0a2890) — unmistakable interaction cue.
   //  Hovered  : warm-red glow (#902010) — hover preview.
-  //  Default  : 4% of own hue — subsurface-scattering approximation; the
-  //             faint self-glow that distinguishes living tissue from clay.
+  //  Default  : 3% of own hue — subtle biological warmth.
   if (isSelected) {
     mat.emissive.set('#0a2890')
     mat.emissiveIntensity = 0.35
@@ -220,7 +231,7 @@ function applyMeshState(
     mat.emissiveIntensity = 0.28
   } else {
     mat.emissive.set(hexColor)
-    mat.emissiveIntensity = 0.04
+    mat.emissiveIntensity = 0.03
   }
 
   // ── Visibility / transparency ──────────────────────────────────────────────
@@ -291,54 +302,49 @@ function GLTFScene({ path }: { path: string }) {
 
   // ── Geometry quality pass (once after load) ───────────────────────────────
   //
-  // Step 1 — Catmull-Clark / Loop subdivision (optional, guarded by poly count)
-  //   LoopSubdivision.modify(geo, 1) — one pass, 4× triangle count.
-  //   Guard: skip meshes already above SUBDIV_TRIANGLE_LIMIT to avoid a
-  //   multi-second stall on dense torso meshes. Most extremity/face muscles
-  //   benefit most and are small enough to subdivide quickly.
+  // Step 1 — deleteAttribute('normal')
+  //   The GLB may export hard-edge (split) normals: each triangle corner has
+  //   its own normal entry, meaning no vertex is shared across triangles.
+  //   This is the direct cause of the "shattered / discrete points" look:
+  //   every triangle is a completely independent shard.  Deleting them lets
+  //   the later steps build correct smooth normals from scratch.
   //
-  // Step 2 — computeVertexNormals()
-  //   The single highest-impact smoothing fix. Forces Three.js to blend normals
-  //   across the polygon boundary using weighted-angle averaging — turns a
-  //   faceted polygon soup into a visually curved surface at zero cost.
-  //   Must run AFTER subdivision (which resets normals to flat) and BEFORE
-  //   computeTangents() (which reads the normals).
+  // Step 2 — mergeVertices()
+  //   Welds duplicate position entries within a positional tolerance of 1e-4
+  //   world units (~0.1 mm at human scale).  Converts the disconnected soup
+  //   of independent triangles into a single continuous indexed mesh where
+  //   neighbouring triangles share edge vertices.  This is the structural fix.
   //
-  // Step 3 — computeTangents()
-  //   MikkTSpace tangents for the normal map.  Required for MeshPhysicalMaterial
-  //   to shade the fiber striations correctly.  Only runs on indexed geometry
-  //   with UV attributes; others are skipped.
+  // Step 3 — computeVertexNormals()
+  //   With the mesh now topologically connected, Three.js averages the face
+  //   normals at each shared vertex (weighted by face area / angle).
+  //   Result: the GPU interpolates smoothly across polygon boundaries —
+  //   the surface looks curved and organic rather than faceted.
   //
-  const SUBDIV_TRIANGLE_LIMIT = 8_000   // ~32k after one pass — safe for GPU
-
+  // Step 4 — computeTangents()
+  //   MikkTSpace tangents for the fiber normal map.
+  //   Requires indexed geometry + UV attributes; silently skipped otherwise.
+  //
   useEffect(() => {
     scene.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh)) return
       obj.castShadow    = true
       obj.receiveShadow = true
 
-      const geo = obj.geometry as THREE.BufferGeometry
-
-      // Step 1 — Loop subdivision (skip heavy meshes)
-      if (geo.index) {
-        const triCount = geo.index.count / 3
-        if (triCount < SUBDIV_TRIANGLE_LIMIT) {
-          try {
-            const subdivided = LoopSubdivision.modify(geo, 1, {
-              split:       true,   // split long edges for more even tessellation
-              uvSmooth:    false,  // keep UV seams sharp (correct normal-map tiling)
-              preserveEdges: false,
-              flatOnly:    false,
-            })
-            obj.geometry = subdivided
-          } catch (_) { /* non-manifold edge — skip */ }
-        }
+      // Step 1 — wipe existing (possibly split / hard-edge) normals
+      if (obj.geometry.attributes.normal) {
+        obj.geometry.deleteAttribute('normal')
       }
 
-      // Step 2 — Smooth vertex normals (works on any geometry after subdivision)
+      // Step 2 — weld duplicate vertices into a continuous mesh
+      try {
+        obj.geometry = mergeVertices(obj.geometry, 1e-4)
+      } catch (_) { /* non-manifold or unusual geometry — skip weld */ }
+
+      // Step 3 — smooth vertex normals on the now-connected geometry
       obj.geometry.computeVertexNormals()
 
-      // Step 3 — MikkTSpace tangents for normal map (indexed + UV required)
+      // Step 4 — tangents for normal map (requires index + UV)
       if (obj.geometry.attributes.uv && obj.geometry.index) {
         try { obj.geometry.computeTangents() } catch (_) { /* skip */ }
       }
