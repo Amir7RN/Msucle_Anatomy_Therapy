@@ -18,9 +18,9 @@ import * as THREE from 'three'
 
 const SKIN_COLOR      = '#1e0e06'
 const SKIN_OPACITY     = 0.78   // torso, head, legs — muscles are surface-level
-const SKIN_OPACITY_ARM = 0.38   // arms — biceps/brachialis/forearm muscles are
-                                 // enclosed by the silhouette; lower opacity lets
-                                 // them show through clearly
+const SKIN_OPACITY_ARM = 0.18   // arms — very low so all enclosed muscles
+                                 // (biceps, brachialis, forearm) show through
+                                 // at full brightness; skin stays as ghost outline
 
 function mkPts(pairs: [number, number][]): THREE.Vector2[] {
   return pairs.map(([r, y]) => new THREE.Vector2(r, y))
@@ -168,7 +168,7 @@ export function BodySurface() {
 
       {/*
         ── RIGHT ARM GROUP — ±0.20 rad A-pose tilt ───────────────────────
-        All arm meshes use `ma` (SKIN_OPACITY_ARM = 0.38) so the enclosed
+        All arm meshes use `ma` (SKIN_OPACITY_ARM = 0.18) so the enclosed
         biceps / brachialis / forearm muscles show clearly through the skin.
       */}
       <group position={[-0.164, 0.368, 0.060]} rotation={[0, 0, -0.20]}>

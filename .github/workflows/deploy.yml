@@ -1,0 +1,67 @@
+# Automatically builds and deploys the Human Muscle Atlas to GitHub Pages
+# on every push to the main branch.
+#
+# After pushing this file, go to:
+#   GitHub repo → Settings → Pages → Source → "GitHub Actions"
+# and the live demo will be available at:
+#   https://amir7rn.github.io/Msucle_Anatomy_Therapy/
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # Allow triggering manually from the Actions tab
+  workflow_dispatch:
+
+# Required for the GitHub Pages deployment action
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one deployment at a time; cancel any in-progress run if a new push arrives
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build for GitHub Pages
+        # VITE_BASE_PATH tells vite.config.ts to prefix all asset URLs with
+        # the repo sub-path so the app works at /Msucle_Anatomy_Therapy/
+        run: npm run build
+        env:
+          VITE_BASE_PATH: /Msucle_Anatomy_Therapy/
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload build artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Deploy the Vite output folder
+          path: dist/
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
