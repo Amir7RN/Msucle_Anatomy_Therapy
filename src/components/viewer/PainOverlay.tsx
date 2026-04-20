@@ -161,12 +161,17 @@ export function PainOverlay() {
     // Exclude:
     //   • invisible objects (hidden/ghosted)
     //   • our own decal meshes (renderOrder 10) — prevents self-projection
-    //   • meshes without a normal attribute (DecalGeometry requires normals)
+    //   • BodySurface skin primitives (isSkinSurface=true) — the skin silhouette
+    //     is a coarse geometric proxy; projecting onto it instead of real muscle
+    //     geometry causes wrong-location decals (e.g. a hip zone ray hitting the
+    //     hanging arm's wrist capsule at the same y-height as the hip)
+    //   • meshes without position + normal attributes (DecalGeometry requires both)
     const candidates: THREE.Mesh[] = []
     rootScene.traverse((obj) => {
-      if (!(obj instanceof THREE.Mesh)) return
-      if (!obj.visible)                  return
-      if (obj.renderOrder === 10)        return
+      if (!(obj instanceof THREE.Mesh))          return
+      if (!obj.visible)                           return
+      if (obj.renderOrder === 10)                 return
+      if (obj.userData?.isSkinSurface)            return   // ← skip BodySurface
       const geo = obj.geometry
       if (!geo.attributes.position || !geo.attributes.normal) return
       candidates.push(obj)
@@ -211,8 +216,34 @@ export function PainOverlay() {
       const hits = raycaster.intersectObjects(candidates, false)
       if (hits.length === 0) continue
 
-      const hit = hits[0]
-      if (!hit.face) continue
+      // ── Proximity filter ──────────────────────────────────────────────────
+      //
+      // The ray travels outward across the body, so it can hit multiple meshes
+      // including ones on the OPPOSITE side.  Classic failure modes:
+      //
+      //  • lat_hip_l ray (aimed at hip, y≈-0.148) hits the LEFT ARM WRIST at
+      //    the same y-height before reaching the actual gluteus muscle — because
+      //    the hanging arm is 13 cm further out than the hip in the XZ plane.
+      //
+      //  • arch_l ray overshoots the left foot and hits the RIGHT heel box
+      //    (same y=-0.915, opposite x) at 15 cm from zone centre.
+      //
+      // Fix: iterate hits in ascending distance order (already sorted by Three.js)
+      // and accept the first hit whose surface point lies within 12 cm of the
+      // zone centre.  Correct hits are typically 1–5 cm away; cross-body hits
+      // are 13+ cm away and get skipped — the next hit in the list is the
+      // correct anatomy on the right side.
+      //
+      const ZONE_HIT_RADIUS = 0.12   // 12 cm acceptance radius
+      let hit: THREE.Intersection | undefined
+      for (const h of hits) {
+        if (!h.face) continue
+        if (h.point.distanceTo(zonePos) <= ZONE_HIT_RADIUS) {
+          hit = h
+          break
+        }
+      }
+      if (!hit || !hit.face) continue
 
       const hitMesh = hit.object as THREE.Mesh
 

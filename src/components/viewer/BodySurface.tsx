@@ -16,8 +16,11 @@
 import React, { useMemo } from 'react'
 import * as THREE from 'three'
 
-const SKIN_COLOR   = '#1e0e06'
-const SKIN_OPACITY = 0.78
+const SKIN_COLOR      = '#1e0e06'
+const SKIN_OPACITY     = 0.78   // torso, head, legs — muscles are surface-level
+const SKIN_OPACITY_ARM = 0.38   // arms — biceps/brachialis/forearm muscles are
+                                 // enclosed by the silhouette; lower opacity lets
+                                 // them show through clearly
 
 function mkPts(pairs: [number, number][]): THREE.Vector2[] {
   return pairs.map(([r, y]) => new THREE.Vector2(r, y))
@@ -33,28 +36,32 @@ const FINGER_X = [-0.026, -0.013, 0, 0.013, 0.026] as const
 const TOE_X_R  = [-0.024, -0.012, 0, 0.012, 0.022] as const
 const TOE_X_L  = [ 0.024,  0.012, 0, -0.012, -0.022] as const
 
+function makeSkinMaterial(opacity: number): THREE.MeshPhysicalMaterial {
+  const m = new THREE.MeshPhysicalMaterial({
+    color:              SKIN_COLOR,
+    roughness:          0.40,
+    metalness:          0.00,
+    clearcoat:          0.30,
+    clearcoatRoughness: 0.25,
+    transparent:        true,
+    opacity,
+    side:               THREE.FrontSide,
+    // depthWrite MUST stay false — skin is a transparent overlay, it must
+    // never write depth values that would occlude muscles beneath it.
+    depthWrite:         false,
+  })
+  m.polygonOffset       = true
+  m.polygonOffsetFactor = 4
+  m.polygonOffsetUnits  = 4
+  return m
+}
+
 export function BodySurface() {
-  const mat = useMemo(() => {
-    const m = new THREE.MeshPhysicalMaterial({
-      color:              SKIN_COLOR,
-      roughness:          0.40,
-      metalness:          0.00,
-      clearcoat:          0.30,
-      clearcoatRoughness: 0.25,
-      transparent:        true,
-      opacity:            SKIN_OPACITY,
-      side:               THREE.FrontSide,
-      depthWrite:         false,   // ← must NOT write depth; skin is a transparent
-                                   //   overlay and must never block muscles that
-                                   //   are geometrically inside the silhouette
-    })
-    // Positive polygon offset pushes the skin surface away from the camera in
-    // depth-buffer space so muscles always win any residual depth tie.
-    m.polygonOffset       = true
-    m.polygonOffsetFactor = 4
-    m.polygonOffsetUnits  = 4
-    return m
-  }, [])
+  // Body-segment material (torso, head, neck, legs) — muscles sit at the surface
+  const mat    = useMemo(() => makeSkinMaterial(SKIN_OPACITY),     [])
+  // Arm-segment material — arm muscles are ENCLOSED by the silhouette cylinder;
+  // a much lower opacity lets biceps / brachialis / forearm muscles show through
+  const matArm = useMemo(() => makeSkinMaterial(SKIN_OPACITY_ARM), [])
 
   // ── Profiles ──────────────────────────────────────────────────────────────
 
@@ -119,13 +126,21 @@ export function BodySurface() {
     [0.034, +0.181],
   ]), [])
 
+  // Shared mesh props for body segments
   const m = {
     material:      mat,
-    renderOrder:   1,    // ← draw AFTER all muscles (renderOrder 0) so the skin
-                         //   is composited on top as a transparent overlay.
-                         //   With depthWrite=false the skin never blocks muscles.
+    renderOrder:   1,          // draw AFTER muscles so skin composites on top
     castShadow:    false,
     receiveShadow: false,
+    userData:      { isSkinSurface: true },   // PainOverlay skips these in raycasting
+  }
+  // Arm-segment mesh props — same but with the more-transparent arm material
+  const ma = {
+    material:      matArm,
+    renderOrder:   1,
+    castShadow:    false,
+    receiveShadow: false,
+    userData:      { isSkinSurface: true },
   }
 
   return (
@@ -147,44 +162,43 @@ export function BodySurface() {
       </mesh>
 
       {/* ── RIGHT SHOULDER ───────────────────────────────────────────────── */}
-      <mesh {...m} position={[-0.164, 0.368, 0.060]} scale={[1.10, 1.05, 0.78]}>
+      <mesh {...ma} position={[-0.164, 0.368, 0.060]} scale={[1.10, 1.05, 0.78]}>
         <sphereGeometry args={[0.058, 16, 12]} />
       </mesh>
 
       {/*
         ── RIGHT ARM GROUP — ±0.20 rad A-pose tilt ───────────────────────
-        Pivot at shoulder. Tilt calibrated so the upper-arm silhouette
-        overlays the GLB Biceps_R / Triceps_R mesh centres (x≈-0.192).
-        Previous value 0.30 rad pushed the arms 2-3 cm too far lateral.
+        All arm meshes use `ma` (SKIN_OPACITY_ARM = 0.38) so the enclosed
+        biceps / brachialis / forearm muscles show clearly through the skin.
       */}
       <group position={[-0.164, 0.368, 0.060]} rotation={[0, 0, -0.20]}>
         {/* Upper arm */}
-        <mesh {...m} position={[0, -0.143, 0.010]} scale={[1, 1, 0.84]}>
+        <mesh {...ma} position={[0, -0.143, 0.010]} scale={[1, 1, 0.84]}>
           <latheGeometry args={[upperArmProfile, SEG_LIMB]} />
         </mesh>
         {/* Elbow */}
-        <mesh {...m} position={[0, -0.250, 0.010]}>
+        <mesh {...ma} position={[0, -0.250, 0.010]}>
           <sphereGeometry args={[0.026, 10, 8]} />
         </mesh>
         {/* Forearm */}
-        <mesh {...m} position={[0, -0.332, 0.010]} scale={[1, 1, 0.78]}>
+        <mesh {...ma} position={[0, -0.332, 0.010]} scale={[1, 1, 0.78]}>
           <latheGeometry args={[forearmProfile, SEG_THIN]} />
         </mesh>
         {/* Wrist */}
-        <mesh {...m} position={[0, -0.501, 0.010]}>
+        <mesh {...ma} position={[0, -0.501, 0.010]}>
           <sphereGeometry args={[0.017, 8, 6]} />
         </mesh>
         {/* Palm */}
-        <mesh {...m} position={[0, -0.546, 0.010]}>
+        <mesh {...ma} position={[0, -0.546, 0.010]}>
           <boxGeometry args={[0.074, 0.072, 0.026]} />
         </mesh>
         {/* Thumb — radial/lateral side (−X for right arm) */}
-        <mesh {...m} position={[-0.044, -0.528, 0.010]} rotation={[0, 0, 0.60]}>
+        <mesh {...ma} position={[-0.044, -0.528, 0.010]} rotation={[0, 0, 0.60]}>
           <capsuleGeometry args={[0.010, 0.032, 4, 8]} />
         </mesh>
         {/* Four fingers — index to pinky */}
         {FINGER_X.map((fx, fi) => (
-          <mesh key={fi} {...m}
+          <mesh key={fi} {...ma}
             position={[fx, -0.608 - fi * 0.002, 0.010]}
             rotation={[0.08, 0, 0]}
           >
@@ -194,34 +208,34 @@ export function BodySurface() {
       </group>
 
       {/* ── LEFT SHOULDER ────────────────────────────────────────────────── */}
-      <mesh {...m} position={[0.164, 0.368, 0.060]} scale={[1.10, 1.05, 0.78]}>
+      <mesh {...ma} position={[0.164, 0.368, 0.060]} scale={[1.10, 1.05, 0.78]}>
         <sphereGeometry args={[0.058, 16, 12]} />
       </mesh>
 
-      {/* ── LEFT ARM GROUP (x-mirrored, rotation.z = +0.20) ─────────────── */}
+      {/* ── LEFT ARM GROUP (x-mirrored, rotation.z = +0.20) — uses ma ───── */}
       <group position={[0.164, 0.368, 0.060]} rotation={[0, 0, 0.20]}>
-        <mesh {...m} position={[0, -0.143, 0.010]} scale={[1, 1, 0.84]}>
+        <mesh {...ma} position={[0, -0.143, 0.010]} scale={[1, 1, 0.84]}>
           <latheGeometry args={[upperArmProfile, SEG_LIMB]} />
         </mesh>
-        <mesh {...m} position={[0, -0.250, 0.010]}>
+        <mesh {...ma} position={[0, -0.250, 0.010]}>
           <sphereGeometry args={[0.026, 10, 8]} />
         </mesh>
-        <mesh {...m} position={[0, -0.332, 0.010]} scale={[1, 1, 0.78]}>
+        <mesh {...ma} position={[0, -0.332, 0.010]} scale={[1, 1, 0.78]}>
           <latheGeometry args={[forearmProfile, SEG_THIN]} />
         </mesh>
-        <mesh {...m} position={[0, -0.501, 0.010]}>
+        <mesh {...ma} position={[0, -0.501, 0.010]}>
           <sphereGeometry args={[0.017, 8, 6]} />
         </mesh>
-        <mesh {...m} position={[0, -0.546, 0.010]}>
+        <mesh {...ma} position={[0, -0.546, 0.010]}>
           <boxGeometry args={[0.074, 0.072, 0.026]} />
         </mesh>
         {/* Thumb — radial side (+X for left arm) */}
-        <mesh {...m} position={[0.044, -0.528, 0.010]} rotation={[0, 0, -0.60]}>
+        <mesh {...ma} position={[0.044, -0.528, 0.010]} rotation={[0, 0, -0.60]}>
           <capsuleGeometry args={[0.010, 0.032, 4, 8]} />
         </mesh>
         {/* Four fingers */}
         {FINGER_X.map((fx, fi) => (
-          <mesh key={fi} {...m}
+          <mesh key={fi} {...ma}
             position={[-fx, -0.608 - fi * 0.002, 0.010]}
             rotation={[0.08, 0, 0]}
           >
