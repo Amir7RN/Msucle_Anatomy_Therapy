@@ -31,14 +31,45 @@ import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { ThreeEvent, useFrame } from '@react-three/fiber'
 import { useAtlasStore, resolveStructureVisibility } from '../../store/atlasStore'
 import { useSceneIndex } from '../../hooks/useSceneIndex'
-import { resolveColor, muscleRoughness, MUSCLE_DEFAULT } from '../../lib/colors'
+import { resolveColor, muscleColor, muscleRoughness, MUSCLE_DEFAULT } from '../../lib/colors'
 import type { SystemType, LayerType } from '../../lib/types'
 
 // ── Model path ────────────────────────────────────────────────────────────────
 export const MODEL_PATH = '/models/human-muscular-system.glb'
 
+// ── smoothstep helper ─────────────────────────────────────────────────────────
+function smoothstep(edge0: number, edge1: number, x: number): number {
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)))
+  return t * t * (3 - 2 * t)
+}
+
+// ── Tendon-white constant ─────────────────────────────────────────────────────
+const TENDON_WHITE = new THREE.Color('#F5F5F5')
+
 // ── Y coordinate of the floor grid in ViewerCanvas ───────────────────────────
 const GRID_Y = -0.925
+
+// ── Arm muscles that are clipped by the BodySurface arm segments ──────────────
+//
+// These five muscles sit on or just inside the arm silhouette and lose the
+// depth contest against the skin mesh.  Giving them renderOrder=5 (vs. 0 for
+// all other muscles and -1 for BodySurface) ensures they are composited LAST
+// in their opacity group and therefore always appear on top.  The tighter
+// polygonOffset (-2/-2 vs. the standard -1/-1) gives an additional push
+// toward the camera so they "win" even at glancing angles.
+//
+const ARM_PRIORITY_IDS = new Set<string>([
+  'MUSC_BICEPS_BRACHII_R',
+  'MUSC_BICEPS_BRACHII_L',
+  'MUSC_BRACHIALIS_R',
+  'MUSC_BRACHIALIS_L',
+  'MUSC_CORACOBRACHIALIS_R',
+  'MUSC_CORACOBRACHIALIS_L',
+  'MUSC_EXTENSOR_CARPI_RADIALIS_LONGUS_R',
+  'MUSC_EXTENSOR_CARPI_RADIALIS_LONGUS_L',
+  'MUSC_EXTENSOR_DIGITORUM_R',
+  'MUSC_EXTENSOR_DIGITORUM_L',
+])
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Procedural muscle-fiber normal map
@@ -136,14 +167,16 @@ function makeMuscleFiberNormalMap(width = 512, height = 512): THREE.CanvasTextur
 //
 function buildMuscleMaterial(normalMap: THREE.Texture): THREE.MeshStandardMaterial {
   const mat = new THREE.MeshStandardMaterial({
-    roughness:   0.50,
-    metalness:   0.00,
+    color:        '#ffffff',   // white base — vertex colors provide the actual hue
+    roughness:    0.50,
+    metalness:    0.00,
     normalMap,
-    normalScale: new THREE.Vector2( 0.15, 0.15 ),
-    side:        THREE.FrontSide,
-    flatShading: false,
-    depthWrite:  true,
-    depthTest:   true,
+    normalScale:  new THREE.Vector2( 0.15, 0.15 ),
+    vertexColors: true,        // vertex color gradient drives belly↔tendon fading
+    side:         THREE.FrontSide,
+    flatShading:  false,
+    depthWrite:   true,
+    depthTest:    true,
   })
   mat.polygonOffset       = true
   mat.polygonOffsetFactor = -1
@@ -158,7 +191,8 @@ function buildMuscleMaterial(normalMap: THREE.Texture): THREE.MeshStandardMateri
 function applyMeshState(
   obj: THREE.Mesh,
   opts: {
-    hexColor:        string
+    hexColor:        string   // resolved display color (may be state-overridden)
+    baseColor:       string   // raw muscle color before state processing
     roughness:       number
     isSelected:      boolean
     isHovered:       boolean
@@ -166,7 +200,7 @@ function applyMeshState(
     fiberNormalMap?: THREE.Texture
   },
 ) {
-  const { hexColor, roughness, isSelected, isHovered, visState, fiberNormalMap } = opts
+  const { hexColor, baseColor, roughness, isSelected, isHovered, visState, fiberNormalMap } = opts
 
   // ── First-time setup: replace GLB material with anatomy PBR ──────────────
   //  Runs once per mesh.  Handles both single-material and array-material meshes.
@@ -177,7 +211,8 @@ function applyMeshState(
       ? buildMuscleMaterial(fiberNormalMap)
       : (() => {
           const m = new THREE.MeshStandardMaterial({
-            roughness: 0.50, metalness: 0.00,
+            color: '#ffffff', roughness: 0.50, metalness: 0.00,
+            vertexColors: true,
             side: THREE.FrontSide, flatShading: false,
             depthWrite: true, depthTest: true,
           })
@@ -186,6 +221,33 @@ function applyMeshState(
           m.polygonOffsetUnits  = -1
           return m
         })()
+
+    // ── Vertex color gradient: belly → tendon white ───────────────────────
+    //  Uses the pre-computed tendonMask attribute (0=belly, 1=tendon end) that
+    //  was stamped onto the geometry during the geometry-quality pass.
+    //  Vertex colors = mix(baseColor, #F5F5F5, tendonMask * 0.55).
+    //  Because mat.color multiplies with vertex colors at render time:
+    //    • Normal state   → mat.color = white  → gradient shows through as-is
+    //    • Selected state → mat.color = #CC5500 → belly turns orange-red,
+    //                                              tendon ends turn golden yellow
+    //                                              → automatic infrared heatmap
+    //    • Hovered state  → mat.color = warm peach → subtle warm tint
+    const geo = obj.geometry
+    const tm  = geo.attributes.tendonMask as THREE.BufferAttribute | undefined
+    if (tm) {
+      const count  = tm.count
+      const cols   = new Float32Array(count * 3)
+      const muscle = new THREE.Color(baseColor)
+      for (let i = 0; i < count; i++) {
+        const mask = tm.getX(i)             // 0 = belly centre, 1 = tendon end
+        const c    = muscle.clone().lerp(TENDON_WHITE, mask * 0.55)
+        cols[i * 3]     = c.r
+        cols[i * 3 + 1] = c.g
+        cols[i * 3 + 2] = c.b
+      }
+      geo.setAttribute('color', new THREE.BufferAttribute(cols, 3))
+    }
+
     fresh.userData.managed = true
     return fresh
   }
@@ -200,12 +262,7 @@ function applyMeshState(
     ? obj.material[0]
     : obj.material) as THREE.MeshStandardMaterial
 
-  // ── Color ─────────────────────────────────────────────────────────────────
-  mat.color.set(hexColor)
-
   // ── PBR ───────────────────────────────────────────────────────────────────
-  //  roughness: per-muscle override (0.28 smooth face → 0.75 deep fascia)
-  //  metalness: 0 — pure dielectric
   mat.roughness   = roughness
   mat.metalness   = 0.00
   mat.side        = THREE.FrontSide
@@ -213,25 +270,42 @@ function applyMeshState(
   mat.depthTest   = true
 
   // ── Polygon offset — confirmed every update ───────────────────────────────
-  //  Shifts muscle depth values slightly toward the camera so muscles always
-  //  win the depth test against the underlying body surface (Z-fight fix).
   mat.polygonOffset       = true
   mat.polygonOffsetFactor = -1
   mat.polygonOffsetUnits  = -1
 
-  // ── Emissive ───────────────────────────────────────────────────────────────
-  //  Selected : deep-blue beacon (#0a2890) — unmistakable interaction cue.
-  //  Hovered  : warm-red glow (#902010) — hover preview.
-  //  Default  : 3% of own hue — subtle biological warmth.
+  // ── Color × Emissive state logic ──────────────────────────────────────────
+  //
+  // mat.color MULTIPLIES with vertex colors at render time.
+  // Vertex colors = belly (muscle hue) → tendon white at origins/insertions.
+  //
+  // Selected — Pain Heatmap (infrared scan style):
+  //   mat.color = #CC5500 (burnt orange) multiplies with the vertex gradient:
+  //     belly vertex (muscle_hue)  × orange = deep orange-red (hot centre)
+  //     tendon vertex (#F5F5F5)    × orange = golden yellow   (cool edges)
+  //   This is the infrared heatmap effect without any custom shader.
+  //   Emissive adds a soft pulsing glow at 0.50 intensity.
+  //
+  // Hovered — warm preview:
+  //   mat.color = warm peach → tints gradient subtly
+  //   Emissive = low-level warm red (0.22) for cursor feedback
+  //
+  // Normal — pure gradient:
+  //   mat.color = white → vertex colors pass through unmodified
+  //   Emissive = very low (0.025) using base muscle hue for biological warmth
+  //
   if (isSelected) {
-    mat.emissive.set('#0a2890')
-    mat.emissiveIntensity = 0.35
+    mat.color.set('#CC5500')
+    mat.emissive.set('#CC5500')
+    mat.emissiveIntensity = 0.50
   } else if (isHovered) {
-    mat.emissive.set('#902010')
-    mat.emissiveIntensity = 0.28
+    mat.color.set('#ffe8cc')
+    mat.emissive.set('#a03020')
+    mat.emissiveIntensity = 0.22
   } else {
-    mat.emissive.set(hexColor)
-    mat.emissiveIntensity = 0.03
+    mat.color.set('#ffffff')
+    mat.emissive.set(baseColor)
+    mat.emissiveIntensity = 0.025
   }
 
   // ── Visibility / transparency ──────────────────────────────────────────────
@@ -348,6 +422,40 @@ function GLTFScene({ path }: { path: string }) {
       if (obj.geometry.attributes.uv && obj.geometry.index) {
         try { obj.geometry.computeTangents() } catch (_) { /* skip */ }
       }
+
+      // Step 5 — tendon mask per vertex
+      //   Encodes the belly→tendon gradient shape so the material pass can build
+      //   vertex colors without needing any shader injection.
+      //
+      //   Algorithm: find the longest bbox axis (the muscle's longitudinal axis —
+      //   handles horizontal muscles like deltoid and trapezius correctly).
+      //   Compute normalised position along that axis (0 = one end, 1 = other end).
+      //   bellyMask = smoothstep(0, 0.25, t) × smoothstep(1, 0.75, t) — peaks at
+      //   t=0.5 (belly centre), falls to 0 at t=0 and t=1 (origin/insertion).
+      //   tendonMask = 1 − bellyMask  (0 = belly, 1 = tendon end).
+      {
+        const pos  = obj.geometry.attributes.position as THREE.BufferAttribute
+        const bbox = new THREE.Box3().setFromBufferAttribute(pos)
+        const size = new THREE.Vector3()
+        bbox.getSize(size)
+
+        // Longest axis = muscle's longitudinal axis
+        let axisIdx = 1  // default Y
+        if (size.x >= size.y && size.x >= size.z) axisIdx = 0
+        else if (size.z >= size.y && size.z >= size.x) axisIdx = 2
+        const axisMin = axisIdx === 0 ? bbox.min.x : axisIdx === 1 ? bbox.min.y : bbox.min.z
+        const axisMax = axisIdx === 0 ? bbox.max.x : axisIdx === 1 ? bbox.max.y : bbox.max.z
+        const axisRange = axisMax - axisMin
+
+        const n    = pos.count
+        const mask = new Float32Array(n)
+        for (let i = 0; i < n; i++) {
+          const v = axisIdx === 0 ? pos.getX(i) : axisIdx === 1 ? pos.getY(i) : pos.getZ(i)
+          const t = axisRange > 1e-4 ? (v - axisMin) / axisRange : 0.5
+          mask[i] = 1.0 - smoothstep(0, 0.25, t) * smoothstep(1, 0.75, t)
+        }
+        obj.geometry.setAttribute('tendonMask', new THREE.BufferAttribute(mask, 1))
+      }
     })
   }, [scene])
 
@@ -414,10 +522,31 @@ function GLTFScene({ path }: { path: string }) {
           )
         : 'visible'
 
-      const hexColor = resolveColor(system, isHovered, isSelected, id, meta?.layer as LayerType | undefined)
+      const hexColor  = resolveColor(system, isHovered, isSelected, id, meta?.layer as LayerType | undefined)
+      const baseColor = muscleColor(id, meta?.layer as LayerType | undefined)
       const roughness = muscleRoughness(id)
 
-      applyMeshState(obj, { hexColor, roughness, isSelected, isHovered, visState, fiberNormalMap })
+      applyMeshState(obj, { hexColor, baseColor, roughness, isSelected, isHovered, visState, fiberNormalMap })
+
+      // ── Arm-priority depth override ───────────────────────────────────────
+      //
+      // Five anterior-arm muscles lose depth battles against the BodySurface
+      // arm silhouette.  renderOrder=5 composites them after all other muscles
+      // (renderOrder=0) and after BodySurface (renderOrder=-1).  The tighter
+      // polygonOffset pushes their fragments closer to the camera so they win
+      // even at grazing angles where the default -1/-1 is not enough.
+      if (id && ARM_PRIORITY_IDS.has(id)) {
+        obj.renderOrder = 5
+        const pMat = Array.isArray(obj.material) ? obj.material[0] : obj.material
+        if (pMat instanceof THREE.MeshStandardMaterial) {
+          pMat.polygonOffsetFactor = -2
+          pMat.polygonOffsetUnits  = -2
+          pMat.needsUpdate = true
+        }
+      } else {
+        // Ensure other muscles are reset to default if ID changed
+        obj.renderOrder = 0
+      }
     })
   }, [scene, sceneIndex, selectedId, hoveredId, hiddenIds, hiddenLayers, ghostedLayers, isolateMode, ghostMode, fiberNormalMap])
 

@@ -154,13 +154,13 @@ export const PAIN_PATTERNS: Record<string, PainPattern> = {
   // ── HEAD / NECK ─────────────────────────────────────────────────────────────
 
   MUSC_STERNOCLEIDOMASTOID_R: {
-    description: 'Trigger points in the SCM refer pain to the vertex, occiput, cheek, over the eye, throat and sternum. The sternal head refers to the vertex, occiput and cheek; the clavicular head refers to the frontal region and ear. Autonomic symptoms such as lacrimation or sinus congestion may occur.',
-    zones: ['head_vertex', 'head_occiput', 'head_cheek_r', 'head_eye_r', 'head_forehead', 'head_ear_r', 'head_temple_r', 'neck_r', 'throat', 'sternum'],
+    description: 'Primary pain in the front and side of the right neck. Referred pain to the forehead, temple, ear and behind the ear, jaw and cheek, and top of the head. The sternal head refers to the vertex, cheek and over the eye; the clavicular head refers to the frontal region and ear. Autonomic symptoms (lacrimation, sinus congestion) may occur.',
+    zones: ['neck_r', 'throat', 'head_forehead', 'head_temple_r', 'head_ear_r', 'head_jaw_r', 'head_cheek_r', 'head_vertex'],
   },
 
   MUSC_STERNOCLEIDOMASTOID_L: {
-    description: 'The left SCM mirrors the right. Pain refers to the vertex, occiput, cheek, over the eye, throat and sternum on the left side. The clavicular head refers to the frontal region and ear. Autonomic symptoms may occur.',
-    zones: ['head_vertex', 'head_occiput', 'head_cheek_l', 'head_eye_l', 'head_forehead', 'head_ear_l', 'head_temple_l', 'neck_l', 'throat', 'sternum'],
+    description: 'Left SCM mirrors the right. Primary pain in the front and side of the left neck. Referred pain to the forehead, temple, ear and behind the ear, jaw and cheek, and top of the head.',
+    zones: ['neck_l', 'throat', 'head_forehead', 'head_temple_l', 'head_ear_l', 'head_jaw_l', 'head_cheek_l', 'head_vertex'],
   },
 
   MUSC_MASSETER_R: {
@@ -186,53 +186,63 @@ export const PAIN_PATTERNS: Record<string, PainPattern> = {
   // ── TRUNK ────────────────────────────────────────────────────────────────────
 
   MUSC_PECTORALIS_MAJOR_R: {
-    description: 'Pectoralis major trigger points can mimic angina. Referred pain is experienced in the anterior chest, front of the shoulder, down the inside of the arm and along the inside of the elbow. Breast tenderness and nipple hypersensitivity may also occur.',
-    zones: ['chest_r', 'chest_upper', 'sternum', 'shoulder_r', 'arm_ant_r', 'arm_med_r', 'elbow_r'],
+    description: 'Pectoralis major trigger points can mimic angina. Primary pain in the anterior chest and front of the shoulder. Referred pain spreads across the sternum, down the front of the chest, along the medial arm and forearm to the ulnar side of the hand. Breast tenderness may also occur.',
+    zones: ['chest_r', 'chest_upper', 'sternum', 'shoulder_r', 'arm_ant_r', 'arm_med_r', 'forearm_med_r', 'hand_fingers_r'],
   },
 
   MUSC_PECTORALIS_MAJOR_L: {
-    description: 'Left pectoralis major is anatomically and functionally identical to the right. Pain referral patterns are mirrored. Chest pain mimicking cardiac pathology should always be medically evaluated.',
-    zones: ['chest_l', 'chest_upper', 'sternum', 'shoulder_l', 'arm_ant_l', 'arm_med_l', 'elbow_l'],
+    description: 'Left pectoralis major mirrors the right. Primary pain in the anterior chest and front of the left shoulder. Referred pain across the sternum, medial arm and forearm to the ulnar side of the hand. Chest pain mimicking cardiac pathology should always be medically evaluated.',
+    zones: ['chest_l', 'chest_upper', 'sternum', 'shoulder_l', 'arm_ant_l', 'arm_med_l', 'forearm_med_l', 'hand_fingers_l'],
   },
 
   MUSC_RECTUS_ABDOMINIS: {
-    description: 'Trigger points refer pain to the upper or lower abdomen (often mimicking digestive pain or cramps), the lower back and sacral region, and occasionally the ribs and sternum. Pain may present as tightness or deep aching across the abdomen or back.',
-    zones: ['abdomen_upper', 'abdomen_lower', 'lower_back', 'sternum'],
+    description: 'Primary pain across the anterior abdominal wall. Referred pain to the mid-back, lower thoracic spine, lumbar region and around the umbilicus. Often mimics visceral or digestive pain.',
+    zones: ['abdomen_upper', 'abdomen_lower', 'mid_back', 'lower_back'],
   },
 
   MUSC_EXTERNAL_OBLIQUE_R: {
-    description: 'External oblique trigger points may refer pain to the lower chest, flank, groin or testicular area on the same side. Pain can wrap around the torso and mimic abdominal or visceral pain.',
-    zones: ['flank_r', 'lat_chest_r', 'abdomen_lower', 'groin_r'],
+    description: 'Primary pain in the lateral abdomen. Referred pain to the groin, lower abdomen, iliac crest and low back. Pain can wrap around the torso and mimic abdominal or visceral pain.',
+    zones: ['flank_r', 'abdomen_lower', 'groin_r', 'lower_back'],
   },
 
   MUSC_EXTERNAL_OBLIQUE_L: {
-    description: 'Same anatomy and referral pattern as the right external oblique. Pain is mirrored on the left side, wrapping around the torso toward the groin.',
-    zones: ['flank_l', 'lat_chest_l', 'abdomen_lower', 'groin_l'],
+    description: 'Same anatomy and referral pattern as the right external oblique. Primary lateral abdomen pain with referral to the groin, lower abdomen, iliac crest and low back on the left side.',
+    zones: ['flank_l', 'abdomen_lower', 'groin_l', 'lower_back'],
   },
 
   MUSC_TRAPEZIUS: {
-    description: 'Upper trapezius trigger points commonly refer pain to the temple, forehead and back of the head, mimicking tension headaches. Pain radiates into the neck and shoulders and causes tightness around the head.',
-    zones: ['head_temple_r', 'head_temple_l', 'head_occiput', 'head_forehead', 'neck_post', 'shoulder_r', 'shoulder_l', 'upper_back'],
+    description: 'The trapezius has three functional trigger-point divisions. Upper: primary pain in the upper neck and shoulder region; refers to the posterolateral neck, mastoid area, temple and behind the eye. Middle: primary pain between the shoulder blades; refers to the acromion, spine of scapula and interscapular region. Lower: primary pain in the lower scapular region and mid-thoracic back; refers to the inferior angle of the scapula, posterior shoulder and lower neck. Together they produce a broad neck–shoulder–upper-back pain complex that often mimics tension headache.',
+    zones: [
+      // Upper division — primary
+      'neck_r', 'neck_l', 'neck_post', 'shoulder_r', 'shoulder_l',
+      // Upper division — referred
+      'head_temple_r', 'head_temple_l', 'head_ear_r', 'head_ear_l',
+      'head_eye_r', 'head_eye_l', 'head_occiput',
+      // Middle division — primary + referred
+      'upper_back', 'scapula_r', 'scapula_l',
+      // Lower division — primary + referred
+      'mid_back', 'shoulder_post_r', 'shoulder_post_l',
+    ],
   },
 
   MUSC_LATISSIMUS_DORSI_R: {
-    description: 'Trigger points may refer pain to the mid-back, inferior angle of the scapula, posterior shoulder and down the medial arm to the fourth and fifth fingers. Pain can mimic scapular or shoulder pathology.',
-    zones: ['mid_back', 'scapula_r', 'shoulder_post_r', 'arm_post_r', 'forearm_med_r', 'hand_fingers_r'],
+    description: 'Primary pain in the mid-back and posterior axilla. Referred pain to the inferior angle of the scapula, posterior shoulder, medial arm and forearm, and the ulnar side of the hand. Can mimic scapular or shoulder pathology.',
+    zones: ['mid_back', 'lat_chest_r', 'scapula_r', 'shoulder_post_r', 'arm_post_r', 'arm_med_r', 'forearm_med_r', 'hand_fingers_r'],
   },
 
   MUSC_LATISSIMUS_DORSI_L: {
-    description: 'Same anatomy and referral pattern as the right latissimus dorsi. Pain is mirrored to the left mid-back, scapula, posterior shoulder and medial arm.',
-    zones: ['mid_back', 'scapula_l', 'shoulder_post_l', 'arm_post_l', 'forearm_med_l', 'hand_fingers_l'],
+    description: 'Same anatomy and referral pattern as the right latissimus dorsi. Primary mid-back and posterior axilla pain with referral to the scapula, posterior shoulder, medial arm and forearm, and ulnar hand on the left side.',
+    zones: ['mid_back', 'lat_chest_l', 'scapula_l', 'shoulder_post_l', 'arm_post_l', 'arm_med_l', 'forearm_med_l', 'hand_fingers_l'],
   },
 
   MUSC_SERRATUS_ANTERIOR_R: {
-    description: 'Trigger points may cause pain along the lateral chest wall and around the scapula, sometimes radiating to the medial arm. Pain can mimic cardiac or rib dysfunction.',
-    zones: ['lat_chest_r', 'scapula_r', 'arm_med_r'],
+    description: 'Primary pain in the lateral rib cage under the arm. Referred pain to the side of the chest, scapular area, posterior shoulder and medial arm. Can mimic cardiac or rib dysfunction.',
+    zones: ['lat_chest_r', 'scapula_r', 'shoulder_post_r', 'arm_med_r'],
   },
 
   MUSC_SERRATUS_ANTERIOR_L: {
-    description: 'Same anatomy and referral pattern as the right serratus anterior. Pain is mirrored to the left lateral chest, scapula and medial arm.',
-    zones: ['lat_chest_l', 'scapula_l', 'arm_med_l'],
+    description: 'Same anatomy and referral pattern as the right serratus anterior. Primary lateral rib pain with referral to the side of the chest, scapula, posterior shoulder and medial arm on the left side.',
+    zones: ['lat_chest_l', 'scapula_l', 'shoulder_post_l', 'arm_med_l'],
   },
 
   MUSC_ERECTOR_SPINAE_R: {
@@ -258,23 +268,23 @@ export const PAIN_PATTERNS: Record<string, PainPattern> = {
   },
 
   MUSC_TRICEPS_BRACHII_R: {
-    description: 'Trigger points can refer pain to the posterior shoulder, posterior arm and forearm, and sometimes the dorsal hand (ring and little finger side). Pain may mimic tennis elbow or bursitis.',
-    zones: ['shoulder_post_r', 'arm_post_r', 'elbow_r', 'forearm_med_r', 'hand_fingers_r'],
+    description: 'Primary pain in the back of the upper arm. Referred pain to the posterior shoulder and scapular area, posterior elbow and posterior forearm. Pain may mimic tennis elbow or bursitis.',
+    zones: ['arm_post_r', 'shoulder_post_r', 'scapula_r', 'elbow_r', 'forearm_med_r'],
   },
 
   MUSC_TRICEPS_BRACHII_L: {
-    description: 'Mirrors the right triceps brachii. Pain along the posterior shoulder, upper arm and forearm on the left side.',
-    zones: ['shoulder_post_l', 'arm_post_l', 'elbow_l', 'forearm_med_l', 'hand_fingers_l'],
+    description: 'Same referral as the right triceps brachii. Primary posterior upper-arm pain with referral to the posterior shoulder, scapular area, posterior elbow and posterior forearm on the left side.',
+    zones: ['arm_post_l', 'shoulder_post_l', 'scapula_l', 'elbow_l', 'forearm_med_l'],
   },
 
   MUSC_DELTOID_R: {
-    description: 'Trigger points cause pain at the deltoid insertion and radiate down the lateral arm, often producing a dull ache when raising the arm. Anterior and posterior portions refer locally.',
-    zones: ['shoulder_r', 'arm_ant_r', 'arm_post_r'],
+    description: 'The deltoid has three functional divisions. Anterior: primary pain in the front of the shoulder; refers to the front of the upper arm toward the elbow and the front of the shoulder joint. Lateral: primary pain in the lateral shoulder; refers to the lateral upper arm and deltoid insertion area. Posterior: primary pain in the back of the shoulder; refers to the posterior upper arm and triceps region. Combined trigger points produce diffuse shoulder and upper-arm pain that worsens with arm elevation.',
+    zones: ['shoulder_r', 'arm_ant_r', 'arm_med_r', 'arm_post_r', 'elbow_r'],
   },
 
   MUSC_DELTOID_L: {
-    description: 'Same referral pattern as the right deltoid. Dull aching pain at the shoulder and down the lateral arm when raising the arm on the left side.',
-    zones: ['shoulder_l', 'arm_ant_l', 'arm_post_l'],
+    description: 'The left deltoid mirrors the right. Anterior, lateral and posterior divisions produce diffuse shoulder and upper-arm pain — front-of-shoulder and upper-arm toward elbow, lateral upper arm, and posterior upper arm respectively.',
+    zones: ['shoulder_l', 'arm_ant_l', 'arm_med_l', 'arm_post_l', 'elbow_l'],
   },
 
   MUSC_BRACHIORADIALIS_R: {
@@ -288,23 +298,23 @@ export const PAIN_PATTERNS: Record<string, PainPattern> = {
   },
 
   MUSC_INFRASPINATUS_R: {
-    description: 'Trigger points often refer pain deep into the shoulder joint, across the deltoid region and down the lateral arm to the forearm. Pain in the anterior shoulder can mimic bursitis or rotator cuff tears.',
-    zones: ['shoulder_r', 'shoulder_post_r', 'arm_ant_r', 'arm_post_r', 'forearm_lat_r'],
+    description: 'Primary pain in the back of the right shoulder blade (infraspinous fossa). Referred pain to the front of the shoulder, anterior arm and the radial side of the hand and fingers. Often mistaken for bicipital tendinitis or rotator cuff pathology.',
+    zones: ['scapula_r', 'shoulder_r', 'arm_ant_r', 'forearm_lat_r', 'hand_thumb_r'],
   },
 
   MUSC_INFRASPINATUS_L: {
-    description: 'Same referral as the right infraspinatus. Deep shoulder joint pain and lateral arm pain mirrored to the left side.',
-    zones: ['shoulder_l', 'shoulder_post_l', 'arm_ant_l', 'arm_post_l', 'forearm_lat_l'],
+    description: 'Same referral as the right infraspinatus. Primary pain in the left infraspinous fossa with referral to the front of the shoulder, anterior arm and radial hand.',
+    zones: ['scapula_l', 'shoulder_l', 'arm_ant_l', 'forearm_lat_l', 'hand_thumb_l'],
   },
 
   MUSC_BRACHIALIS_R: {
-    description: 'Trigger points refer pain to the anterior elbow and sometimes down to the thumb. Pain may mimic elbow tendinitis.',
-    zones: ['elbow_r', 'forearm_lat_r', 'hand_thumb_r'],
+    description: 'Primary pain in the front of the upper arm. Referred pain to the front of the shoulder, front of the elbow and radial forearm, sometimes extending to the base of the thumb. Often active alongside biceps brachii trigger points.',
+    zones: ['arm_ant_r', 'shoulder_r', 'elbow_r', 'forearm_lat_r', 'hand_thumb_r'],
   },
 
   MUSC_BRACHIALIS_L: {
-    description: 'Same referral as the right brachialis. Anterior elbow pain with possible thumb referral on the left side.',
-    zones: ['elbow_l', 'forearm_lat_l', 'hand_thumb_l'],
+    description: 'Same referral as the right brachialis. Primary anterior upper-arm pain with referral to the front of the shoulder, elbow and radial forearm on the left side.',
+    zones: ['arm_ant_l', 'shoulder_l', 'elbow_l', 'forearm_lat_l', 'hand_thumb_l'],
   },
 
   MUSC_CORACOBRACHIALIS_R: {
@@ -320,63 +330,63 @@ export const PAIN_PATTERNS: Record<string, PainPattern> = {
   // ── LOWER LIMB ────────────────────────────────────────────────────────────────
 
   MUSC_GLUTEUS_MAXIMUS_R: {
-    description: 'Trigger points refer pain to the right buttock, sacrum and sometimes the posterior thigh. Pain can radiate toward the hip joint. Aggravated by prolonged sitting or climbing stairs.',
-    zones: ['buttock_r', 'sacrum', 'lat_hip_r', 'thigh_post_r'],
+    description: 'Primary pain in the right buttock region. Referred pain to the sacrum, coccyx and posterior thigh. Aggravated by prolonged sitting or climbing stairs.',
+    zones: ['buttock_r', 'sacrum', 'thigh_post_r'],
   },
 
   MUSC_GLUTEUS_MAXIMUS_L: {
-    description: 'Same as the right gluteus maximus. Pain in the left buttock, sacrum and posterior thigh. Mirrored referral pattern.',
-    zones: ['buttock_l', 'sacrum', 'lat_hip_l', 'thigh_post_l'],
+    description: 'Same referral as the right gluteus maximus. Primary buttock pain with referral to the sacrum, coccyx and posterior thigh on the left side.',
+    zones: ['buttock_l', 'sacrum', 'thigh_post_l'],
   },
 
   MUSC_GLUTEUS_MEDIUS_R: {
-    description: 'Trigger points cause pain in the right lateral hip and buttock, sometimes extending down the lateral thigh to the knee. May mimic trochanteric bursitis or IT band syndrome.',
-    zones: ['lat_hip_r', 'buttock_r', 'thigh_lat_r', 'knee_lat_r'],
+    description: 'Primary pain in the lateral hip beneath gluteus maximus. Referred pain to the sacrum, posterior buttock, lateral thigh and occasionally the lateral leg. May mimic trochanteric bursitis or IT band syndrome.',
+    zones: ['lat_hip_r', 'sacrum', 'buttock_r', 'thigh_lat_r', 'shin_r'],
   },
 
   MUSC_GLUTEUS_MEDIUS_L: {
-    description: 'Same referral as the right gluteus medius. Lateral hip, buttock and lateral thigh to knee pain on the left side.',
-    zones: ['lat_hip_l', 'buttock_l', 'thigh_lat_l', 'knee_lat_l'],
+    description: 'Same referral as the right gluteus medius. Primary lateral hip pain with referral to the sacrum, posterior buttock, lateral thigh and occasionally lateral leg on the left side.',
+    zones: ['lat_hip_l', 'sacrum', 'buttock_l', 'thigh_lat_l', 'shin_l'],
   },
 
   MUSC_RECTUS_FEMORIS_R: {
-    description: 'Trigger points refer pain to the anterior thigh and knee, sometimes radiating down the quadriceps. Pain can mimic patellar tendinopathy or knee pathology.',
-    zones: ['thigh_ant_r', 'knee_r'],
+    description: 'Primary pain in the front of the thigh. Referred pain to the front of the hip, anterior thigh and front of the knee. Can mimic patellar tendinopathy or hip flexor pathology.',
+    zones: ['groin_r', 'thigh_ant_r', 'knee_r'],
   },
 
   MUSC_RECTUS_FEMORIS_L: {
-    description: 'Same as the right rectus femoris. Anterior thigh and knee pain on the left. Can mimic patellar tendinopathy.',
-    zones: ['thigh_ant_l', 'knee_l'],
+    description: 'Same referral as the right rectus femoris. Primary anterior thigh pain with referral to the front of the hip and front of the knee on the left side.',
+    zones: ['groin_l', 'thigh_ant_l', 'knee_l'],
   },
 
   MUSC_VASTUS_LATERALIS_R: {
-    description: 'Trigger points refer pain to the lateral thigh and lateral knee. Pain can mimic iliotibial band syndrome or lateral knee pathology.',
-    zones: ['thigh_lat_r', 'knee_lat_r', 'knee_r'],
+    description: 'Primary pain in the lateral thigh. Referred pain to the lateral knee and lateral lower leg. Can mimic iliotibial band syndrome or lateral knee pathology.',
+    zones: ['thigh_lat_r', 'knee_lat_r', 'shin_r'],
   },
 
   MUSC_VASTUS_LATERALIS_L: {
-    description: 'Same referral as the right vastus lateralis. Lateral thigh and lateral knee pain on the left side.',
-    zones: ['thigh_lat_l', 'knee_lat_l', 'knee_l'],
+    description: 'Same referral as the right vastus lateralis. Primary lateral thigh pain with referral to the lateral knee and lateral lower leg on the left side.',
+    zones: ['thigh_lat_l', 'knee_lat_l', 'shin_l'],
   },
 
   MUSC_BICEPS_FEMORIS_R: {
-    description: 'Trigger points refer pain to the lateral hamstring, posterior-lateral knee and sometimes the lateral calf. Pain may mimic lateral knee tendon problems or popliteal issues.',
-    zones: ['thigh_post_r', 'knee_post_r', 'knee_lat_r', 'calf_r'],
+    description: 'Primary pain in the posterior lateral thigh. Referred pain to the posterior knee, lateral calf and lateral lower leg. May mimic lateral knee tendon problems or popliteal issues.',
+    zones: ['thigh_post_r', 'thigh_lat_r', 'knee_post_r', 'knee_lat_r', 'calf_r', 'shin_r'],
   },
 
   MUSC_BICEPS_FEMORIS_L: {
-    description: 'Same as the right biceps femoris. Posterior-lateral thigh, posterior knee and lateral calf pain on the left side.',
-    zones: ['thigh_post_l', 'knee_post_l', 'knee_lat_l', 'calf_l'],
+    description: 'Same referral as the right biceps femoris. Primary posterior lateral thigh pain with referral to the posterior knee, lateral calf and lateral lower leg on the left side.',
+    zones: ['thigh_post_l', 'thigh_lat_l', 'knee_post_l', 'knee_lat_l', 'calf_l', 'shin_l'],
   },
 
   MUSC_GASTROCNEMIUS_R: {
-    description: 'Trigger points refer pain to the calf, behind the knee and sometimes the sole of the foot. Pain may mimic deep vein thrombosis or plantar fasciitis.',
-    zones: ['calf_r', 'knee_post_r', 'ankle_r', 'foot_r'],
+    description: 'Primary pain in the calf (posterior lower leg). Referred pain to the posterior knee, calf, heel or sole of the foot, and lateral ankle. Pain may mimic deep vein thrombosis or plantar fasciitis.',
+    zones: ['calf_r', 'knee_post_r', 'ankle_r', 'arch_r', 'foot_r'],
   },
 
   MUSC_GASTROCNEMIUS_L: {
-    description: 'Same referral as the right gastrocnemius. Calf, posterior knee and foot pain on the left side.',
-    zones: ['calf_l', 'knee_post_l', 'ankle_l', 'foot_l'],
+    description: 'Same referral as the right gastrocnemius. Primary calf pain with referral to the posterior knee, heel, sole and lateral ankle on the left side.',
+    zones: ['calf_l', 'knee_post_l', 'ankle_l', 'arch_l', 'foot_l'],
   },
 
   MUSC_SOLEUS_R: {
@@ -390,13 +400,13 @@ export const PAIN_PATTERNS: Record<string, PainPattern> = {
   },
 
   MUSC_TIBIALIS_ANTERIOR_R: {
-    description: 'Trigger points refer pain to the anterior shin and down to the big toe and medial arch, often mimicking shin splints or anterior compartment syndrome.',
-    zones: ['shin_r', 'foot_r', 'arch_r'],
+    description: 'Primary pain in the anterior shin. Referred pain to the dorsum of the foot, big toe and medial ankle. Often mimics shin splints or anterior compartment syndrome.',
+    zones: ['shin_r', 'foot_r', 'ankle_r', 'arch_r'],
   },
 
   MUSC_TIBIALIS_ANTERIOR_L: {
-    description: 'Same referral as the right tibialis anterior. Anterior shin and foot pain with big toe referral on the left side.',
-    zones: ['shin_l', 'foot_l', 'arch_l'],
+    description: 'Same referral as the right tibialis anterior. Primary anterior shin pain with referral to the dorsum of the foot, big toe and medial ankle on the left side.',
+    zones: ['shin_l', 'foot_l', 'ankle_l', 'arch_l'],
   },
 
   MUSC_VASTUS_MEDIALIS_R: {
@@ -417,5 +427,261 @@ export const PAIN_PATTERNS: Record<string, PainPattern> = {
   MUSC_SARTORIUS_L: {
     description: 'Same referral as the right sartorius. Medial thigh, medial knee and medial calf pain on the left side.',
     zones: ['thigh_med_l', 'knee_med_l', 'shin_l'],
+  },
+
+  // ── ROTATOR CUFF ─────────────────────────────────────────────────────────────
+
+  MUSC_SUPRASPINATUS_R: {
+    description: 'Trigger points in the supraspinatus refer pain to the lateral shoulder and down the lateral arm toward the elbow. Pain is often confused with shoulder bursitis or rotator cuff impingement syndrome.',
+    zones: ['shoulder_r', 'scapula_r', 'arm_ant_r', 'elbow_r'],
+  },
+  MUSC_SUPRASPINATUS_L: {
+    description: 'Same referral pattern as the right supraspinatus, mirrored to the left side.',
+    zones: ['shoulder_l', 'scapula_l', 'arm_ant_l', 'elbow_l'],
+  },
+
+  MUSC_SUBSCAPULARIS_R: {
+    description: 'Trigger points in the subscapularis refer pain to the posterior shoulder and posterior arm, and may extend to the wrist. Frequently causes restricted external rotation of the shoulder.',
+    zones: ['shoulder_r', 'shoulder_post_r', 'arm_post_r', 'hand_r'],
+  },
+  MUSC_SUBSCAPULARIS_L: {
+    description: 'Same referral pattern as the right subscapularis, mirrored to the left side.',
+    zones: ['shoulder_l', 'shoulder_post_l', 'arm_post_l', 'hand_l'],
+  },
+
+  MUSC_TERES_MAJOR_R: {
+    description: 'Trigger points in teres major refer pain to the posterior axilla, inferior angle of the scapula, and down the posterior upper arm. Pain can resemble triceps or latissimus referral.',
+    zones: ['scapula_r', 'shoulder_post_r', 'arm_post_r'],
+  },
+  MUSC_TERES_MAJOR_L: {
+    description: 'Same referral as the right teres major, mirrored to the left side.',
+    zones: ['scapula_l', 'shoulder_post_l', 'arm_post_l'],
+  },
+
+  MUSC_TERES_MINOR_R: {
+    description: 'Trigger points in teres minor refer pain to the posterior shoulder just below the infraspinatus, radiating to the lateral arm. Often accompanies infraspinatus trigger points.',
+    zones: ['shoulder_post_r', 'scapula_r', 'arm_med_r'],
+  },
+  MUSC_TERES_MINOR_L: {
+    description: 'Same referral as the right teres minor, mirrored to the left side.',
+    zones: ['shoulder_post_l', 'scapula_l', 'arm_med_l'],
+  },
+
+  // ── INTERSCAPULAR MUSCLES ─────────────────────────────────────────────────────
+
+  MUSC_RHOMBOID_MAJOR_R: {
+    description: 'Rhomboid major trigger points refer pain along the medial border of the scapula and into the inter-scapular region. Pain is felt superficially and may not respond to typical postural correction alone.',
+    zones: ['scapula_r', 'upper_back', 'mid_back'],
+  },
+  MUSC_RHOMBOID_MAJOR_L: {
+    description: 'Same referral as the right rhomboid major, mirrored to the left side.',
+    zones: ['scapula_l', 'upper_back', 'mid_back'],
+  },
+
+  MUSC_RHOMBOID_MINOR_R: {
+    description: 'Rhomboid minor trigger points refer pain at the upper medial scapular border and into the upper thoracic spine. Often co-active with rhomboid major and levator scapulae.',
+    zones: ['scapula_r', 'upper_back', 'neck_post'],
+  },
+  MUSC_RHOMBOID_MINOR_L: {
+    description: 'Same referral as the right rhomboid minor, mirrored to the left side.',
+    zones: ['scapula_l', 'upper_back', 'neck_post'],
+  },
+
+  MUSC_LEVATOR_SCAPULAE_R: {
+    description: 'Levator scapulae trigger points produce intense pain at the angle of the neck, with referral along the medial border of the scapula, the posterior shoulder, and down the thoracic spine. Patients often present with a restricted "stiff neck."',
+    zones: ['neck_post', 'neck_r', 'scapula_r', 'shoulder_post_r'],
+  },
+  MUSC_LEVATOR_SCAPULAE_L: {
+    description: 'Same referral as the right levator scapulae, mirrored to the left side.',
+    zones: ['neck_post', 'neck_l', 'scapula_l', 'shoulder_post_l'],
+  },
+
+  // ── POSTERIOR NECK ────────────────────────────────────────────────────────────
+
+  MUSC_SPLENIUS_CAPITIS_R: {
+    description: 'Splenius capitis trigger points refer pain to the top and back of the head and can produce a sensation "behind the eye" on the ipsilateral side. Associated with cervicogenic headache.',
+    zones: ['neck_post', 'upper_back', 'head_vertex', 'head_occiput', 'head_eye_r'],
+  },
+  MUSC_SPLENIUS_CAPITIS_L: {
+    description: 'Same referral as the right splenius capitis. Pain to the top and back of the head and behind the left eye.',
+    zones: ['neck_post', 'upper_back', 'head_vertex', 'head_occiput', 'head_eye_l'],
+  },
+
+  MUSC_SEMISPINALIS_CAPITIS_R: {
+    description: 'Semispinalis capitis trigger points cause a band-like headache across the occiput and upper neck. Pain is deep and diffuse, often confused with tension headache.',
+    zones: ['neck_post', 'head_occiput', 'head_vertex'],
+  },
+  MUSC_SEMISPINALIS_CAPITIS_L: {
+    description: 'Same referral as the right semispinalis capitis, mirrored to the left side.',
+    zones: ['neck_post', 'head_occiput', 'head_vertex'],
+  },
+
+  // ── FOREARM EXTENSORS ─────────────────────────────────────────────────────────
+
+  MUSC_EXTENSOR_CARPI_RADIALIS_LONGUS_R: {
+    description: 'Trigger points in extensor carpi radialis longus refer pain to the lateral elbow and along the dorsal forearm toward the thumb side of the hand. Commonly mistaken for lateral epicondylalgia (tennis elbow).',
+    zones: ['elbow_r', 'forearm_lat_r', 'hand_thumb_r'],
+  },
+  MUSC_EXTENSOR_CARPI_RADIALIS_LONGUS_L: {
+    description: 'Same referral as the right extensor carpi radialis longus, mirrored to the left side.',
+    zones: ['elbow_l', 'forearm_lat_l', 'hand_thumb_l'],
+  },
+
+  MUSC_EXTENSOR_DIGITORUM_R: {
+    description: 'Extensor digitorum trigger points refer pain to the dorsum of the hand and fingers, and may radiate up to the lateral elbow. Pain can mimic radial tunnel syndrome or dorsal carpal pain.',
+    zones: ['forearm_med_r', 'elbow_r', 'hand_fingers_r'],
+  },
+  MUSC_EXTENSOR_DIGITORUM_L: {
+    description: 'Same referral as the right extensor digitorum, mirrored to the left side.',
+    zones: ['forearm_med_l', 'elbow_l', 'hand_fingers_l'],
+  },
+
+  // ── FOREARM FLEXORS ───────────────────────────────────────────────────────────
+
+  MUSC_FLEXOR_CARPI_RADIALIS_R: {
+    description: 'Flexor carpi radialis trigger points refer pain to the palmar wrist and the radial side of the palm. Pain can mimic carpal tunnel syndrome or wrist flexor tendinopathy.',
+    zones: ['forearm_lat_r', 'hand_r', 'hand_thumb_r'],
+  },
+  MUSC_FLEXOR_CARPI_RADIALIS_L: {
+    description: 'Same referral as the right flexor carpi radialis, mirrored to the left side.',
+    zones: ['forearm_lat_l', 'hand_l', 'hand_thumb_l'],
+  },
+
+  MUSC_PALMARIS_LONGUS_R: {
+    description: 'Palmaris longus trigger points refer pain to the palm of the hand and the palmar wrist, producing a "needling" sensation in the center of the palm.',
+    zones: ['forearm_lat_r', 'forearm_med_r', 'hand_r'],
+  },
+  MUSC_PALMARIS_LONGUS_L: {
+    description: 'Same referral as the right palmaris longus, mirrored to the left side.',
+    zones: ['forearm_lat_l', 'forearm_med_l', 'hand_l'],
+  },
+
+  // ── HAMSTRINGS ────────────────────────────────────────────────────────────────
+
+  MUSC_SEMITENDINOSUS_R: {
+    description: 'Semitendinosus trigger points refer pain to the posterior medial thigh and into the posteromedial knee and medial calf. Pain can mimic medial knee ligament injury.',
+    zones: ['thigh_post_r', 'thigh_med_r', 'knee_post_r', 'knee_med_r', 'calf_r'],
+  },
+  MUSC_SEMITENDINOSUS_L: {
+    description: 'Same referral as the right semitendinosus, mirrored to the left side.',
+    zones: ['thigh_post_l', 'thigh_med_l', 'knee_post_l', 'knee_med_l', 'calf_l'],
+  },
+
+  MUSC_SEMIMEMBRANOSUS_R: {
+    description: 'Semimembranosus trigger points refer pain to the deep posterior medial thigh, the posteromedial knee, and down the posterior leg. Often co-active with semitendinosus.',
+    zones: ['thigh_post_r', 'thigh_med_r', 'knee_post_r', 'calf_r'],
+  },
+  MUSC_SEMIMEMBRANOSUS_L: {
+    description: 'Same referral as the right semimembranosus, mirrored to the left side.',
+    zones: ['thigh_post_l', 'thigh_med_l', 'knee_post_l', 'calf_l'],
+  },
+
+  // ── MEDIAL THIGH ─────────────────────────────────────────────────────────────
+
+  MUSC_GRACILIS_R: {
+    description: 'Gracilis trigger points cause a hot, stinging pain along the inner thigh that can radiate to the medial knee and medial lower leg. Often mistaken for knee ligament pathology.',
+    zones: ['thigh_med_r', 'knee_med_r', 'shin_r'],
+  },
+  MUSC_GRACILIS_L: {
+    description: 'Same referral as the right gracilis, mirrored to the left side.',
+    zones: ['thigh_med_l', 'knee_med_l', 'shin_l'],
+  },
+
+  MUSC_ADDUCTOR_LONGUS_R: {
+    description: 'Adductor longus trigger points refer pain to the medial thigh, groin, and inguinal area. Pain may radiate to the medial knee. Common in sports involving kicking or sudden direction changes.',
+    zones: ['thigh_med_r', 'groin_r', 'knee_med_r'],
+  },
+  MUSC_ADDUCTOR_LONGUS_L: {
+    description: 'Same referral as the right adductor longus, mirrored to the left side.',
+    zones: ['thigh_med_l', 'groin_l', 'knee_med_l'],
+  },
+
+  // ── HIP EXTERNAL ROTATORS / DEEP PELVIS ───────────────────────────────────────
+
+  MUSC_TENSOR_FASCIAE_LATAE_R: {
+    description: 'Primary pain in the lateral hip. Referred pain down the lateral thigh along the iliotibial band to the lateral knee. Pain is often aggravated by running, walking uphill, or crossing the legs.',
+    zones: ['lat_hip_r', 'thigh_lat_r', 'knee_lat_r'],
+  },
+  MUSC_TENSOR_FASCIAE_LATAE_L: {
+    description: 'Same referral as the right TFL. Primary lateral hip pain with referral down the lateral thigh to the lateral knee on the left side.',
+    zones: ['lat_hip_l', 'thigh_lat_l', 'knee_lat_l'],
+  },
+
+  MUSC_PIRIFORMIS_R: {
+    description: 'Piriformis trigger points cause deep buttock pain near the sacrum with referral down the posterior thigh, mimicking sciatic nerve compression. Pain is aggravated by sitting and hip internal rotation.',
+    zones: ['buttock_r', 'sacrum', 'thigh_post_r', 'calf_r'],
+  },
+  MUSC_PIRIFORMIS_L: {
+    description: 'Same referral as the right piriformis, mirrored to the left side.',
+    zones: ['buttock_l', 'sacrum', 'thigh_post_l', 'calf_l'],
+  },
+
+  MUSC_GLUTEUS_MINIMUS_R: {
+    description: 'Gluteus minimus trigger points can produce a "pseudo-sciatica" pattern — pain from the deep lateral buttock down the lateral thigh and calf to the ankle. Differentiated from true sciatica by absence of neurological signs.',
+    zones: ['lat_hip_r', 'buttock_r', 'thigh_lat_r', 'shin_r', 'ankle_r'],
+  },
+  MUSC_GLUTEUS_MINIMUS_L: {
+    description: 'Same referral as the right gluteus minimus, mirrored to the left side.',
+    zones: ['lat_hip_l', 'buttock_l', 'thigh_lat_l', 'shin_l', 'ankle_l'],
+  },
+
+  // ── LUMBAR / DEEP BACK ────────────────────────────────────────────────────────
+
+  MUSC_QUADRATUS_LUMBORUM_R: {
+    description: 'Quadratus lumborum is one of the most common sources of low back pain. Trigger points refer pain to the sacrum, posterior iliac crest, buttock, lateral hip, and sometimes the lateral thigh. Pain is severe and can prevent rolling in bed.',
+    zones: ['lower_back', 'sacrum', 'lat_hip_r', 'buttock_r', 'thigh_lat_r'],
+  },
+  MUSC_QUADRATUS_LUMBORUM_L: {
+    description: 'Same referral as the right quadratus lumborum, mirrored to the left side.',
+    zones: ['lower_back', 'sacrum', 'lat_hip_l', 'buttock_l', 'thigh_lat_l'],
+  },
+
+  MUSC_MULTIFIDUS_R: {
+    description: 'Multifidus trigger points cause deep, segmental spinal pain at the lumbar or cervical level, with referral to the sacral region. Often involved in chronic low back pain that does not respond to superficial treatment.',
+    zones: ['lower_back', 'mid_back', 'sacrum'],
+  },
+  MUSC_MULTIFIDUS_L: {
+    description: 'Same referral as the right multifidus, mirrored to the left side.',
+    zones: ['lower_back', 'mid_back', 'sacrum'],
+  },
+
+  // ── HIP FLEXORS ───────────────────────────────────────────────────────────────
+
+  MUSC_PSOAS_MAJOR_R: {
+    description: 'Psoas major trigger points refer pain along the lumbar spine, into the sacrum, and down the anterior thigh. Psoas dysfunction is a frequent contributor to chronic low back pain and groin pain in runners and cyclists.',
+    zones: ['lower_back', 'sacrum', 'groin_r', 'thigh_ant_r'],
+  },
+  MUSC_PSOAS_MAJOR_L: {
+    description: 'Same referral as the right psoas major, mirrored to the left side.',
+    zones: ['lower_back', 'sacrum', 'groin_l', 'thigh_ant_l'],
+  },
+
+  MUSC_ILIACUS_R: {
+    description: 'Iliacus trigger points refer pain to the groin, lower abdomen, and anterior thigh. Pain is typically felt deep in the iliac fossa and aggravated by walking or climbing stairs.',
+    zones: ['groin_r', 'abdomen_lower', 'thigh_ant_r'],
+  },
+  MUSC_ILIACUS_L: {
+    description: 'Same referral as the right iliacus, mirrored to the left side.',
+    zones: ['groin_l', 'abdomen_lower', 'thigh_ant_l'],
+  },
+
+  // ── DEEP THIGH ────────────────────────────────────────────────────────────────
+
+  MUSC_VASTUS_INTERMEDIUS_R: {
+    description: 'Vastus intermedius trigger points refer pain to the deep anterior thigh and toward the front of the knee. Located beneath rectus femoris, it is often overlooked in quadriceps assessments.',
+    zones: ['thigh_ant_r', 'knee_r'],
+  },
+  MUSC_VASTUS_INTERMEDIUS_L: {
+    description: 'Same referral as the right vastus intermedius, mirrored to the left side.',
+    zones: ['thigh_ant_l', 'knee_l'],
+  },
+
+  MUSC_POPLITEUS_R: {
+    description: 'Popliteus trigger points cause pain directly behind the knee in the popliteal fossa, with referral into the posteromedial calf. Pain increases with walking downhill or squatting.',
+    zones: ['knee_post_r', 'calf_r'],
+  },
+  MUSC_POPLITEUS_L: {
+    description: 'Same referral as the right popliteus, mirrored to the left side.',
+    zones: ['knee_post_l', 'calf_l'],
   },
 }
