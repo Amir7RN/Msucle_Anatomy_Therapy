@@ -35,7 +35,7 @@ import { resolveColor, muscleColor, muscleRoughness, MUSCLE_DEFAULT } from '../.
 import type { SystemType, LayerType } from '../../lib/types'
 
 // ── Model path ────────────────────────────────────────────────────────────────
-export const MODEL_PATH = '/models/human-muscular-system.glb'
+export const MODEL_PATH = `${import.meta.env.BASE_URL}models/human-muscular-system.glb`
 
 // ── smoothstep helper ─────────────────────────────────────────────────────────
 function smoothstep(edge0: number, edge1: number, x: number): number {

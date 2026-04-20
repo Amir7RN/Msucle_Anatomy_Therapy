@@ -2,8 +2,16 @@ import { useEffect, useState } from 'react'
 import { useAtlasStore } from '../store/atlasStore'
 
 // ── SINGLE source of truth for the model path ─────────────────────────────────
-// Keep in sync with HumanModel.tsx MODEL_PATH
-export const ANATOMY_MODEL_PATH = '/models/human-muscular-system.glb'
+//
+// import.meta.env.BASE_URL is set by Vite from the `base` config option:
+//   • local dev  (`npm run dev`)        → BASE_URL = "/"
+//   • GitHub Pages build                → BASE_URL = "/Msucle_Anatomy_Therapy/"
+//
+// Using BASE_URL here means the path is always correct regardless of where
+// the app is served — no hardcoded sub-directory needed in the source.
+//
+export const ANATOMY_MODEL_PATH =
+  `${import.meta.env.BASE_URL}models/human-muscular-system.glb`
 
 /**
  * Probes the public folder for the GLB file with a HEAD request.
@@ -11,8 +19,7 @@ export const ANATOMY_MODEL_PATH = '/models/human-muscular-system.glb'
  * allowing the 3D canvas to skip the Suspense/GLTF loader and render
  * the mock scene without a failed network round-trip showing errors.
  *
- * Tries /models/human-muscular-system.glb first (primary path),
- * then falls back to the old name for backward compatibility.
+ * Tries human-muscular-system.glb first, then falls back to old names.
  */
 export function useAnatomyModelProbe() {
   const setModelStatus = useAtlasStore((s) => s.setModelStatus)
@@ -22,10 +29,11 @@ export function useAnatomyModelProbe() {
   useEffect(() => {
     let cancelled = false
 
+    const base = import.meta.env.BASE_URL   // '' | '/' | '/Msucle_Anatomy_Therapy/'
     const candidates = [
-      '/models/human-muscular-system.glb',
-      '/models/human-muscle-atlas.glb',
-      '/models/human-muscles.glb',
+      `${base}models/human-muscular-system.glb`,
+      `${base}models/human-muscle-atlas.glb`,
+      `${base}models/human-muscles.glb`,
     ]
 
     async function probe() {
