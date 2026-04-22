@@ -3,6 +3,7 @@ import { AppHeader }    from './components/layout/AppHeader'
 import { LeftSidebar }  from './components/layout/LeftSidebar'
 import { RightPanel }   from './components/layout/RightPanel'
 import { ViewerCanvas } from './components/viewer/ViewerCanvas'
+import { DiagnosticDrawer } from './components/panels/DiagnosticDrawer'
 import { useAtlasStore } from './store/atlasStore'
 import type { CameraPresetKey } from './lib/cameraUtils'
 
@@ -104,6 +105,8 @@ export default function App() {
         {/* Centre — 3D canvas */}
         <main className="flex-1 min-w-0 relative">
           <ViewerCanvas />
+          <DiagnosticModeToggle />
+          <DiagnosticDrawerMount />
         </main>
 
         {/* Right panel */}
@@ -114,6 +117,32 @@ export default function App() {
       <StatusBar />
     </div>
   )
+}
+
+// ── Diagnostic mode toggle (floating button over canvas) ─────────────────────
+
+function DiagnosticModeToggle() {
+  const diagnosticMode       = useAtlasStore((s) => s.diagnosticMode)
+  const toggleDiagnosticMode = useAtlasStore((s) => s.toggleDiagnosticMode)
+  return (
+    <button
+      onClick={toggleDiagnosticMode}
+      className={`absolute left-4 top-4 z-10 rounded-md px-3 py-1.5 text-xs font-semibold shadow-lg transition-colors ${
+        diagnosticMode
+          ? 'bg-orange-500 text-white hover:bg-orange-400'
+          : 'bg-slate-800 text-slate-100 hover:bg-slate-700'
+      }`}
+      title="Toggle Area-to-Muscle diagnostic mode"
+    >
+      {diagnosticMode ? 'Diagnostic: ON — click body to analyse' : 'Diagnostic Mode'}
+    </button>
+  )
+}
+
+function DiagnosticDrawerMount() {
+  const result        = useAtlasStore((s) => s.diagnosticResult)
+  const setDiagnostic = useAtlasStore((s) => s.setDiagnostic)
+  return <DiagnosticDrawer result={result} onClose={() => setDiagnostic(null)} />
 }
 
 // ── Status bar ────────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { SceneIndex, ActiveFilters, ModelStatus, LayerType } from '../lib/types'
 import { buildMetadataOnlyIndex } from '../lib/anatomyIndex'
 import type { CameraPresetKey } from '../lib/cameraUtils'
+import type { DiagnosticResult } from '../lib/diagnostic'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -36,6 +37,11 @@ interface AtlasState {
   ghostMode:       boolean
   showPainOverlay: boolean
 
+  // Area-to-Muscle diagnostic
+  diagnosticMode:    boolean
+  diagnosticResult:  DiagnosticResult | null
+  diagnosticPulseId: string | null
+
   // ── Actions ───────────────────────────────────────────────────────────────
 
   setSelected: (id: string | null) => void
@@ -68,6 +74,10 @@ interface AtlasState {
   toggleDarkMode:       () => void
   toggleGhostMode:      () => void
   togglePainOverlay:    () => void
+
+  toggleDiagnosticMode: () => void
+  setDiagnostic:        (result: DiagnosticResult | null) => void
+  setDiagnosticPulse:   (id: string | null) => void
 }
 
 // ── Initial filter state ──────────────────────────────────────────────────────
@@ -98,6 +108,10 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   darkMode:           true,    // default dark — matches professional écorché background
   ghostMode:          false,
   showPainOverlay:    true,
+
+  diagnosticMode:     false,
+  diagnosticResult:   null,
+  diagnosticPulseId:  null,
 
   // ── Selection ─────────────────────────────────────────────────────────────
   setSelected: (id) => set({ selectedId: id }),
@@ -208,6 +222,15 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   toggleDarkMode:    () => set((s) => ({ darkMode:        !s.darkMode        })),
   toggleGhostMode:   () => set((s) => ({ ghostMode:       !s.ghostMode       })),
   togglePainOverlay: () => set((s) => ({ showPainOverlay: !s.showPainOverlay })),
+
+  toggleDiagnosticMode: () =>
+    set((s) => ({
+      diagnosticMode:    !s.diagnosticMode,
+      diagnosticResult:  null,
+      diagnosticPulseId: null,
+    })),
+  setDiagnostic:      (result) => set({ diagnosticResult: result }),
+  setDiagnosticPulse: (id)     => set({ diagnosticPulseId: id }),
 }))
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

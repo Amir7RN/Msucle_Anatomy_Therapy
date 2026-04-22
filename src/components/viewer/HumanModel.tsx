@@ -31,6 +31,7 @@ import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { ThreeEvent, useFrame } from '@react-three/fiber'
 import { useAtlasStore, resolveStructureVisibility } from '../../store/atlasStore'
 import { useSceneIndex } from '../../hooks/useSceneIndex'
+import { useDiagnosticClickFromStore } from '../../hooks/useDiagnosticClick'
 import { resolveColor, muscleColor, muscleRoughness, MUSCLE_DEFAULT } from '../../lib/colors'
 import type { SystemType, LayerType } from '../../lib/types'
 
@@ -373,6 +374,24 @@ function GLTFScene({ path }: { path: string }) {
   const setSelected   = useAtlasStore((s) => s.setSelected)
   const setHovered    = useAtlasStore((s) => s.setHovered)
   const setModelStatus = useAtlasStore((s) => s.setModelStatus)
+  const diagnosticPulseId = useAtlasStore((s) => s.diagnosticPulseId)
+
+  // Area-to-Muscle click handler (returns false when diagnosticMode is off,
+  // so the legacy Muscle-to-Pain path below runs unchanged).
+  const diagnosticClick = useDiagnosticClickFromStore()
+
+  // Pulse effect on drawer-hover — modulates emissive intensity only.
+  // applyMeshState overwrites emissiveIntensity on its next run, so no leak.
+  useFrame(({ clock }) => {
+    if (!diagnosticPulseId) return
+    scene.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return
+      if (obj.userData.structureId !== diagnosticPulseId) return
+      const mat = (Array.isArray(obj.material) ? obj.material[0] : obj.material) as THREE.MeshStandardMaterial
+      if (!mat?.emissive) return
+      mat.emissiveIntensity = 0.35 + 0.5 * (0.5 + 0.5 * Math.sin(clock.elapsedTime * 8.8))
+    })
+  })
 
   // ── Geometry quality pass (once after load) ───────────────────────────────
   //
@@ -574,6 +593,9 @@ function GLTFScene({ path }: { path: string }) {
   }
 
   function handleClick(e: ThreeEvent<MouseEvent>) {
+    // Area-to-Muscle path — consumes the click when diagnosticMode is ON.
+    if (diagnosticClick?.(e)) return
+
     e.stopPropagation()
     const obj = e.object as THREE.Mesh
     const id  = (obj.userData.structureId as string | undefined)
