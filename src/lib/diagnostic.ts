@@ -62,11 +62,19 @@ export interface GroupContribution {
   contributions:  MuscleContribution[]
 }
 
+export interface MuscleGroupContribution {
+  groupId: string
+  groupName: string
+  probability: number
+  rawWeight: number
+  children: MuscleContribution[]
+}
+
 export interface DiagnosticResult {
   clickedZones:  string[]
   clickPoint:    [number, number, number]
   contributions: MuscleContribution[]
-  groupedContributions: GroupContribution[]
+  groupedContributions: MuscleGroupContribution[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -76,18 +84,45 @@ export interface DiagnosticResult {
 export const PRIMARY_WEIGHT  = 0.75
 export const REFERRED_WEIGHT = 0.25
 
-const MUSCLE_GROUPS: Record<string, string> = {
-  biceps_femoris:   'Hamstrings',
-  semitendinosus:   'Hamstrings',
-  semimembranosus:  'Hamstrings',
-  supraspinatus:    'Rotator Cuff',
-  infraspinatus:    'Rotator Cuff',
-  teres_minor:      'Rotator Cuff',
-  subscapularis:    'Rotator Cuff',
-  rectus_femoris:   'Quadriceps',
-  vastus_lateralis: 'Quadriceps',
-  vastus_medialis:  'Quadriceps',
-  vastus_intermedius: 'Quadriceps',
+const MUSCLE_GROUP_LABELS: Record<string, string> = {
+  hamstrings:    'Hamstrings',
+  rotator_cuff:  'Rotator Cuff',
+  quadriceps:    'Quadriceps',
+  trapezius:     'Trapezius',
+  deltoid:       'Deltoid',
+  rhomboids:     'Rhomboids',
+  gluteals:      'Gluteals',
+}
+
+const MUSCLE_TO_GROUP: Record<string, string> = {
+  biceps_femoris:    'hamstrings',
+  semitendinosus:    'hamstrings',
+  semimembranosus:   'hamstrings',
+
+  supraspinatus:     'rotator_cuff',
+  infraspinatus:     'rotator_cuff',
+  teres_minor:       'rotator_cuff',
+  subscapularis:     'rotator_cuff',
+
+  rectus_femoris:    'quadriceps',
+  vastus_lateralis:  'quadriceps',
+  vastus_medialis:   'quadriceps',
+  vastus_intermedius:'quadriceps',
+
+  trapezius_upper:   'trapezius',
+  trapezius_middle:  'trapezius',
+  trapezius_lower:   'trapezius',
+
+  deltoid_anterior:  'deltoid',
+  deltoid_lateral:   'deltoid',
+  deltoid_posterior: 'deltoid',
+
+  rhomboid_major:    'rhomboids',
+  rhomboid_minor:    'rhomboids',
+
+  gluteus_maximus:   'gluteals',
+  gluteus_medius:    'gluteals',
+  gluteus_minimus:   'gluteals',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -528,6 +563,40 @@ export function calculateMuscleContribution(
     })
 
   return { contributions, groupedContributions }
+}
+
+export function buildGroupedContributions(
+  contributions: MuscleContribution[],
+): MuscleGroupContribution[] {
+  const groups = new Map<string, MuscleGroupContribution>()
+
+  for (const c of contributions) {
+    const groupId = MUSCLE_TO_GROUP[c.muscle_id] ?? c.muscle_id
+    const groupName = MUSCLE_GROUP_LABELS[groupId] ?? c.common_name
+    const existing = groups.get(groupId)
+
+    if (!existing) {
+      groups.set(groupId, {
+        groupId,
+        groupName,
+        probability: c.probability,
+        rawWeight: c.rawWeight,
+        children: [c],
+      })
+      continue
+    }
+
+    existing.probability += c.probability
+    existing.rawWeight += c.rawWeight
+    existing.children.push(c)
+  }
+
+  return [...groups.values()]
+    .map((g) => ({
+      ...g,
+      children: [...g.children].sort((a, b) => b.probability - a.probability),
+    }))
+    .sort((a, b) => b.probability - a.probability)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

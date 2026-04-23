@@ -43,7 +43,7 @@ interface AtlasState {
   diagnosticMode:    boolean
   diagnosticResult:  DiagnosticResult | null
   diagnosticPulseId: string | null
-  candidateMuscles:  string[]
+  candidateMuscleIds: string[]
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
@@ -116,7 +116,7 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   diagnosticMode:     false,
   diagnosticResult:   null,
   diagnosticPulseId:  null,
-  candidateMuscles:   [],
+  candidateMuscleIds: [],
 
   // ── Selection ─────────────────────────────────────────────────────────────
   setSelected: (id) => set({ selectedId: id }),
@@ -233,23 +233,16 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
       diagnosticMode:    !s.diagnosticMode,
       diagnosticResult:  null,
       diagnosticPulseId: null,
-      candidateMuscles:  [],
+      candidateMuscleIds: [],
     })),
-  setDiagnostic:      (result) =>
-    set({
-      diagnosticResult: result,
-      candidateMuscles: result
-        ? [
-            ...new Set(
-              result.contributions
-                .map((c) => pickSideFromClick(c.meshIds, new THREE.Vector3(...result.clickPoint)))
-                .filter((id): id is string => Boolean(id)),
-            ),
-          ]
-        : [],
-    }),
+  setDiagnostic:      (result) => set({
+    diagnosticResult: result,
+    candidateMuscleIds: result
+      ? [...new Set(result.contributions.flatMap((c) => c.meshIds))]
+      : [],
+  }),
   setDiagnosticPulse: (id)     => set({ diagnosticPulseId: id }),
-  setCandidateMuscles: (ids)   => set({ candidateMuscles: [...new Set(ids)] }),
+  setCandidateMuscles: (ids)   => set({ candidateMuscleIds: [...new Set(ids)] }),
 }))
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

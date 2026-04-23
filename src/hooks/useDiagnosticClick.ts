@@ -28,6 +28,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import {
+  buildGroupedContributions,
   calculateMuscleContribution,
   findZonesAtPoint,
   loadDiagnosticMuscles,
@@ -92,7 +93,8 @@ export function useDiagnosticClick(
       }
 
       // ── 3. Reverse-map to weighted muscle contributions ─────────────────
-      const { contributions, groupedContributions } = calculateMuscleContribution(clickedZones, catalogue)
+      const contributions = calculateMuscleContribution(clickedZones, catalogue)
+      const groupedContributions = buildGroupedContributions(contributions)
 
       setDiagnostic({
         clickedZones,

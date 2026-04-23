@@ -375,36 +375,37 @@ function GLTFScene({ path }: { path: string }) {
   const setHovered    = useAtlasStore((s) => s.setHovered)
   const setModelStatus = useAtlasStore((s) => s.setModelStatus)
   const diagnosticPulseId = useAtlasStore((s) => s.diagnosticPulseId)
-  const candidateMuscles  = useAtlasStore((s) => s.candidateMuscles)
+  const candidateMuscleIds = useAtlasStore((s) => s.candidateMuscleIds)
 
   // Area-to-Muscle click handler (returns false when diagnosticMode is off,
   // so the legacy Muscle-to-Pain path below runs unchanged).
   const diagnosticClick = useDiagnosticClickFromStore()
 
-  // Pulse effect on drawer-hover — modulates emissive intensity only.
-  // applyMeshState overwrites emissiveIntensity on its next run, so no leak.
+  // Pulse effect for diagnostic candidates + drawer-hover target.
+  // applyMeshState overwrites these values on state updates, so no leak.
   useFrame(({ clock }) => {
-    if (!diagnosticPulseId && candidateMuscles.length === 0) return
-    const candidateSet = new Set(candidateMuscles)
+    if (!diagnosticPulseId && candidateMuscleIds.length === 0) return
+    const candidateSet = new Set(candidateMuscleIds)
+    const phase = 0.5 + 0.5 * Math.sin(clock.elapsedTime * 6.2)
     scene.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh)) return
-      const structureId = obj.userData.structureId as string | undefined
-      if (!structureId) return
-
-      const isHoveredPulse = diagnosticPulseId === structureId
-      const isCandidatePulse = candidateSet.has(structureId)
-      if (!isHoveredPulse && !isCandidatePulse) return
-
       const mat = (Array.isArray(obj.material) ? obj.material[0] : obj.material) as THREE.MeshStandardMaterial
       if (!mat?.emissive) return
-      if (isHoveredPulse) {
-        mat.color.set('#00FFFF')
-        mat.emissive.set('#00FFFF')
-        mat.emissiveIntensity = 0.6 + 0.9 * (0.5 + 0.5 * Math.sin(clock.elapsedTime * 10))
-      } else {
-        mat.color.set('#00FFFF')
-        mat.emissive.set('#00FFFF')
-        mat.emissiveIntensity = 1.5 * (0.5 + 0.5 * Math.sin(clock.elapsedTime * 8))
+      const id = obj.userData.structureId as string | undefined
+      if (!id) return
+
+      if (candidateSet.has(id)) {
+        mat.transparent = true
+        mat.opacity = 0.55 + 0.25 * phase
+        mat.emissive.set('#FF8C00')
+        mat.emissiveIntensity = 0.22 + 0.24 * phase
+      }
+
+      if (diagnosticPulseId && id === diagnosticPulseId) {
+        mat.transparent = true
+        mat.opacity = 0.78 + 0.18 * phase
+        mat.emissive.set('#FF8C00')
+        mat.emissiveIntensity = 0.45 + 0.35 * phase
       }
     })
   })
