@@ -20,7 +20,7 @@
 import React from 'react'
 import * as THREE from 'three'
 import { useAtlasStore } from '../../store/atlasStore'
-import { pickSideFromClick, type MuscleContribution, type DiagnosticResult } from '../../lib/diagnostic'
+import { pickSideFromClick, type GroupContribution, type MuscleContribution, type DiagnosticResult } from '../../lib/diagnostic'
 
 interface DiagnosticDrawerProps {
   result: DiagnosticResult | null
@@ -34,8 +34,9 @@ export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
 
   if (!result) return null
 
-  const { contributions, clickPoint } = result
+  const { contributions, groupedContributions, clickPoint } = result
   const clickVec = new THREE.Vector3(...clickPoint)
+  const groupedMuscleIds = new Set(groupedContributions.flatMap((g) => g.contributions.map((c) => c.muscle_id)))
 
   if (contributions.length === 0) {
     return (
@@ -79,39 +80,110 @@ export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
         <button onClick={onClose} aria-label="Close" className="text-xs text-neutral-400 hover:text-white">✕</button>
       </header>
 
-      <ul className="space-y-1.5">
-        {contributions.map((c) => (
-          <li key={c.muscle_id}>
-            <button
-              onMouseEnter={() => handleHoverIn(c)}
-              onMouseLeave={handleHoverOut}
-              onClick={() => handleSelect(c)}
-              className="group flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left transition-colors hover:bg-neutral-800"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm">{c.common_name}</div>
-                <div className="text-[10px] uppercase tracking-wider text-neutral-500">
-                  {c.matchType === 'primary' ? 'primary zone' : 'referred zone'}
-                </div>
-              </div>
-              <div className="ml-3 flex w-24 items-center gap-2">
-                <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-800">
-                  <div
-                    className="absolute left-0 top-0 h-full rounded-full"
-                    style={{
-                      width:           `${Math.round(c.probability * 100)}%`,
-                      backgroundColor: c.matchType === 'primary' ? '#FF8C00' : '#B45309',
-                    }}
-                  />
-                </div>
-                <span className="w-9 text-right text-xs tabular-nums text-neutral-200">
-                  {Math.round(c.probability * 100)}%
-                </span>
-              </div>
-            </button>
-          </li>
+      <ul className="space-y-2">
+        {groupedContributions.map((group) => (
+          <GroupedContributionRow
+            key={group.groupName}
+            group={group}
+            onHoverIn={handleHoverIn}
+            onHoverOut={handleHoverOut}
+            onSelect={handleSelect}
+          />
         ))}
+        {contributions
+          .filter((c) => !groupedMuscleIds.has(c.muscle_id))
+          .map((c) => (
+            <FlatContributionRow
+              key={c.muscle_id}
+              contribution={c}
+              onHoverIn={handleHoverIn}
+              onHoverOut={handleHoverOut}
+              onSelect={handleSelect}
+            />
+          ))}
       </ul>
     </aside>
+  )
+}
+
+function GroupedContributionRow(
+  {
+    group, onHoverIn, onHoverOut, onSelect,
+  }: {
+    group: GroupContribution
+    onHoverIn: (c: MuscleContribution) => void
+    onHoverOut: () => void
+    onSelect: (c: MuscleContribution) => void
+  },
+) {
+  return (
+    <li className="rounded-md border border-neutral-800/80 bg-neutral-900/70">
+      <details open>
+        <summary className="cursor-pointer list-none px-2 py-2">
+          <div className="mb-1.5 flex items-center justify-between">
+            <div className="text-sm font-semibold text-neutral-100">{group.groupName}</div>
+            <span className="text-xs tabular-nums text-orange-300">{Math.round(group.probability * 100)}%</span>
+          </div>
+          <div className="relative h-1.5 overflow-hidden rounded-full bg-neutral-800">
+            <div
+              className="absolute left-0 top-0 h-full rounded-full bg-[#FF8C00]"
+              style={{ width: `${Math.round(group.probability * 100)}%` }}
+            />
+          </div>
+        </summary>
+        <ul className="space-y-1 px-2 pb-2">
+          {group.contributions.map((c) => (
+            <li key={c.muscle_id}>
+              <button
+                onMouseEnter={() => onHoverIn(c)}
+                onMouseLeave={onHoverOut}
+                onClick={() => onSelect(c)}
+                className="group flex w-full items-center justify-between rounded-md px-2 py-1 text-left transition-colors hover:bg-neutral-800"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-xs">{c.common_name}</div>
+                  <div className="text-[10px] uppercase tracking-wider text-neutral-500">
+                    {c.matchType === 'primary' ? 'primary zone' : 'referred zone'}
+                  </div>
+                </div>
+                <span className="ml-2 w-9 text-right text-xs tabular-nums text-neutral-300">
+                  {Math.round(c.probability * 100)}%
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </details>
+    </li>
+  )
+}
+
+function FlatContributionRow(
+  {
+    contribution, onHoverIn, onHoverOut, onSelect,
+  }: {
+    contribution: MuscleContribution
+    onHoverIn: (c: MuscleContribution) => void
+    onHoverOut: () => void
+    onSelect: (c: MuscleContribution) => void
+  },
+) {
+  return (
+    <li>
+      <button
+        onMouseEnter={() => onHoverIn(contribution)}
+        onMouseLeave={onHoverOut}
+        onClick={() => onSelect(contribution)}
+        className="w-full rounded-md border border-neutral-800/80 bg-neutral-900/70 px-2 py-2 text-left transition-colors hover:bg-neutral-800"
+      >
+        <div className="mb-1 flex items-center justify-between">
+          <div className="truncate text-sm text-neutral-100">{contribution.common_name}</div>
+          <span className="ml-2 text-xs tabular-nums text-orange-300">{Math.round(contribution.probability * 100)}%</span>
+        </div>
+        <div className="text-[10px] uppercase tracking-wider text-neutral-500">
+          {contribution.matchType === 'primary' ? 'primary zone' : 'referred zone'}
+        </div>
+      </button>
+    </li>
   )
 }

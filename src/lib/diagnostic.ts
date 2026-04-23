@@ -51,20 +51,44 @@ export interface MuscleContribution {
   matchedZones: string[]
   /** Mesh IDs (MUSC_*) to select / highlight on the model. */
   meshIds:     string[]
+  groupName?:  string
+}
+
+export interface GroupContribution {
+  groupName:      string
+  probability:    number
+  rawWeight:      number
+  matchType:      'primary' | 'referred'
+  contributions:  MuscleContribution[]
 }
 
 export interface DiagnosticResult {
   clickedZones:  string[]
   clickPoint:    [number, number, number]
   contributions: MuscleContribution[]
+  groupedContributions: GroupContribution[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Weights
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const PRIMARY_WEIGHT  = 0.8
-export const REFERRED_WEIGHT = 0.2
+export const PRIMARY_WEIGHT  = 0.75
+export const REFERRED_WEIGHT = 0.25
+
+const MUSCLE_GROUPS: Record<string, string> = {
+  biceps_femoris:   'Hamstrings',
+  semitendinosus:   'Hamstrings',
+  semimembranosus:  'Hamstrings',
+  supraspinatus:    'Rotator Cuff',
+  infraspinatus:    'Rotator Cuff',
+  teres_minor:      'Rotator Cuff',
+  subscapularis:    'Rotator Cuff',
+  rectus_femoris:   'Quadriceps',
+  vastus_lateralis: 'Quadriceps',
+  vastus_medialis:  'Quadriceps',
+  vastus_intermedius: 'Quadriceps',
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Anatomical text → BODY_ZONES keys
@@ -400,8 +424,8 @@ function zonesOverlap(clickedZones: string[], phrase: string): boolean {
 //  calculateMuscleContribution  —  Task 1 core
 //
 //  For each muscle in the diagnostic catalogue:
-//    • If ANY clicked zone matches a phrase in primary_pain_zone   → w = 0.8
-//    • Else if ANY clicked zone matches referred_pain_zones         → w = 0.2
+//    • If ANY clicked zone matches a phrase in primary_pain_zone   → w = 0.75
+//    • Else if ANY clicked zone matches referred_pain_zones         → w = 0.25
 //    • Else                                                         → skip
 //
 //  The per-muscle weight is the maximum category hit (primary wins over
@@ -416,8 +440,8 @@ function zonesOverlap(clickedZones: string[], phrase: string): boolean {
 export function calculateMuscleContribution(
   clickedZones: string[],
   catalogue:    DiagnosticMuscle[],
-): MuscleContribution[] {
-  if (clickedZones.length === 0) return []
+): { contributions: MuscleContribution[]; groupedContributions: GroupContribution[] } {
+  if (clickedZones.length === 0) return { contributions: [], groupedContributions: [] }
 
   const raw: Omit<MuscleContribution, 'probability'>[] = []
 
@@ -457,20 +481,55 @@ export function calculateMuscleContribution(
         matchType:   bestType,
         matchedZones: [...matchedZones],
         meshIds:     DIAGNOSTIC_TO_MESH_IDS[m.muscle_id] ?? [],
+        groupName:   MUSCLE_GROUPS[m.muscle_id],
       })
     }
   }
 
   const total = raw.reduce((s, r) => s + r.rawWeight, 0)
-  if (total === 0) return []
+  if (total === 0) return { contributions: [], groupedContributions: [] }
 
-  return raw
+  const contributions = raw
     .map((r) => ({ ...r, probability: r.rawWeight / total }))
     .sort((a, b) => {
       if (b.probability !== a.probability) return b.probability - a.probability
       if (a.matchType !== b.matchType)     return a.matchType === 'primary' ? -1 : 1
       return a.muscle_id.localeCompare(b.muscle_id)
     })
+
+  const groupedMap = new Map<string, GroupContribution>()
+  for (const c of contributions) {
+    if (!c.groupName) continue
+    const current = groupedMap.get(c.groupName)
+    if (!current) {
+      groupedMap.set(c.groupName, {
+        groupName: c.groupName,
+        probability: c.probability,
+        rawWeight: c.rawWeight,
+        matchType: c.matchType,
+        contributions: [c],
+      })
+      continue
+    }
+    current.probability += c.probability
+    current.rawWeight += c.rawWeight
+    current.contributions.push(c)
+    if (c.matchType === 'primary') current.matchType = 'primary'
+  }
+
+  const groupedContributions = [...groupedMap.values()]
+    .filter((group) => group.contributions.length > 1)
+    .map((group) => ({
+      ...group,
+      contributions: group.contributions.sort((a, b) => b.probability - a.probability),
+    }))
+    .sort((a, b) => {
+      if (b.probability !== a.probability) return b.probability - a.probability
+      if (a.matchType !== b.matchType) return a.matchType === 'primary' ? -1 : 1
+      return a.groupName.localeCompare(b.groupName)
+    })
+
+  return { contributions, groupedContributions }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

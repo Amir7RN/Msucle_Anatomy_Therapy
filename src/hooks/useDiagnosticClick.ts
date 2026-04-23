@@ -92,12 +92,13 @@ export function useDiagnosticClick(
       }
 
       // ── 3. Reverse-map to weighted muscle contributions ─────────────────
-      const contributions = calculateMuscleContribution(clickedZones, catalogue)
+      const { contributions, groupedContributions } = calculateMuscleContribution(clickedZones, catalogue)
 
       setDiagnostic({
         clickedZones,
         clickPoint:    [worldPoint.x, worldPoint.y, worldPoint.z],
         contributions,
+        groupedContributions,
       })
 
       // Stop the event — prevents the legacy Muscle-to-Pain handler in

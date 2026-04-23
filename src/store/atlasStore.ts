@@ -1,8 +1,10 @@
 import { create } from 'zustand'
+import * as THREE from 'three'
 import type { SceneIndex, ActiveFilters, ModelStatus, LayerType } from '../lib/types'
 import { buildMetadataOnlyIndex } from '../lib/anatomyIndex'
 import type { CameraPresetKey } from '../lib/cameraUtils'
 import type { DiagnosticResult } from '../lib/diagnostic'
+import { pickSideFromClick } from '../lib/diagnostic'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -41,6 +43,7 @@ interface AtlasState {
   diagnosticMode:    boolean
   diagnosticResult:  DiagnosticResult | null
   diagnosticPulseId: string | null
+  candidateMuscles:  string[]
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
@@ -78,6 +81,7 @@ interface AtlasState {
   toggleDiagnosticMode: () => void
   setDiagnostic:        (result: DiagnosticResult | null) => void
   setDiagnosticPulse:   (id: string | null) => void
+  setCandidateMuscles:  (ids: string[]) => void
 }
 
 // ── Initial filter state ──────────────────────────────────────────────────────
@@ -112,6 +116,7 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   diagnosticMode:     false,
   diagnosticResult:   null,
   diagnosticPulseId:  null,
+  candidateMuscles:   [],
 
   // ── Selection ─────────────────────────────────────────────────────────────
   setSelected: (id) => set({ selectedId: id }),
@@ -228,9 +233,23 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
       diagnosticMode:    !s.diagnosticMode,
       diagnosticResult:  null,
       diagnosticPulseId: null,
+      candidateMuscles:  [],
     })),
-  setDiagnostic:      (result) => set({ diagnosticResult: result }),
+  setDiagnostic:      (result) =>
+    set({
+      diagnosticResult: result,
+      candidateMuscles: result
+        ? [
+            ...new Set(
+              result.contributions
+                .map((c) => pickSideFromClick(c.meshIds, new THREE.Vector3(...result.clickPoint)))
+                .filter((id): id is string => Boolean(id)),
+            ),
+          ]
+        : [],
+    }),
   setDiagnosticPulse: (id)     => set({ diagnosticPulseId: id }),
+  setCandidateMuscles: (ids)   => set({ candidateMuscles: [...new Set(ids)] }),
 }))
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
