@@ -29,6 +29,7 @@ import type { ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import {
   calculateMuscleContribution,
+  filterMeshIdsBySide,
   findZonesAtPoint,
   loadDiagnosticMuscles,
   type DiagnosticMuscle,
@@ -60,6 +61,7 @@ export interface UseDiagnosticClickOpts {
   /** Extend the store shape with these two fields — see patch notes below. */
   diagnosticMode:    boolean
   setDiagnostic:     (result: DiagnosticResult | null) => void
+  setCandidateMuscles: (ids: string[]) => void
   catalogue:         DiagnosticMuscle[] | null
 }
 
@@ -70,7 +72,7 @@ export interface UseDiagnosticClickOpts {
 export function useDiagnosticClick(
   opts: UseDiagnosticClickOpts,
 ): ((e: ThreeEvent<MouseEvent>) => boolean) | null {
-  const { diagnosticMode, setDiagnostic, catalogue } = opts
+  const { diagnosticMode, setDiagnostic, setCandidateMuscles, catalogue } = opts
 
   return useCallback(
     (e: ThreeEvent<MouseEvent>): boolean => {
@@ -88,11 +90,19 @@ export function useDiagnosticClick(
       const clickedZones = findZonesAtPoint(worldPoint)
       if (clickedZones.length === 0) {
         setDiagnostic(null)
+        setCandidateMuscles([])
         return true   // consumed the click even though we found nothing
       }
 
       // ── 3. Reverse-map to weighted muscle contributions ─────────────────
       const contributions = calculateMuscleContribution(clickedZones, catalogue)
+      const candidateIds = [
+        ...new Set(
+          contributions.flatMap((c) => filterMeshIdsBySide(c.meshIds, worldPoint)),
+        ),
+      ]
+
+      setCandidateMuscles(candidateIds)
 
       setDiagnostic({
         clickedZones,
@@ -105,7 +115,7 @@ export function useDiagnosticClick(
       e.stopPropagation()
       return true
     },
-    [diagnosticMode, catalogue, setDiagnostic],
+    [diagnosticMode, catalogue, setDiagnostic, setCandidateMuscles],
   )
 }
 
@@ -126,5 +136,6 @@ export function useDiagnosticClickFromStore() {
   const catalogue      = useDiagnosticCatalogue()
   const diagnosticMode = useAtlasStore((s) => s.diagnosticMode)
   const setDiagnostic  = useAtlasStore((s) => s.setDiagnostic)
-  return useDiagnosticClick({ diagnosticMode, setDiagnostic, catalogue })
+  const setCandidateMuscles = useAtlasStore((s) => s.setCandidateMuscles)
+  return useDiagnosticClick({ diagnosticMode, setDiagnostic, setCandidateMuscles, catalogue })
 }

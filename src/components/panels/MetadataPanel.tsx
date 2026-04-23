@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { MousePointerClick, Tag, Layers, MapPin, ArrowRightLeft, Zap, Brain, StickyNote, Hash, Activity, Play, Pause, RotateCcw } from 'lucide-react'
+import { MousePointerClick, MapPin, Zap, StickyNote, Activity, Play, Mic, Square } from 'lucide-react'
 import { useAtlasStore } from '../../store/atlasStore'
 import { Badge, systemBadgeColor, layerBadgeColor } from '../ui/Badge'
 import { Button } from '../ui/Button'
@@ -178,25 +178,6 @@ function MetaRow({
   )
 }
 
-// ── Synonyms row ──────────────────────────────────────────────────────────────
-
-function SynonymsRow({ synonyms }: { synonyms: string[] }) {
-  if (!synonyms || synonyms.length === 0) return null
-  return (
-    <div className="py-2 border-b border-slate-100 dark:border-slate-700/60">
-      <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1">
-        <Tag size={10} />
-        Synonyms
-      </div>
-      <div className="flex flex-wrap gap-1">
-        {synonyms.map((s) => (
-          <Badge key={s} color="slate">{s}</Badge>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 // ── Empty state ───────────────────────────────────────────────────────────────
 
 function EmptyState() {
@@ -224,11 +205,29 @@ export function MetadataPanel() {
   const exitIsolate      = useAtlasStore((s) => s.exitIsolate)
   const showPainOverlay  = useAtlasStore((s) => s.showPainOverlay)
   const togglePainOverlay = useAtlasStore((s) => s.togglePainOverlay)
+  const [speaking, setSpeaking] = useState(false)
 
   const meta = selectedId ? sceneIndex.metadataById.get(selectedId) : undefined
   const pain = selectedId ? PAIN_PATTERNS[selectedId] : undefined
 
   if (!selectedId || !meta) return <EmptyState />
+
+  const speakPainPattern = () => {
+    if (!pain || typeof window === 'undefined' || !window.speechSynthesis) return
+    window.speechSynthesis.cancel()
+    const utter = new SpeechSynthesisUtterance(pain.description)
+    utter.rate = 0.95
+    utter.onend = () => setSpeaking(false)
+    utter.onerror = () => setSpeaking(false)
+    setSpeaking(true)
+    window.speechSynthesis.speak(utter)
+  }
+
+  const stopPainPattern = () => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return
+    window.speechSynthesis.cancel()
+    setSpeaking(false)
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -269,17 +268,40 @@ export function MetadataPanel() {
 
       {/* Scrollable detail rows */}
       <div className="flex-1 overflow-y-auto px-4 pb-4">
-        <SynonymsRow synonyms={meta.synonyms} />
+        <ExerciseVideos muscleId={selectedId} />
 
+        <MetaRow
+          icon={<Activity size={10} />}
+          label="Pain Referral Pattern"
+          value={pain?.description}
+        />
+        {pain && (
+          <div className="mb-2 -mt-2 flex items-center justify-end gap-2">
+            <button
+              onClick={speaking ? stopPainPattern : speakPainPattern}
+              className="inline-flex items-center gap-1 rounded border border-slate-300 px-2 py-0.5 text-[10px] text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+              title="Read pain referral pattern aloud"
+            >
+              {speaking ? <Square size={10} /> : <Mic size={10} />}
+              {speaking ? 'Stop voice' : 'Voice'}
+            </button>
+            <button
+              onClick={togglePainOverlay}
+              className={[
+                'text-[10px] px-2 py-0.5 rounded border font-medium transition-colors',
+                showPainOverlay
+                  ? 'border-red-300 text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 dark:border-red-700'
+                  : 'border-slate-200 text-slate-400 bg-transparent dark:border-slate-600',
+              ].join(' ')}
+            >
+              {showPainOverlay ? '● On' : '○ Off'}
+            </button>
+          </div>
+        )}
         <MetaRow
           icon={<MapPin size={10} />}
           label="Origin"
           value={meta.origin}
-        />
-        <MetaRow
-          icon={<ArrowRightLeft size={10} />}
-          label="Insertion"
-          value={meta.insertion}
         />
         <MetaRow
           icon={<Zap size={10} />}
@@ -287,68 +309,10 @@ export function MetadataPanel() {
           value={meta.action}
         />
         <MetaRow
-          icon={<Brain size={10} />}
-          label="Innervation"
-          value={meta.innervation}
-        />
-        <MetaRow
           icon={<StickyNote size={10} />}
-          label="Notes"
+          label="Intervention"
           value={meta.notes}
         />
-
-        {/* ── Pain Referral Pattern ──────────────────────────────────────── */}
-        {pain && (
-          <div className="py-2 border-b border-slate-100 dark:border-slate-700/60">
-            <div className="flex items-center justify-between mb-1.5">
-              <div className="flex items-center gap-1.5 text-[10px] font-semibold text-red-500 dark:text-red-400 uppercase tracking-wide">
-                <Activity size={10} />
-                Pain Referral Pattern
-              </div>
-              <button
-                onClick={togglePainOverlay}
-                className={[
-                  'text-[10px] px-2 py-0.5 rounded border font-medium transition-colors',
-                  showPainOverlay
-                    ? 'border-red-300 text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 dark:border-red-700'
-                    : 'border-slate-200 text-slate-400 bg-transparent dark:border-slate-600',
-                ].join(' ')}
-              >
-                {showPainOverlay ? '● On' : '○ Off'}
-              </button>
-            </div>
-            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              {pain.description}
-            </p>
-          </div>
-        )}
-
-        {/* ── Exercise Videos (demo: biceps femoris only) ────────────────── */}
-        <ExerciseVideos muscleId={selectedId} />
-
-        {/* Structure ID */}
-        <div className="pt-3 mt-1">
-          <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-300 dark:text-slate-600 uppercase tracking-wide mb-0.5">
-            <Hash size={10} />
-            Structure ID
-          </div>
-          <code className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">{meta.id}</code>
-        </div>
-
-        {/* Mesh names */}
-        {meta.meshNames.length > 0 && (
-          <div className="pt-2">
-            <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-300 dark:text-slate-600 uppercase tracking-wide mb-1">
-              <Layers size={10} />
-              Mesh Names
-            </div>
-            <div className="flex flex-col gap-0.5">
-              {meta.meshNames.map((n) => (
-                <code key={n} className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">{n}</code>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )
