@@ -439,12 +439,10 @@ function GLTFScene({ path }: { path: string }) {
       const mat = (Array.isArray(obj.material) ? obj.material[0] : obj.material) as THREE.MeshStandardMaterial
       if (!mat?.emissive) return
       if (isHoveredPulse) {
-        mat.color.set('#00FFFF')
-        mat.emissive.set('#00FFFF')
-        mat.emissiveIntensity = 0.6 + 0.9 * (0.5 + 0.5 * Math.sin(clock.elapsedTime * 10))
+        mat.emissive.set('#FFFFFF')
+        mat.emissiveIntensity = 0.8 + 0.7 * (0.5 + 0.5 * Math.sin(clock.elapsedTime * 10))
       } else {
-        mat.color.set('#00FFFF')
-        mat.emissive.set('#00FFFF')
+        mat.emissive.set('#FFFFFF')
         mat.emissiveIntensity = 1.5 * (0.5 + 0.5 * Math.sin(clock.elapsedTime * 8))
       }
     })
@@ -642,8 +640,7 @@ function GLTFScene({ path }: { path: string }) {
           pMat.opacity = isCandidate ? 1 : 0.2
           pMat.depthWrite = false
           if (isCandidate) {
-            pMat.color.set('#00FFFF')
-            pMat.emissive.set('#00FFFF')
+            pMat.emissive.set('#FFFFFF')
             pMat.emissiveIntensity = 0
           } else {
             pMat.emissiveIntensity = 0

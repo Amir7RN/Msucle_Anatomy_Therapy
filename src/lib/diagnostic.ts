@@ -536,8 +536,8 @@ export function calculateMuscleContribution(
 //  Side picker — choose the mesh closest to the click point
 //
 //  When the user clicks near the right shoulder, we want to preselect
-//  MUSC_PECTORALIS_MAJOR_R, not the left one.  Coord scheme (per
-//  painPatterns.ts header):  patient right = NEGATIVE x,  left = POSITIVE x.
+//  MUSC_PECTORALIS_MAJOR_R, not the left one.
+//  Side rule for this workflow: clickPoint.x > 0 => right side (_R).
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function pickSideFromClick(
@@ -549,7 +549,7 @@ export function pickSideFromClick(
   const rightIds = meshIds.filter((id) => id.endsWith('_R'))
   const leftIds  = meshIds.filter((id) => id.endsWith('_L'))
   if (rightIds.length && leftIds.length) {
-    return clickPoint.x < 0 ? rightIds[0] : leftIds[0]
+    return clickPoint.x > 0 ? rightIds[0] : leftIds[0]
   }
   return meshIds[0]
 }
