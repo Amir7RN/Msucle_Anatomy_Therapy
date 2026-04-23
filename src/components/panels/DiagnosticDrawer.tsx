@@ -35,15 +35,15 @@ export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
 
   if (contributions.length === 0) {
     return (
-      <aside className="fixed right-4 top-20 w-80 rounded-lg border border-neutral-700 bg-neutral-900/95 p-4 text-neutral-100 shadow-xl backdrop-blur">
+      <section className="border-b border-slate-200 dark:border-slate-700 p-4">
         <header className="mb-2 flex items-center justify-between">
           <h3 className="text-sm font-semibold tracking-wide">Diagnostic</h3>
           <button onClick={closeDrawer} className="text-xs text-neutral-400 hover:text-white">✕</button>
         </header>
-        <p className="text-xs text-neutral-400">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           No muscle patterns match this area. Try clicking closer to a known pain zone.
         </p>
-      </aside>
+      </section>
     )
   }
 
@@ -73,11 +73,11 @@ export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
   }
 
   return (
-    <aside className="fixed right-4 top-20 w-80 rounded-lg border border-neutral-700 bg-neutral-900/95 p-4 text-neutral-100 shadow-xl backdrop-blur">
+    <section className="border-b border-slate-200 dark:border-slate-700 p-4">
       <header className="mb-3 flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold tracking-wide">Likely sources</h3>
-          <p className="text-[11px] text-neutral-400">Zones: {result.clickedZones.join(', ')}</p>
+          <h3 className="text-xs font-semibold tracking-wide uppercase text-slate-500 dark:text-slate-400">Likely Sources</h3>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">Zones: {result.clickedZones.join(', ')}</p>
         </div>
         <button onClick={closeDrawer} aria-label="Close" className="text-xs text-neutral-400 hover:text-white">✕</button>
       </header>
@@ -134,6 +134,6 @@ export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
           </li>
         ))}
       </ul>
-    </aside>
+    </section>
   )
 }
