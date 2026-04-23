@@ -5,6 +5,15 @@ import { Badge, systemBadgeColor, layerBadgeColor } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { REGION_LABELS, SIDE_LABELS, SYSTEM_LABELS, LAYER_LABELS } from '../../lib/structureMapper'
 import { PAIN_PATTERNS } from '../../data/painPatterns'
+import {
+  groupContributions,
+  isGrouped,
+  pickSideFromClick,
+  type DiagnosticResult,
+  type MuscleContribution,
+  type GroupedMuscleContribution,
+  type DiagnosticDisplayItem,
+} from '../../lib/diagnostic'
 
 // ── Exercise video data ───────────────────────────────────────────────────────
 
@@ -194,10 +203,284 @@ function EmptyState() {
   )
 }
 
+// ── Pain Voice Button ──────────────────────────────────────────────────────────
+
+// Ordered list of voice names known to sound natural/neural across browsers.
+// The first match found on the user's system is used.
+const PREFERRED_VOICE_NAMES = [
+  // Edge / Windows neural voices (highest quality on Windows)
+  'Microsoft Aria Online (Natural)',
+  'Microsoft Jenny Online (Natural)',
+  'Microsoft Guy Online (Natural)',
+  'Microsoft Steffan Online (Natural)',
+  // Chrome on macOS / Google voices (online, high quality)
+  'Google US English',
+  'Google UK English Female',
+  'Google UK English Male',
+  // macOS built-in (local but good quality)
+  'Samantha',
+  'Alex',
+  'Karen',
+  'Tessa',
+  // iOS / iPadOS
+  'Nicky',
+  'Siri',
+]
+
+function pickBestVoice(): SpeechSynthesisVoice | null {
+  const voices = window.speechSynthesis.getVoices()
+  // 1. Try preferred names (exact or prefix match)
+  for (const name of PREFERRED_VOICE_NAMES) {
+    const v = voices.find((v) => v.name === name || v.name.startsWith(name))
+    if (v) return v
+  }
+  // 2. Any English online voice (these use server-side neural TTS)
+  const onlineEn = voices.find((v) => v.lang.startsWith('en') && !v.localService)
+  if (onlineEn) return onlineEn
+  // 3. Any English local voice
+  const localEn = voices.find((v) => v.lang.startsWith('en'))
+  if (localEn) return localEn
+  // 4. Absolute fallback
+  return voices[0] ?? null
+}
+
+function PainVoiceButton({ text }: { text: string }) {
+  const [speaking, setSpeaking] = useState(false)
+  const utterRef = useRef<SpeechSynthesisUtterance | null>(null)
+
+  // Trigger re-render when voices load (async in Chrome/Safari)
+  const [voicesReady, setVoicesReady] = useState(false)
+  useEffect(() => {
+    if (!('speechSynthesis' in window)) return
+    const update = () => setVoicesReady(true)
+    window.speechSynthesis.addEventListener('voiceschanged', update)
+    // Already loaded (Firefox / some Safari versions)
+    if (window.speechSynthesis.getVoices().length > 0) setVoicesReady(true)
+    return () => window.speechSynthesis.removeEventListener('voiceschanged', update)
+  }, [])
+
+  // Cancel when the text changes (muscle changed) or component unmounts
+  useEffect(() => {
+    return () => { window.speechSynthesis?.cancel(); setSpeaking(false) }
+  }, [text])
+
+  if (!('speechSynthesis' in window)) return null
+
+  const play = () => {
+    const synth = window.speechSynthesis
+    synth.cancel()
+    const utt = new SpeechSynthesisUtterance(text)
+    const voice = pickBestVoice()
+    if (voice) utt.voice = voice
+    // Rate 0.92 — slightly slower than default (1.0) so technical terms land clearly
+    // Pitch 1.02 — barely above neutral; avoids the robotic flat-line monotone
+    utt.rate  = 0.92
+    utt.pitch = 1.02
+    utt.lang  = 'en-US'
+    utt.onend   = () => setSpeaking(false)
+    utt.onerror = () => setSpeaking(false)
+    utterRef.current = utt
+    setSpeaking(true)
+    synth.speak(utt)
+  }
+
+  const stop = () => { window.speechSynthesis.cancel(); setSpeaking(false) }
+
+  // Show grayed out until voices are available
+  return (
+    <button
+      onClick={speaking ? stop : play}
+      disabled={!voicesReady}
+      title={speaking ? 'Stop reading' : 'Read aloud (natural voice)'}
+      className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border border-slate-600 text-slate-400 hover:text-slate-200 hover:border-slate-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+    >
+      {speaking
+        ? <Square size={10} fill="currentColor" />
+        : <Volume2 size={10} />
+      }
+    </button>
+  )
+}
+
+// ── Likely Sources Component ───────────────────────────────────────────────────
+
+function LikelySources({ result, onClose }: { result: DiagnosticResult; onClose?: () => void }) {
+  const setSelected        = useAtlasStore((s) => s.setSelected)
+  const setHovered         = useAtlasStore((s) => s.setHovered)
+  const setDiagnosticPulse = useAtlasStore((s) => s.setDiagnosticPulse)
+  const setDiagnostic      = useAtlasStore((s) => s.setDiagnostic)
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+
+  const { contributions, clickPoint } = result
+  const clickVec = useMemo(() => new THREE.Vector3(...clickPoint), [clickPoint])
+  const grouped  = useMemo(() => groupContributions(contributions), [contributions])
+
+  const hoverItem = (meshIds: string[]) => {
+    const id = pickSideFromClick(meshIds, clickVec)
+    if (!id) return
+    setHovered(id)
+    setDiagnosticPulse(id)
+  }
+  const unhoverItem = () => { setHovered(null); setDiagnosticPulse(null) }
+
+  const selectItem = (meshIds: string[]) => {
+    const id = pickSideFromClick(meshIds, clickVec)
+    if (!id) return
+    setDiagnosticPulse(null)
+    setDiagnostic(null)   // also clears candidateIds via store action
+    setSelected(id)
+  }
+
+  const toggleGroup = (label: string) =>
+    setExpandedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(label)) next.delete(label); else next.add(label)
+      return next
+    })
+
+  // Bar color helpers
+  const barColor = (matchType: 'primary' | 'referred' | 'mixed') =>
+    matchType === 'primary' ? '#FF8C00' : matchType === 'mixed' ? '#F59E0B' : '#B45309'
+
+  return (
+    <div className="py-2 border-b border-slate-100 dark:border-slate-700/60">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5 text-[10px] font-semibold text-amber-500 dark:text-amber-400 uppercase tracking-wide">
+          <Activity size={10} />
+          Likely Sources
+        </div>
+        <div className="flex items-center gap-2 text-[10px] text-slate-500">
+          <span className="truncate max-w-[110px]">{result.clickedZones.slice(0, 2).join(', ')}</span>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="text-slate-500 hover:text-slate-300 ml-1 flex-shrink-0"
+              aria-label="Dismiss"
+            >✕</button>
+          )}
+        </div>
+      </div>
+
+      {contributions.length === 0 ? (
+        <p className="text-xs text-slate-400 px-1">No patterns match this area.</p>
+      ) : (
+        <ul className="space-y-1">
+          {grouped.map((item) => {
+            if (isGrouped(item)) {
+              const isExpanded = expandedGroups.has(item.label)
+              return (
+                <li key={item.label}>
+                  {/* Group header */}
+                  <div
+                    className="flex w-full items-center justify-between rounded-md px-2 py-1.5 cursor-pointer select-none hover:bg-slate-800/60 transition-colors"
+                    onMouseEnter={() => hoverItem(item.meshIds)}
+                    onMouseLeave={unhoverItem}
+                    onClick={() => toggleGroup(item.label)}
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                      <span className="text-slate-400 flex-shrink-0">
+                        {isExpanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                      </span>
+                      <span className="text-sm font-medium text-slate-200 truncate">{item.label}</span>
+                      <span className="text-[10px] text-slate-500 ml-0.5 flex-shrink-0">group</span>
+                    </div>
+                    <div className="ml-3 flex w-24 items-center gap-2 flex-shrink-0">
+                      <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-800">
+                        <div
+                          className="absolute left-0 top-0 h-full rounded-full transition-all"
+                          style={{
+                            width:           `${Math.min(100, Math.round(item.totalProbability * 100))}%`,
+                            backgroundColor: barColor(item.matchType),
+                          }}
+                        />
+                      </div>
+                      <span className="w-9 text-right text-xs tabular-nums text-neutral-200">
+                        {Math.round(item.totalProbability * 100)}%
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Children — collapsed by default */}
+                  {isExpanded && (
+                    <ul className="ml-5 mt-0.5 space-y-0.5">
+                      {item.members.map((child) => (
+                        <li key={child.muscle_id}>
+                          <button
+                            onMouseEnter={() => hoverItem(child.meshIds)}
+                            onMouseLeave={unhoverItem}
+                            onClick={() => selectItem(child.meshIds)}
+                            className="flex w-full items-center justify-between rounded-md px-2 py-1 text-left hover:bg-slate-700/60 transition-colors"
+                          >
+                            <span className="text-xs text-slate-300 truncate flex-1">{child.common_name}</span>
+                            <div className="ml-3 flex w-20 items-center gap-2 flex-shrink-0">
+                              <div className="relative h-1 flex-1 overflow-hidden rounded-full bg-neutral-800">
+                                <div
+                                  className="absolute left-0 top-0 h-full rounded-full"
+                                  style={{
+                                    width:           `${Math.round(child.probability * 100)}%`,
+                                    backgroundColor: barColor(child.matchType),
+                                  }}
+                                />
+                              </div>
+                              <span className="w-8 text-right text-[10px] tabular-nums text-neutral-400">
+                                {Math.round(child.probability * 100)}%
+                              </span>
+                            </div>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              )
+            }
+
+            // Flat muscle row — TypeScript narrowing: after isGrouped guard, item is MuscleContribution
+            const flat = item as MuscleContribution
+            return (
+              <li key={flat.muscle_id}>
+                <button
+                  onMouseEnter={() => hoverItem(flat.meshIds)}
+                  onMouseLeave={unhoverItem}
+                  onClick={() => selectItem(flat.meshIds)}
+                  className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left hover:bg-slate-800/60 transition-colors"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-slate-200 truncate">{flat.common_name}</div>
+                    <div className="text-[10px] uppercase tracking-wider text-neutral-500">
+                      {flat.matchType === 'primary' ? 'primary zone' : 'referred zone'}
+                    </div>
+                  </div>
+                  <div className="ml-3 flex w-24 items-center gap-2 flex-shrink-0">
+                    <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-800">
+                      <div
+                        className="absolute left-0 top-0 h-full rounded-full"
+                        style={{
+                          width:           `${Math.round(flat.probability * 100)}%`,
+                          backgroundColor: barColor(flat.matchType),
+                        }}
+                      />
+                    </div>
+                    <span className="w-9 text-right text-xs tabular-nums text-neutral-200">
+                      {Math.round(flat.probability * 100)}%
+                    </span>
+                  </div>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 // ── Main panel ────────────────────────────────────────────────────────────────
 
 export function MetadataPanel() {
   const selectedId       = useAtlasStore((s) => s.selectedId)
+  const diagnosticResult = useAtlasStore((s) => s.diagnosticResult)
   const sceneIndex       = useAtlasStore((s) => s.sceneIndex)
   const hideSelected     = useAtlasStore((s) => s.hideSelected)
   const isolateSelected  = useAtlasStore((s) => s.isolateSelected)
@@ -210,7 +493,7 @@ export function MetadataPanel() {
   const meta = selectedId ? sceneIndex.metadataById.get(selectedId) : undefined
   const pain = selectedId ? PAIN_PATTERNS[selectedId] : undefined
 
-  if (!selectedId || !meta) return <EmptyState />
+  if (!selectedId && !diagnosticResult) return <EmptyState />
 
   const speakPainPattern = () => {
     if (!pain || typeof window === 'undefined' || !window.speechSynthesis) return
@@ -234,20 +517,20 @@ export function MetadataPanel() {
       {/* Header */}
       <div className="p-4 border-b border-slate-100 dark:border-slate-700">
         <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100 leading-snug mb-2">
-          {meta.displayName}
+          {meta?.displayName}
         </h2>
         <div className="flex flex-wrap gap-1">
-          <Badge color={systemBadgeColor(meta.system)}>
-            {SYSTEM_LABELS[meta.system] ?? meta.system}
+          <Badge color={systemBadgeColor(meta?.system ?? 'muscle')}>
+            {SYSTEM_LABELS[meta?.system ?? ''] ?? meta?.system}
           </Badge>
-          <Badge color={layerBadgeColor(meta.layer)}>
-            {LAYER_LABELS[meta.layer] ?? meta.layer}
-          </Badge>
-          <Badge color="slate">
-            {SIDE_LABELS[meta.side] ?? meta.side}
+          <Badge color={layerBadgeColor(meta?.layer ?? 'superficial')}>
+            {LAYER_LABELS[meta?.layer ?? ''] ?? meta?.layer}
           </Badge>
           <Badge color="slate">
-            {REGION_LABELS[meta.region] ?? meta.region}
+            {SIDE_LABELS[meta?.side ?? ''] ?? meta?.side}
+          </Badge>
+          <Badge color="slate">
+            {REGION_LABELS[meta?.region ?? ''] ?? meta?.region}
           </Badge>
         </div>
       </div>
@@ -301,12 +584,12 @@ export function MetadataPanel() {
         <MetaRow
           icon={<MapPin size={10} />}
           label="Origin"
-          value={meta.origin}
+          value={meta?.origin}
         />
         <MetaRow
           icon={<Zap size={10} />}
           label="Action"
-          value={meta.action}
+          value={meta?.action}
         />
         <MetaRow
           icon={<StickyNote size={10} />}

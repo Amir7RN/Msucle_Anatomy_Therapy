@@ -423,8 +423,8 @@ function zonesOverlap(clickedZones: string[], phrase: string): boolean {
 //  calculateMuscleContribution  —  Task 1 core
 //
 //  For each muscle in the diagnostic catalogue:
-//    • If ANY clicked zone matches a phrase in primary_pain_zone   → w = 0.8
-//    • Else if ANY clicked zone matches referred_pain_zones         → w = 0.2
+//    • If ANY clicked zone matches a phrase in primary_pain_zone   → w = 0.75
+//    • Else if ANY clicked zone matches referred_pain_zones         → w = 0.25
 //    • Else                                                         → skip
 //
 //  The per-muscle weight is the maximum category hit (primary wins over
@@ -577,4 +577,132 @@ export function pickSideFromClick(
     return clickPoint.x > 0 ? rightIds[0] : leftIds[0]
   }
   return meshIds[0]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Anatomical muscle groups for hierarchical UI display
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface MuscleGroupDef {
+  label:   string
+  /** muscle_id keys from the diagnostic JSON catalogue */
+  members: string[]
+}
+
+/** Groups that should be collapsed under a parent row when 2+ members appear. */
+export const MUSCLE_GROUPS: MuscleGroupDef[] = [
+  {
+    label:   'Hamstrings',
+    members: ['biceps_femoris', 'semitendinosus', 'semimembranosus'],
+  },
+  {
+    label:   'Quadriceps',
+    members: ['rectus_femoris', 'vastus_lateralis', 'vastus_medialis', 'vastus_intermedius'],
+  },
+  {
+    label:   'Rotator Cuff',
+    members: ['supraspinatus', 'infraspinatus', 'teres_minor', 'subscapularis'],
+  },
+  {
+    // All three deltoid heads share similar rehab exercises (shoulder press, lateral raises,
+    // band pull-aparts). Merging into one "Deltoid" group gives a cleaner clinical summary
+    // while the individual breakdown remains accessible when expanded.
+    label:   'Deltoid',
+    members: ['deltoid_anterior', 'deltoid_lateral', 'deltoid_posterior'],
+  },
+]
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Grouped display types
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface GroupedMuscleContribution {
+  type:             'group'
+  label:            string
+  totalProbability: number
+  /** 'mixed' when the group has both primary and referred members */
+  matchType:        'primary' | 'referred' | 'mixed'
+  members:          MuscleContribution[]
+  /** Union of all member meshIds (for hover/pulse) */
+  meshIds:          string[]
+}
+
+export type DiagnosticDisplayItem = MuscleContribution | GroupedMuscleContribution
+
+/** Type guard — narrows DiagnosticDisplayItem to GroupedMuscleContribution */
+export function isGrouped(item: DiagnosticDisplayItem): item is GroupedMuscleContribution {
+  return (item as GroupedMuscleContribution).type === 'group'
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  groupContributions
+//
+//  Rules:
+//  • Check every MUSCLE_GROUP.  If 2+ members appear in contributions, collapse
+//    them into a GroupedMuscleContribution.
+//  • If only 1 member from a group appears, leave it as a flat item.
+//  • Remaining flat items keep their original probability order.
+//  • Final sort: descending by probability (group uses totalProbability).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function groupContributions(
+  contributions: MuscleContribution[],
+): DiagnosticDisplayItem[] {
+  const idSet    = new Set(contributions.map((c) => c.muscle_id))
+  const consumed = new Set<string>()
+  const groups:  GroupedMuscleContribution[] = []
+
+  for (const groupDef of MUSCLE_GROUPS) {
+    const matching = groupDef.members
+      .filter((m) => idSet.has(m))
+      .map((m) => contributions.find((c) => c.muscle_id === m)!)
+      .filter(Boolean)
+
+    if (matching.length >= 2) {
+      matching.forEach((c) => consumed.add(c.muscle_id))
+      const totalProbability = matching.reduce((s, c) => s + c.probability, 0)
+      const hasP = matching.some((c) => c.matchType === 'primary')
+      const hasR = matching.some((c) => c.matchType === 'referred')
+      const meshIdSet = new Set(matching.flatMap((c) => c.meshIds))
+      groups.push({
+        type:             'group',
+        label:            groupDef.label,
+        totalProbability,
+        matchType:        hasP && hasR ? 'mixed' : hasP ? 'primary' : 'referred',
+        members:          matching,
+        meshIds:          [...meshIdSet],
+      })
+    }
+  }
+
+  // Flat items not consumed by any group (in original contribution order)
+  const flat = contributions.filter((c) => !consumed.has(c.muscle_id))
+
+  const result: DiagnosticDisplayItem[] = [...groups, ...flat]
+
+  // Sort descending by probability
+  return result.sort((a, b) => {
+    const pa = isGrouped(a) ? a.totalProbability : (a as MuscleContribution).probability
+    const pb = isGrouped(b) ? b.totalProbability : (b as MuscleContribution).probability
+    return pb - pa
+  })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  pickCandidateMeshIds
+//
+//  For a diagnostic result, compute the side-aware set of all mesh IDs that
+//  should glow simultaneously in the 3D viewer.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function pickCandidateMeshIds(
+  contributions: MuscleContribution[],
+  clickPoint:    THREE.Vector3,
+): Set<string> {
+  const ids = new Set<string>()
+  for (const c of contributions) {
+    const id = pickSideFromClick(c.meshIds, clickPoint)
+    if (id) ids.add(id)
+  }
+  return ids
 }
