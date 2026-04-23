@@ -214,20 +214,9 @@ export function MetadataPanel() {
 
   const speakPainPattern = () => {
     if (!pain || typeof window === 'undefined' || !window.speechSynthesis) return
-    const voices = window.speechSynthesis.getVoices()
-    const preferredVoice = voices.find((v) =>
-      /Natural|Siri|Google US English|Aria|Jenny|Neural/i.test(v.name),
-    ) ?? voices.find((v) => /en-US|en_US/i.test(v.lang)) ?? voices[0]
-
     window.speechSynthesis.cancel()
-    const utter = new SpeechSynthesisUtterance(
-      `Pain referral pattern. ${pain.description}`,
-    )
-    if (preferredVoice) utter.voice = preferredVoice
-    utter.lang = preferredVoice?.lang ?? 'en-US'
-    utter.rate = 0.9
-    utter.pitch = 1.0
-    utter.volume = 1
+    const utter = new SpeechSynthesisUtterance(pain.description)
+    utter.rate = 0.95
     utter.onend = () => setSpeaking(false)
     utter.onerror = () => setSpeaking(false)
     setSpeaking(true)

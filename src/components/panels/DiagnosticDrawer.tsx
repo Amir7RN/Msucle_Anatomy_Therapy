@@ -37,8 +37,8 @@ export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
     return (
       <section className="border-b border-slate-200 dark:border-slate-700 p-4">
         <header className="mb-2 flex items-center justify-between">
-          <h3 className="text-xs font-semibold tracking-wide uppercase text-slate-500 dark:text-slate-400">Likely Sources</h3>
-          <button onClick={closeDrawer} className="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-white">✕</button>
+          <h3 className="text-sm font-semibold tracking-wide">Diagnostic</h3>
+          <button onClick={closeDrawer} className="text-xs text-neutral-400 hover:text-white">✕</button>
         </header>
         <p className="text-xs text-slate-500 dark:text-slate-400">
           No muscle patterns match this area. Try clicking closer to a known pain zone.
@@ -79,40 +79,40 @@ export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
           <h3 className="text-xs font-semibold tracking-wide uppercase text-slate-500 dark:text-slate-400">Likely Sources</h3>
           <p className="text-[11px] text-slate-500 dark:text-slate-400">Zones: {result.clickedZones.join(', ')}</p>
         </div>
-        <button onClick={closeDrawer} aria-label="Close" className="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-white">✕</button>
+        <button onClick={closeDrawer} aria-label="Close" className="text-xs text-neutral-400 hover:text-white">✕</button>
       </header>
 
       <ul className="space-y-1.5">
         {grouped.map((entry) => (
-          <li key={entry.id} className="rounded-md border border-slate-200 dark:border-slate-700">
+          <li key={entry.id} className="rounded-md border border-neutral-800/80">
             <div
               onMouseEnter={() => handleGroupHover(entry)}
               onMouseLeave={handleHoverOut}
-              className="group flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left transition-colors hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="group flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left transition-colors hover:bg-neutral-800"
             >
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm text-slate-700 dark:text-slate-100">{entry.label}</div>
+                <div className="truncate text-sm">{entry.label}</div>
                 {entry.muscles.length > 1 && (
-                  <div className="text-[10px] uppercase tracking-wider text-slate-400">{entry.muscles.length} muscles</div>
+                  <div className="text-[10px] uppercase tracking-wider text-neutral-500">{entry.muscles.length} muscles</div>
                 )}
               </div>
-              <span className="w-9 text-right text-xs tabular-nums text-slate-600 dark:text-slate-200">
+              <span className="w-9 text-right text-xs tabular-nums text-neutral-200">
                 {Math.round(entry.probability * 100)}%
               </span>
             </div>
 
             {entry.muscles.length > 1 && (
-              <ul className="mb-1 ml-2 mr-1 space-y-1 border-l border-slate-200 dark:border-slate-700 pl-2">
+              <ul className="mb-1 ml-2 mr-1 space-y-1 border-l border-neutral-800 pl-2">
                 {entry.muscles.map((muscle) => (
                   <li key={muscle.muscle_id}>
                     <button
                       onMouseEnter={() => handleHoverIn(muscle)}
                       onMouseLeave={handleHoverOut}
                       onClick={() => handleSelect(muscle)}
-                      className="flex w-full items-center justify-between rounded-md px-2 py-1 text-left transition-colors hover:bg-slate-100 dark:hover:bg-slate-800"
+                      className="flex w-full items-center justify-between rounded-md px-2 py-1 text-left transition-colors hover:bg-neutral-800"
                     >
-                      <span className="truncate text-xs text-slate-700 dark:text-slate-200">{muscle.common_name}</span>
-                      <span className="w-9 text-right text-[11px] tabular-nums text-slate-500 dark:text-slate-300">
+                      <span className="truncate text-xs">{muscle.common_name}</span>
+                      <span className="w-9 text-right text-[11px] tabular-nums text-neutral-300">
                         {Math.round(muscle.probability * 100)}%
                       </span>
                     </button>
@@ -126,9 +126,9 @@ export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
                 onMouseEnter={() => handleHoverIn(entry.muscles[0])}
                 onMouseLeave={handleHoverOut}
                 onClick={() => handleSelect(entry.muscles[0])}
-                className="mb-1 ml-2 mr-1 w-[calc(100%-0.75rem)] rounded-md px-2 py-1 text-left text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                className="mb-1 ml-2 mr-1 w-[calc(100%-0.75rem)] rounded-md border border-neutral-800 px-2 py-1 text-left text-xs text-neutral-300 hover:bg-neutral-800"
               >
-                {entry.muscles[0].common_name}
+                Select muscle
               </button>
             )}
           </li>

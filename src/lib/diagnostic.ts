@@ -546,11 +546,11 @@ export function filterMeshIdsBySide(
   clickPoint: THREE.Vector3,
 ): string[] {
   if (meshIds.length <= 1) return meshIds
-  if (clickPoint.x < 0) {
+  if (clickPoint.x > 0) {
     const right = meshIds.filter((id) => id.endsWith('_R'))
     return right.length ? right : meshIds
   }
-  if (clickPoint.x > 0) {
+  if (clickPoint.x < 0) {
     const left = meshIds.filter((id) => id.endsWith('_L'))
     return left.length ? left : meshIds
   }
@@ -561,8 +561,8 @@ export function filterMeshIdsBySide(
 //  Side picker — choose the mesh closest to the click point
 //
 //  When the user clicks near the right shoulder, we want to preselect
-//  MUSC_PECTORALIS_MAJOR_R, not the left one. In this scene coordinate setup,
-//  clicks with x < 0 map to right-side muscles; x > 0 maps to left-side.
+//  MUSC_PECTORALIS_MAJOR_R, not the left one. For this project workflow,
+//  clicks with x > 0 are treated as right-side intent; x < 0 as left-side.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function pickSideFromClick(
@@ -574,7 +574,7 @@ export function pickSideFromClick(
   const rightIds = meshIds.filter((id) => id.endsWith('_R'))
   const leftIds  = meshIds.filter((id) => id.endsWith('_L'))
   if (rightIds.length && leftIds.length) {
-    return clickPoint.x < 0 ? rightIds[0] : leftIds[0]
+    return clickPoint.x > 0 ? rightIds[0] : leftIds[0]
   }
   return meshIds[0]
 }
