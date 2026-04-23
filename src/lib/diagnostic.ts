@@ -51,6 +51,8 @@ export interface MuscleContribution {
   matchedZones: string[]
   /** Mesh IDs (MUSC_*) to select / highlight on the model. */
   meshIds:     string[]
+  /** Optional anatomical parent group label used for hierarchical UI. */
+  group?:      string
 }
 
 export interface DiagnosticResult {
@@ -59,12 +61,33 @@ export interface DiagnosticResult {
   contributions: MuscleContribution[]
 }
 
+export interface GroupedContribution {
+  id: string
+  label: string
+  probability: number
+  muscles: MuscleContribution[]
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Weights
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const PRIMARY_WEIGHT  = 0.8
-export const REFERRED_WEIGHT = 0.2
+export const PRIMARY_WEIGHT  = 0.75
+export const REFERRED_WEIGHT = 0.25
+
+export const MUSCLE_GROUP_MAP: Record<string, string> = {
+  biceps_femoris:   'Hamstrings',
+  semitendinosus:   'Hamstrings',
+  semimembranosus:  'Hamstrings',
+  supraspinatus:    'Rotator Cuff',
+  infraspinatus:    'Rotator Cuff',
+  teres_minor:      'Rotator Cuff',
+  subscapularis:    'Rotator Cuff',
+  rectus_femoris:   'Quadriceps',
+  vastus_lateralis: 'Quadriceps',
+  vastus_medialis:  'Quadriceps',
+  vastus_intermedius: 'Quadriceps',
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Anatomical text → BODY_ZONES keys
@@ -457,6 +480,7 @@ export function calculateMuscleContribution(
         matchType:   bestType,
         matchedZones: [...matchedZones],
         meshIds:     DIAGNOSTIC_TO_MESH_IDS[m.muscle_id] ?? [],
+        group:       MUSCLE_GROUP_MAP[m.muscle_id],
       })
     }
   }
@@ -473,12 +497,72 @@ export function calculateMuscleContribution(
     })
 }
 
+export function groupContributions(
+  contributions: MuscleContribution[],
+): GroupedContribution[] {
+  const grouped = new Map<string, MuscleContribution[]>()
+  const singles: GroupedContribution[] = []
+
+  for (const c of contributions) {
+    if (!c.group) {
+      singles.push({
+        id: c.muscle_id,
+        label: c.common_name,
+        probability: c.probability,
+        muscles: [c],
+      })
+      continue
+    }
+    const list = grouped.get(c.group) ?? []
+    list.push(c)
+    grouped.set(c.group, list)
+  }
+
+  const hierarchy: GroupedContribution[] = []
+  for (const [group, muscles] of grouped.entries()) {
+    if (muscles.length === 1) {
+      const [single] = muscles
+      singles.push({
+        id: single.muscle_id,
+        label: single.common_name,
+        probability: single.probability,
+        muscles: [single],
+      })
+      continue
+    }
+    hierarchy.push({
+      id: `group:${group.toLowerCase().replace(/\s+/g, '_')}`,
+      label: group,
+      probability: muscles.reduce((acc, m) => acc + m.probability, 0),
+      muscles: [...muscles].sort((a, b) => b.probability - a.probability),
+    })
+  }
+
+  return [...hierarchy, ...singles].sort((a, b) => b.probability - a.probability)
+}
+
+export function filterMeshIdsBySide(
+  meshIds: string[],
+  clickPoint: THREE.Vector3,
+): string[] {
+  if (meshIds.length <= 1) return meshIds
+  if (clickPoint.x > 0) {
+    const right = meshIds.filter((id) => id.endsWith('_R'))
+    return right.length ? right : meshIds
+  }
+  if (clickPoint.x < 0) {
+    const left = meshIds.filter((id) => id.endsWith('_L'))
+    return left.length ? left : meshIds
+  }
+  return meshIds
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Side picker — choose the mesh closest to the click point
 //
 //  When the user clicks near the right shoulder, we want to preselect
-//  MUSC_PECTORALIS_MAJOR_R, not the left one.  Coord scheme (per
-//  painPatterns.ts header):  patient right = NEGATIVE x,  left = POSITIVE x.
+//  MUSC_PECTORALIS_MAJOR_R, not the left one. For this project workflow,
+//  clicks with x > 0 are treated as right-side intent; x < 0 as left-side.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function pickSideFromClick(
@@ -490,7 +574,7 @@ export function pickSideFromClick(
   const rightIds = meshIds.filter((id) => id.endsWith('_R'))
   const leftIds  = meshIds.filter((id) => id.endsWith('_L'))
   if (rightIds.length && leftIds.length) {
-    return clickPoint.x < 0 ? rightIds[0] : leftIds[0]
+    return clickPoint.x > 0 ? rightIds[0] : leftIds[0]
   }
   return meshIds[0]
 }

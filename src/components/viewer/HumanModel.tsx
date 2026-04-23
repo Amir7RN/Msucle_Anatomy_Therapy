@@ -375,6 +375,7 @@ function GLTFScene({ path }: { path: string }) {
   const setHovered    = useAtlasStore((s) => s.setHovered)
   const setModelStatus = useAtlasStore((s) => s.setModelStatus)
   const diagnosticPulseId = useAtlasStore((s) => s.diagnosticPulseId)
+  const candidateMuscles = useAtlasStore((s) => s.candidateMuscles)
 
   // Area-to-Muscle click handler (returns false when diagnosticMode is off,
   // so the legacy Muscle-to-Pain path below runs unchanged).
@@ -383,13 +384,22 @@ function GLTFScene({ path }: { path: string }) {
   // Pulse effect on drawer-hover — modulates emissive intensity only.
   // applyMeshState overwrites emissiveIntensity on its next run, so no leak.
   useFrame(({ clock }) => {
-    if (!diagnosticPulseId) return
+    if (!diagnosticPulseId && candidateMuscles.length === 0) return
     scene.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh)) return
-      if (obj.userData.structureId !== diagnosticPulseId) return
+      const structureId = obj.userData.structureId as string | undefined
+      const isHoveredPulse = Boolean(diagnosticPulseId && structureId === diagnosticPulseId)
+      const isCandidatePulse = Boolean(structureId && candidateMuscles.includes(structureId))
+      if (!isHoveredPulse && !isCandidatePulse) return
       const mat = (Array.isArray(obj.material) ? obj.material[0] : obj.material) as THREE.MeshStandardMaterial
       if (!mat?.emissive) return
-      mat.emissiveIntensity = 0.35 + 0.5 * (0.5 + 0.5 * Math.sin(clock.elapsedTime * 8.8))
+      const pulse = 0.5 + 0.5 * Math.sin(clock.elapsedTime * 8.8)
+      mat.emissive.set('#FFFFFF')
+      mat.emissiveIntensity = isHoveredPulse
+        ? 0.7 + 0.8 * pulse
+        : 0.45 + 0.5 * pulse
+      mat.transparent = true
+      mat.opacity = isHoveredPulse ? 1 : 0.92
     })
   })
 
