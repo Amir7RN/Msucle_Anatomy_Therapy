@@ -28,6 +28,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import {
+  buildGroupedContributions,
   calculateMuscleContribution,
   findZonesAtPoint,
   loadDiagnosticMuscles,
@@ -93,11 +94,13 @@ export function useDiagnosticClick(
 
       // ── 3. Reverse-map to weighted muscle contributions ─────────────────
       const contributions = calculateMuscleContribution(clickedZones, catalogue)
+      const groupedContributions = buildGroupedContributions(contributions)
 
       setDiagnostic({
         clickedZones,
         clickPoint:    [worldPoint.x, worldPoint.y, worldPoint.z],
         contributions,
+        groupedContributions,
       })
 
       // Stop the event — prevents the legacy Muscle-to-Pain handler in
