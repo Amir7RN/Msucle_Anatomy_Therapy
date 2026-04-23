@@ -41,6 +41,7 @@ interface AtlasState {
   diagnosticMode:    boolean
   diagnosticResult:  DiagnosticResult | null
   diagnosticPulseId: string | null
+  candidateMuscleIds: string[]
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
@@ -78,6 +79,7 @@ interface AtlasState {
   toggleDiagnosticMode: () => void
   setDiagnostic:        (result: DiagnosticResult | null) => void
   setDiagnosticPulse:   (id: string | null) => void
+  setCandidateMuscles:  (ids: string[]) => void
 }
 
 // ── Initial filter state ──────────────────────────────────────────────────────
@@ -112,6 +114,7 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   diagnosticMode:     false,
   diagnosticResult:   null,
   diagnosticPulseId:  null,
+  candidateMuscleIds: [],
 
   // ── Selection ─────────────────────────────────────────────────────────────
   setSelected: (id) => set({ selectedId: id }),
@@ -228,9 +231,16 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
       diagnosticMode:    !s.diagnosticMode,
       diagnosticResult:  null,
       diagnosticPulseId: null,
+      candidateMuscleIds: [],
     })),
-  setDiagnostic:      (result) => set({ diagnosticResult: result }),
+  setDiagnostic:      (result) => set({
+    diagnosticResult: result,
+    candidateMuscleIds: result
+      ? [...new Set(result.contributions.flatMap((c) => c.meshIds))]
+      : [],
+  }),
   setDiagnosticPulse: (id)     => set({ diagnosticPulseId: id }),
+  setCandidateMuscles: (ids)   => set({ candidateMuscleIds: [...new Set(ids)] }),
 }))
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

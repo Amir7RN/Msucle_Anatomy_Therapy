@@ -53,18 +53,68 @@ export interface MuscleContribution {
   meshIds:     string[]
 }
 
+export interface MuscleGroupContribution {
+  groupId: string
+  groupName: string
+  probability: number
+  rawWeight: number
+  children: MuscleContribution[]
+}
+
 export interface DiagnosticResult {
   clickedZones:  string[]
   clickPoint:    [number, number, number]
   contributions: MuscleContribution[]
+  groupedContributions: MuscleGroupContribution[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Weights
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const PRIMARY_WEIGHT  = 0.8
-export const REFERRED_WEIGHT = 0.2
+export const PRIMARY_WEIGHT  = 0.75
+export const REFERRED_WEIGHT = 0.25
+
+const MUSCLE_GROUP_LABELS: Record<string, string> = {
+  hamstrings:    'Hamstrings',
+  rotator_cuff:  'Rotator Cuff',
+  quadriceps:    'Quadriceps',
+  trapezius:     'Trapezius',
+  deltoid:       'Deltoid',
+  rhomboids:     'Rhomboids',
+  gluteals:      'Gluteals',
+}
+
+const MUSCLE_TO_GROUP: Record<string, string> = {
+  biceps_femoris:    'hamstrings',
+  semitendinosus:    'hamstrings',
+  semimembranosus:   'hamstrings',
+
+  supraspinatus:     'rotator_cuff',
+  infraspinatus:     'rotator_cuff',
+  teres_minor:       'rotator_cuff',
+  subscapularis:     'rotator_cuff',
+
+  rectus_femoris:    'quadriceps',
+  vastus_lateralis:  'quadriceps',
+  vastus_medialis:   'quadriceps',
+  vastus_intermedius:'quadriceps',
+
+  trapezius_upper:   'trapezius',
+  trapezius_middle:  'trapezius',
+  trapezius_lower:   'trapezius',
+
+  deltoid_anterior:  'deltoid',
+  deltoid_lateral:   'deltoid',
+  deltoid_posterior: 'deltoid',
+
+  rhomboid_major:    'rhomboids',
+  rhomboid_minor:    'rhomboids',
+
+  gluteus_maximus:   'gluteals',
+  gluteus_medius:    'gluteals',
+  gluteus_minimus:   'gluteals',
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Anatomical text → BODY_ZONES keys
@@ -400,8 +450,8 @@ function zonesOverlap(clickedZones: string[], phrase: string): boolean {
 //  calculateMuscleContribution  —  Task 1 core
 //
 //  For each muscle in the diagnostic catalogue:
-//    • If ANY clicked zone matches a phrase in primary_pain_zone   → w = 0.8
-//    • Else if ANY clicked zone matches referred_pain_zones         → w = 0.2
+//    • If ANY clicked zone matches a phrase in primary_pain_zone   → w = 0.75
+//    • Else if ANY clicked zone matches referred_pain_zones         → w = 0.25
 //    • Else                                                         → skip
 //
 //  The per-muscle weight is the maximum category hit (primary wins over
@@ -471,6 +521,40 @@ export function calculateMuscleContribution(
       if (a.matchType !== b.matchType)     return a.matchType === 'primary' ? -1 : 1
       return a.muscle_id.localeCompare(b.muscle_id)
     })
+}
+
+export function buildGroupedContributions(
+  contributions: MuscleContribution[],
+): MuscleGroupContribution[] {
+  const groups = new Map<string, MuscleGroupContribution>()
+
+  for (const c of contributions) {
+    const groupId = MUSCLE_TO_GROUP[c.muscle_id] ?? c.muscle_id
+    const groupName = MUSCLE_GROUP_LABELS[groupId] ?? c.common_name
+    const existing = groups.get(groupId)
+
+    if (!existing) {
+      groups.set(groupId, {
+        groupId,
+        groupName,
+        probability: c.probability,
+        rawWeight: c.rawWeight,
+        children: [c],
+      })
+      continue
+    }
+
+    existing.probability += c.probability
+    existing.rawWeight += c.rawWeight
+    existing.children.push(c)
+  }
+
+  return [...groups.values()]
+    .map((g) => ({
+      ...g,
+      children: [...g.children].sort((a, b) => b.probability - a.probability),
+    }))
+    .sort((a, b) => b.probability - a.probability)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

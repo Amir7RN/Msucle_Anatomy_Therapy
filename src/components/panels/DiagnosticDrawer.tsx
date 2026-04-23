@@ -34,10 +34,10 @@ export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
 
   if (!result) return null
 
-  const { contributions, clickPoint } = result
+  const { groupedContributions, clickPoint } = result
   const clickVec = new THREE.Vector3(...clickPoint)
 
-  if (contributions.length === 0) {
+  if (groupedContributions.length === 0) {
     return (
       <aside className="fixed right-4 top-20 w-80 rounded-lg border border-neutral-700 bg-neutral-900/95 p-4 text-neutral-100 shadow-xl backdrop-blur">
         <header className="mb-2 flex items-center justify-between">
@@ -56,6 +56,14 @@ export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
     if (!meshId) return
     setHovered(meshId)
     setDiagnosticPulse(meshId)
+  }
+  const handleGroupHoverIn = (contributions: MuscleContribution[]) => {
+    const meshIds = contributions
+      .map((c) => pickSideFromClick(c.meshIds, clickVec))
+      .filter(Boolean) as string[]
+    if (meshIds.length === 0) return
+    setHovered(meshIds[0])
+    setDiagnosticPulse(meshIds[0])
   }
   const handleHoverOut = () => {
     setHovered(null)
@@ -80,18 +88,17 @@ export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
       </header>
 
       <ul className="space-y-1.5">
-        {contributions.map((c) => (
-          <li key={c.muscle_id}>
-            <button
-              onMouseEnter={() => handleHoverIn(c)}
+        {groupedContributions.map((group) => (
+          <li key={group.groupId} className="rounded-md border border-neutral-800/80 bg-neutral-900/70">
+            <div
+              onMouseEnter={() => handleGroupHoverIn(group.children)}
               onMouseLeave={handleHoverOut}
-              onClick={() => handleSelect(c)}
-              className="group flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left transition-colors hover:bg-neutral-800"
+              className="flex items-center justify-between px-2 py-1.5"
             >
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm">{c.common_name}</div>
+                <div className="truncate text-sm font-semibold">{group.groupName}</div>
                 <div className="text-[10px] uppercase tracking-wider text-neutral-500">
-                  {c.matchType === 'primary' ? 'primary zone' : 'referred zone'}
+                  {group.children.length} candidate muscle{group.children.length > 1 ? 's' : ''}
                 </div>
               </div>
               <div className="ml-3 flex w-24 items-center gap-2">
@@ -99,16 +106,39 @@ export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
                   <div
                     className="absolute left-0 top-0 h-full rounded-full"
                     style={{
-                      width:           `${Math.round(c.probability * 100)}%`,
-                      backgroundColor: c.matchType === 'primary' ? '#FF8C00' : '#B45309',
+                      width:           `${Math.round(group.probability * 100)}%`,
+                      backgroundColor: '#FF8C00',
                     }}
                   />
                 </div>
                 <span className="w-9 text-right text-xs tabular-nums text-neutral-200">
-                  {Math.round(c.probability * 100)}%
+                  {Math.round(group.probability * 100)}%
                 </span>
               </div>
-            </button>
+            </div>
+
+            <ul className="space-y-1 border-t border-neutral-800/80 px-2 py-1.5">
+              {group.children.map((c) => (
+                <li key={c.muscle_id}>
+                  <button
+                    onMouseEnter={() => handleHoverIn(c)}
+                    onMouseLeave={handleHoverOut}
+                    onClick={() => handleSelect(c)}
+                    className="group flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left transition-colors hover:bg-neutral-800"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs text-neutral-200">{c.common_name}</div>
+                      <div className="text-[10px] uppercase tracking-wider text-neutral-500">
+                        {c.matchType === 'primary' ? 'primary zone' : 'referred zone'}
+                      </div>
+                    </div>
+                    <span className="ml-3 w-9 text-right text-[11px] tabular-nums text-neutral-300">
+                      {Math.round(c.probability * 100)}%
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
           </li>
         ))}
       </ul>
