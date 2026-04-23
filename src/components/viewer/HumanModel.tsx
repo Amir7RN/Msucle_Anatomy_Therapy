@@ -375,6 +375,7 @@ function GLTFScene({ path }: { path: string }) {
   const setHovered    = useAtlasStore((s) => s.setHovered)
   const setModelStatus = useAtlasStore((s) => s.setModelStatus)
   const diagnosticPulseId = useAtlasStore((s) => s.diagnosticPulseId)
+  const candidateMuscles  = useAtlasStore((s) => s.candidateMuscles)
 
   // Area-to-Muscle click handler (returns false when diagnosticMode is off,
   // so the legacy Muscle-to-Pain path below runs unchanged).
@@ -383,13 +384,26 @@ function GLTFScene({ path }: { path: string }) {
   // Pulse effect on drawer-hover — modulates emissive intensity only.
   // applyMeshState overwrites emissiveIntensity on its next run, so no leak.
   useFrame(({ clock }) => {
-    if (!diagnosticPulseId) return
+    if (!diagnosticPulseId && candidateMuscles.length === 0) return
+    const candidateSet = new Set(candidateMuscles)
     scene.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh)) return
-      if (obj.userData.structureId !== diagnosticPulseId) return
+      const structureId = obj.userData.structureId as string | undefined
+      if (!structureId) return
+
+      const isHoveredPulse = diagnosticPulseId === structureId
+      const isCandidatePulse = candidateSet.has(structureId)
+      if (!isHoveredPulse && !isCandidatePulse) return
+
       const mat = (Array.isArray(obj.material) ? obj.material[0] : obj.material) as THREE.MeshStandardMaterial
       if (!mat?.emissive) return
-      mat.emissiveIntensity = 0.35 + 0.5 * (0.5 + 0.5 * Math.sin(clock.elapsedTime * 8.8))
+      if (isHoveredPulse) {
+        mat.emissive.set('#FFFFFF')
+        mat.emissiveIntensity = 0.7 + 0.8 * (0.5 + 0.5 * Math.sin(clock.elapsedTime * 10))
+      } else {
+        mat.emissive.set('#FFFFFF')
+        mat.emissiveIntensity = 1.5 * (0.5 + 0.5 * Math.sin(clock.elapsedTime * 8))
+      }
     })
   })
 
@@ -419,6 +433,9 @@ function GLTFScene({ path }: { path: string }) {
   //   Requires indexed geometry + UV attributes; silently skipped otherwise.
   //
   useEffect(() => {
+    const hasCandidates = candidateMuscles.length > 0
+    const candidateSet = new Set(candidateMuscles)
+
     scene.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh)) return
       obj.castShadow    = true
@@ -475,6 +492,7 @@ function GLTFScene({ path }: { path: string }) {
         }
         obj.geometry.setAttribute('tendonMask', new THREE.BufferAttribute(mask, 1))
       }
+
     })
   }, [scene])
 
@@ -521,6 +539,9 @@ function GLTFScene({ path }: { path: string }) {
 
   // ── Material + visibility update ─────────────────────────────────────────
   useEffect(() => {
+    const hasCandidates = candidateMuscles.length > 0
+    const candidateSet = new Set(candidateMuscles)
+
     scene.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh)) return
 
@@ -532,6 +553,7 @@ function GLTFScene({ path }: { path: string }) {
       const layer      = (meta?.layer  ?? obj.userData.layer ?? 'superficial') as LayerType
       const isSelected = id ? selectedId === id : false
       const isHovered  = id ? hoveredId  === id : false
+      const isCandidate = id ? candidateSet.has(id) : false
 
       const visState = id
         ? resolveStructureVisibility(
@@ -546,6 +568,21 @@ function GLTFScene({ path }: { path: string }) {
       const roughness = muscleRoughness(id)
 
       applyMeshState(obj, { hexColor, baseColor, roughness, isSelected, isHovered, visState, fiberNormalMap })
+
+      if (hasCandidates && !isSelected && visState === 'visible') {
+        const pMat = Array.isArray(obj.material) ? obj.material[0] : obj.material
+        if (pMat instanceof THREE.MeshStandardMaterial) {
+          pMat.transparent = true
+          pMat.opacity = isCandidate ? 1 : 0.2
+          pMat.depthWrite = false
+          if (isCandidate) {
+            pMat.emissive.set('#FFFFFF')
+            pMat.emissiveIntensity = 0
+          } else {
+            pMat.emissiveIntensity = 0
+          }
+        }
+      }
 
       // ── Arm-priority depth override ───────────────────────────────────────
       //
@@ -567,7 +604,7 @@ function GLTFScene({ path }: { path: string }) {
         obj.renderOrder = 0
       }
     })
-  }, [scene, sceneIndex, selectedId, hoveredId, hiddenIds, hiddenLayers, ghostedLayers, isolateMode, ghostMode, fiberNormalMap])
+  }, [scene, sceneIndex, selectedId, hoveredId, hiddenIds, hiddenLayers, ghostedLayers, isolateMode, ghostMode, fiberNormalMap, candidateMuscles])
 
   // ── Pointer handlers ──────────────────────────────────────────────────────
   //

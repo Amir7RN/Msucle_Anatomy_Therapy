@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { MousePointerClick, Tag, Layers, MapPin, ArrowRightLeft, Zap, Brain, StickyNote, Hash, Activity, Play, Pause, RotateCcw } from 'lucide-react'
+import { MousePointerClick, Tag, MapPin, Zap, Brain, Activity, Play } from 'lucide-react'
 import { useAtlasStore } from '../../store/atlasStore'
 import { Badge, systemBadgeColor, layerBadgeColor } from '../ui/Badge'
 import { Button } from '../ui/Button'
@@ -230,6 +230,16 @@ export function MetadataPanel() {
 
   if (!selectedId || !meta) return <EmptyState />
 
+  const speakPainPattern = () => {
+    if (!pain?.description || typeof window === 'undefined' || !window.speechSynthesis) return
+    window.speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(pain.description)
+    utterance.rate = 0.95
+    utterance.pitch = 1.0
+    utterance.lang = 'en-US'
+    window.speechSynthesis.speak(utterance)
+  }
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
@@ -271,31 +281,8 @@ export function MetadataPanel() {
       <div className="flex-1 overflow-y-auto px-4 pb-4">
         <SynonymsRow synonyms={meta.synonyms} />
 
-        <MetaRow
-          icon={<MapPin size={10} />}
-          label="Origin"
-          value={meta.origin}
-        />
-        <MetaRow
-          icon={<ArrowRightLeft size={10} />}
-          label="Insertion"
-          value={meta.insertion}
-        />
-        <MetaRow
-          icon={<Zap size={10} />}
-          label="Action"
-          value={meta.action}
-        />
-        <MetaRow
-          icon={<Brain size={10} />}
-          label="Innervation"
-          value={meta.innervation}
-        />
-        <MetaRow
-          icon={<StickyNote size={10} />}
-          label="Notes"
-          value={meta.notes}
-        />
+        {/* ── Exercise Videos ─────────────────────────────────────────────── */}
+        <ExerciseVideos muscleId={selectedId} />
 
         {/* ── Pain Referral Pattern ──────────────────────────────────────── */}
         {pain && (
@@ -304,6 +291,14 @@ export function MetadataPanel() {
               <div className="flex items-center gap-1.5 text-[10px] font-semibold text-red-500 dark:text-red-400 uppercase tracking-wide">
                 <Activity size={10} />
                 Pain Referral Pattern
+                <button
+                  onClick={speakPainPattern}
+                  className="rounded border border-red-300/70 dark:border-red-700 px-1 py-0.5 text-[10px] leading-none hover:bg-red-50 dark:hover:bg-red-900/25"
+                  title="Read pain referral pattern aloud"
+                  aria-label="Read pain referral pattern aloud"
+                >
+                  🎤
+                </button>
               </div>
               <button
                 onClick={togglePainOverlay}
@@ -323,32 +318,9 @@ export function MetadataPanel() {
           </div>
         )}
 
-        {/* ── Exercise Videos (demo: biceps femoris only) ────────────────── */}
-        <ExerciseVideos muscleId={selectedId} />
-
-        {/* Structure ID */}
-        <div className="pt-3 mt-1">
-          <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-300 dark:text-slate-600 uppercase tracking-wide mb-0.5">
-            <Hash size={10} />
-            Structure ID
-          </div>
-          <code className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">{meta.id}</code>
-        </div>
-
-        {/* Mesh names */}
-        {meta.meshNames.length > 0 && (
-          <div className="pt-2">
-            <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-300 dark:text-slate-600 uppercase tracking-wide mb-1">
-              <Layers size={10} />
-              Mesh Names
-            </div>
-            <div className="flex flex-col gap-0.5">
-              {meta.meshNames.map((n) => (
-                <code key={n} className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">{n}</code>
-              ))}
-            </div>
-          </div>
-        )}
+        <MetaRow icon={<MapPin size={10} />} label="Origin" value={meta.origin} />
+        <MetaRow icon={<Zap size={10} />} label="Action" value={meta.action} />
+        <MetaRow icon={<Brain size={10} />} label="Intervention" value={meta.innervation} />
       </div>
     </div>
   )
