@@ -3,7 +3,6 @@ import { AppHeader }    from './components/layout/AppHeader'
 import { LeftSidebar }  from './components/layout/LeftSidebar'
 import { RightPanel }   from './components/layout/RightPanel'
 import { ViewerCanvas } from './components/viewer/ViewerCanvas'
-import { DiagnosticDrawer } from './components/panels/DiagnosticDrawer'
 import { useAtlasStore } from './store/atlasStore'
 import type { CameraPresetKey } from './lib/cameraUtils'
 
@@ -106,7 +105,6 @@ export default function App() {
         <main className="flex-1 min-w-0 relative">
           <ViewerCanvas />
           <DiagnosticModeToggle />
-          <DiagnosticDrawerMount />
         </main>
 
         {/* Right panel */}
@@ -137,12 +135,6 @@ function DiagnosticModeToggle() {
       {diagnosticMode ? 'Diagnostic: ON — click body to analyse' : 'Diagnostic Mode'}
     </button>
   )
-}
-
-function DiagnosticDrawerMount() {
-  const result        = useAtlasStore((s) => s.diagnosticResult)
-  const setDiagnostic = useAtlasStore((s) => s.setDiagnostic)
-  return <DiagnosticDrawer result={result} onClose={() => setDiagnostic(null)} />
 }
 
 // ── Status bar ────────────────────────────────────────────────────────────────
