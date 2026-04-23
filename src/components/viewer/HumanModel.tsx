@@ -50,6 +50,47 @@ const TENDON_WHITE = new THREE.Color('#F5F5F5')
 // ── Y coordinate of the floor grid in ViewerCanvas ───────────────────────────
 const GRID_Y = -0.925
 
+interface SegmentProxy {
+  center: THREE.Vector3
+  radii: THREE.Vector3
+}
+
+const SEGMENT_PROXIES: Record<string, SegmentProxy> = {
+  trunk:       { center: new THREE.Vector3(0.00, 0.07, 0.10), radii: new THREE.Vector3(0.16, 0.36, 0.15) },
+  shoulder_r:  { center: new THREE.Vector3(-0.16, 0.37, 0.06), radii: new THREE.Vector3(0.07, 0.07, 0.06) },
+  shoulder_l:  { center: new THREE.Vector3(0.16, 0.37, 0.06),  radii: new THREE.Vector3(0.07, 0.07, 0.06) },
+  upper_arm_r: { center: new THREE.Vector3(-0.16, 0.22, 0.07), radii: new THREE.Vector3(0.06, 0.18, 0.05) },
+  upper_arm_l: { center: new THREE.Vector3(0.16, 0.22, 0.07),  radii: new THREE.Vector3(0.06, 0.18, 0.05) },
+  forearm_r:   { center: new THREE.Vector3(-0.16, 0.03, 0.07), radii: new THREE.Vector3(0.05, 0.16, 0.04) },
+  forearm_l:   { center: new THREE.Vector3(0.16, 0.03, 0.07),  radii: new THREE.Vector3(0.05, 0.16, 0.04) },
+  thigh_r:     { center: new THREE.Vector3(-0.09, -0.33, 0.09), radii: new THREE.Vector3(0.08, 0.28, 0.07) },
+  thigh_l:     { center: new THREE.Vector3(0.09, -0.33, 0.09),  radii: new THREE.Vector3(0.08, 0.28, 0.07) },
+  shank_r:     { center: new THREE.Vector3(-0.08, -0.66, 0.07), radii: new THREE.Vector3(0.06, 0.20, 0.05) },
+  shank_l:     { center: new THREE.Vector3(0.08, -0.66, 0.07),  radii: new THREE.Vector3(0.06, 0.20, 0.05) },
+}
+
+function inferProxyForStructure(id: string): SegmentProxy | null {
+  if (id.includes('DELTOID') || id.includes('SUPRASPINATUS') || id.includes('INFRASPINATUS') || id.includes('TERES') || id.includes('SUBSCAPULARIS')) {
+    return id.endsWith('_R') ? SEGMENT_PROXIES.shoulder_r : SEGMENT_PROXIES.shoulder_l
+  }
+  if (id.includes('BICEPS') || id.includes('TRICEPS') || id.includes('BRACHIALIS') || id.includes('CORACOBRACHIALIS')) {
+    return id.endsWith('_R') ? SEGMENT_PROXIES.upper_arm_r : SEGMENT_PROXIES.upper_arm_l
+  }
+  if (id.includes('EXTENSOR') || id.includes('FLEXOR') || id.includes('PALMARIS') || id.includes('BRACHIORADIALIS')) {
+    return id.endsWith('_R') ? SEGMENT_PROXIES.forearm_r : SEGMENT_PROXIES.forearm_l
+  }
+  if (id.includes('FEMORIS') || id.includes('VASTUS') || id.includes('GRACILIS') || id.includes('ADDUCTOR') || id.includes('TENSOR_FASCIAE')) {
+    return id.endsWith('_R') ? SEGMENT_PROXIES.thigh_r : SEGMENT_PROXIES.thigh_l
+  }
+  if (id.includes('GASTROCNEMIUS') || id.includes('SOLEUS') || id.includes('POPLITEUS') || id.includes('TIBIALIS')) {
+    return id.endsWith('_R') ? SEGMENT_PROXIES.shank_r : SEGMENT_PROXIES.shank_l
+  }
+  if (id.includes('TRAPEZIUS') || id.includes('LATISSIMUS') || id.includes('PECTORALIS') || id.includes('RECTUS_ABDOMINIS') || id.includes('OBLIQUE') || id.includes('ERECTOR') || id.includes('MULTIFIDUS') || id.includes('QUADRATUS') || id.includes('ILIACUS') || id.includes('PSOAS') || id.includes('PIRIFORMIS') || id.includes('GLUTEUS')) {
+    return SEGMENT_PROXIES.trunk
+  }
+  return null
+}
+
 // ── Arm muscles that are clipped by the BodySurface arm segments ──────────────
 //
 // These five muscles sit on or just inside the arm silhouette and lose the
@@ -494,6 +535,7 @@ function GLTFScene({ path }: { path: string }) {
         }
         obj.geometry.setAttribute('tendonMask', new THREE.BufferAttribute(mask, 1))
       }
+
     })
   }, [scene])
 
@@ -567,6 +609,29 @@ function GLTFScene({ path }: { path: string }) {
       const hexColor  = resolveColor(system, isHovered, isSelected, id, meta?.layer as LayerType | undefined)
       const baseColor = muscleColor(id, meta?.layer as LayerType | undefined)
       const roughness = muscleRoughness(id)
+
+      // Surface-normal alignment against procedural mannequin proxy volumes.
+      if (id && !obj.userData.surfaceAligned) {
+        const proxy = inferProxyForStructure(id)
+        if (proxy) {
+          const box = new THREE.Box3().setFromObject(obj)
+          const center = box.getCenter(new THREE.Vector3())
+          const rel = center.clone().sub(proxy.center)
+          const n = new THREE.Vector3(
+            rel.x / Math.max(proxy.radii.x * proxy.radii.x, 1e-6),
+            rel.y / Math.max(proxy.radii.y * proxy.radii.y, 1e-6),
+            rel.z / Math.max(proxy.radii.z * proxy.radii.z, 1e-6),
+          ).normalize()
+          const onSurface = proxy.center.clone().add(new THREE.Vector3(
+            n.x * proxy.radii.x,
+            n.y * proxy.radii.y,
+            n.z * proxy.radii.z,
+          ))
+          const delta = onSurface.sub(center).multiplyScalar(0.12).addScaledVector(n, 0.005)
+          obj.position.add(delta)
+          obj.userData.surfaceAligned = true
+        }
+      }
 
       applyMeshState(obj, { hexColor, baseColor, roughness, isSelected, isHovered, visState, fiberNormalMap })
 
