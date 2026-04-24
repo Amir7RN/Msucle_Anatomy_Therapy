@@ -1,12 +1,13 @@
-import React, { useEffect, useRef, useState } from 'react'
-import { MousePointerClick, MapPin, Zap, StickyNote, Activity, Play, Mic, Square } from 'lucide-react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import * as THREE from 'three'
+import { MousePointerClick, MapPin, Zap, StickyNote, Activity, Play, Mic, Square, Volume2, ChevronDown, ChevronRight } from 'lucide-react'
 import { useAtlasStore } from '../../store/atlasStore'
 import { Badge, systemBadgeColor, layerBadgeColor } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { REGION_LABELS, SIDE_LABELS, SYSTEM_LABELS, LAYER_LABELS } from '../../lib/structureMapper'
 import { PAIN_PATTERNS } from '../../data/painPatterns'
 import {
-  groupContributions,
+  groupContributionsForDisplay,
   isGrouped,
   pickSideFromClick,
   type DiagnosticResult,
@@ -313,7 +314,7 @@ function LikelySources({ result, onClose }: { result: DiagnosticResult; onClose?
 
   const { contributions, clickPoint } = result
   const clickVec = useMemo(() => new THREE.Vector3(...clickPoint), [clickPoint])
-  const grouped  = useMemo(() => groupContributions(contributions), [contributions])
+  const grouped  = useMemo(() => groupContributionsForDisplay(contributions), [contributions])
 
   const hoverItem = (meshIds: string[]) => {
     const id = pickSideFromClick(meshIds, clickVec)
@@ -366,7 +367,7 @@ function LikelySources({ result, onClose }: { result: DiagnosticResult; onClose?
         <p className="text-xs text-slate-400 px-1">No patterns match this area.</p>
       ) : (
         <ul className="space-y-1">
-          {grouped.map((item) => {
+          {grouped.map((item: DiagnosticDisplayItem) => {
             if (isGrouped(item)) {
               const isExpanded = expandedGroups.has(item.label)
               return (
@@ -551,7 +552,7 @@ export function MetadataPanel() {
 
       {/* Scrollable detail rows */}
       <div className="flex-1 overflow-y-auto px-4 pb-4">
-        <ExerciseVideos muscleId={selectedId} />
+        {selectedId && <ExerciseVideos muscleId={selectedId} />}
 
         <MetaRow
           icon={<Activity size={10} />}
@@ -594,7 +595,7 @@ export function MetadataPanel() {
         <MetaRow
           icon={<StickyNote size={10} />}
           label="Intervention"
-          value={meta.notes}
+          value={meta?.notes}
         />
       </div>
     </div>

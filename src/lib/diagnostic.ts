@@ -635,74 +635,61 @@ export function isGrouped(item: DiagnosticDisplayItem): item is GroupedMuscleCon
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  groupContributions
+//  groupContributionsForDisplay
 //
 //  Rules:
 //  • Check every MUSCLE_GROUP.  If 2+ members appear in contributions, collapse
 //    them into a GroupedMuscleContribution.
 //  • If only 1 member from a group appears, leave it as a flat item.
 //  • Remaining flat items keep their original probability order.
-//  • Final sort: descending by probability (group uses totalProbability).
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function groupContributions(
+export function groupContributionsForDisplay(
   contributions: MuscleContribution[],
 ): DiagnosticDisplayItem[] {
-  const idSet    = new Set(contributions.map((c) => c.muscle_id))
-  const consumed = new Set<string>()
-  const groups:  GroupedMuscleContribution[] = []
+  const used = new Set<string>()
+  const result: DiagnosticDisplayItem[] = []
 
-  for (const groupDef of MUSCLE_GROUPS) {
-    const matching = groupDef.members
-      .filter((m) => idSet.has(m))
-      .map((m) => contributions.find((c) => c.muscle_id === m)!)
-      .filter(Boolean)
+  for (const group of MUSCLE_GROUPS) {
+    const members = contributions.filter((c) => group.members.includes(c.muscle_id))
+    if (members.length < 2) continue  // leave solo members as flat items
 
-    if (matching.length >= 2) {
-      matching.forEach((c) => consumed.add(c.muscle_id))
-      const totalProbability = matching.reduce((s, c) => s + c.probability, 0)
-      const hasP = matching.some((c) => c.matchType === 'primary')
-      const hasR = matching.some((c) => c.matchType === 'referred')
-      const meshIdSet = new Set(matching.flatMap((c) => c.meshIds))
-      groups.push({
-        type:             'group',
-        label:            groupDef.label,
-        totalProbability,
-        matchType:        hasP && hasR ? 'mixed' : hasP ? 'primary' : 'referred',
-        members:          matching,
-        meshIds:          [...meshIdSet],
-      })
+    members.forEach((m) => used.add(m.muscle_id))
+
+    const matchTypes = new Set(members.map((m) => m.matchType))
+    const matchType: GroupedMuscleContribution['matchType'] =
+      matchTypes.size > 1 ? 'mixed' : (matchTypes.values().next().value as 'primary' | 'referred')
+
+    const totalProbability = Math.min(
+      1,
+      members.reduce((sum, m) => sum + m.probability, 0),
+    )
+
+    const meshIds = [...new Set(members.flatMap((m) => m.meshIds))]
+
+    result.push({
+      type:  'group',
+      label: group.label,
+      totalProbability,
+      matchType,
+      members,
+      meshIds,
+    })
+  }
+
+  // Append remaining flat items (not consumed by a group) in their original order
+  for (const c of contributions) {
+    if (!used.has(c.muscle_id)) {
+      result.push(c)
     }
   }
 
-  // Flat items not consumed by any group (in original contribution order)
-  const flat = contributions.filter((c) => !consumed.has(c.muscle_id))
-
-  const result: DiagnosticDisplayItem[] = [...groups, ...flat]
-
-  // Sort descending by probability
-  return result.sort((a, b) => {
-    const pa = isGrouped(a) ? a.totalProbability : (a as MuscleContribution).probability
-    const pb = isGrouped(b) ? b.totalProbability : (b as MuscleContribution).probability
+  // Sort: groups first by totalProbability, flats by probability
+  result.sort((a, b) => {
+    const pa = isGrouped(a) ? a.totalProbability : a.probability
+    const pb = isGrouped(b) ? b.totalProbability : b.probability
     return pb - pa
   })
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  pickCandidateMeshIds
-//
-//  For a diagnostic result, compute the side-aware set of all mesh IDs that
-//  should glow simultaneously in the 3D viewer.
-// ─────────────────────────────────────────────────────────────────────────────
-
-export function pickCandidateMeshIds(
-  contributions: MuscleContribution[],
-  clickPoint:    THREE.Vector3,
-): Set<string> {
-  const ids = new Set<string>()
-  for (const c of contributions) {
-    const id = pickSideFromClick(c.meshIds, clickPoint)
-    if (id) ids.add(id)
-  }
-  return ids
+  return result
 }
