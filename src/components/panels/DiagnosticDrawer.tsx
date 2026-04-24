@@ -47,7 +47,7 @@ export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
     )
   }
 
-  const handleHoverIn = (c: MuscleContribution) => {
+  const handleHoverMuscle = (c: MuscleContribution) => {
     const meshId = pickSideFromClick(c.meshIds, clickVec)
     if (!meshId) return
     setHovered(meshId)
@@ -59,7 +59,7 @@ export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
     setDiagnosticPulse(null)
   }
 
-  const handleSelect = (c: MuscleContribution) => {
+  const handleSelectMuscle = (c: MuscleContribution) => {
     const meshId = pickSideFromClick(c.meshIds, clickVec)
     if (!meshId) return
     setDiagnosticPulse(null)
@@ -83,56 +83,55 @@ export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
       </header>
 
       <ul className="space-y-1.5">
-        {grouped.map((entry) => (
-          <li key={entry.id} className="rounded-md border border-neutral-800/80">
-            <div
-              onMouseEnter={() => handleGroupHover(entry)}
-              onMouseLeave={handleHoverOut}
-              className="group flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left transition-colors hover:bg-neutral-800"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm">{entry.label}</div>
-                {entry.muscles.length > 1 && (
-                  <div className="text-[10px] uppercase tracking-wider text-neutral-500">{entry.muscles.length} muscles</div>
-                )}
-              </div>
-              <span className="w-9 text-right text-xs tabular-nums text-neutral-200">
-                {Math.round(entry.probability * 100)}%
-              </span>
-            </div>
+        {grouped.map((entry) => {
+          const isSingle = entry.muscles.length === 1
 
-            {entry.muscles.length > 1 && (
-              <ul className="mb-1 ml-2 mr-1 space-y-1 border-l border-neutral-800 pl-2">
-                {entry.muscles.map((muscle) => (
-                  <li key={muscle.muscle_id}>
-                    <button
-                      onMouseEnter={() => handleHoverIn(muscle)}
-                      onMouseLeave={handleHoverOut}
-                      onClick={() => handleSelect(muscle)}
-                      className="flex w-full items-center justify-between rounded-md px-2 py-1 text-left transition-colors hover:bg-neutral-800"
-                    >
-                      <span className="truncate text-xs">{muscle.common_name}</span>
-                      <span className="w-9 text-right text-[11px] tabular-nums text-neutral-300">
-                        {Math.round(muscle.probability * 100)}%
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            {entry.muscles.length === 1 && (
-              <button
-                onMouseEnter={() => handleHoverIn(entry.muscles[0])}
+          return (
+            <li key={entry.id} className="rounded-md border border-neutral-800/80">
+              {/* Row header — clickable if single muscle, hover-only if group */}
+              <div
+                role={isSingle ? 'button' : undefined}
+                tabIndex={isSingle ? 0 : undefined}
+                onMouseEnter={() => isSingle ? handleHoverMuscle(entry.muscles[0]) : handleGroupHover(entry)}
                 onMouseLeave={handleHoverOut}
-                onClick={() => handleSelect(entry.muscles[0])}
-                className="mb-1 ml-2 mr-1 w-[calc(100%-0.75rem)] rounded-md border border-neutral-800 px-2 py-1 text-left text-xs text-neutral-300 hover:bg-neutral-800"
+                onClick={isSingle ? () => handleSelectMuscle(entry.muscles[0]) : undefined}
+                onKeyDown={isSingle ? (e) => { if (e.key === 'Enter' || e.key === ' ') handleSelectMuscle(entry.muscles[0]) } : undefined}
+                className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left transition-colors hover:bg-neutral-800 ${isSingle ? 'cursor-pointer' : 'cursor-default'}`}
               >
-                Select muscle
-              </button>
-            )}
-          </li>
-        ))}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm">{entry.label}</div>
+                  {!isSingle && (
+                    <div className="text-[10px] uppercase tracking-wider text-neutral-500">{entry.muscles.length} muscles</div>
+                  )}
+                </div>
+                <span className="w-9 text-right text-xs tabular-nums text-neutral-200">
+                  {Math.round(entry.probability * 100)}%
+                </span>
+              </div>
+
+              {/* Expanded sub-list for groups */}
+              {!isSingle && (
+                <ul className="mb-1 ml-2 mr-1 space-y-1 border-l border-neutral-800 pl-2">
+                  {entry.muscles.map((muscle) => (
+                    <li key={muscle.muscle_id}>
+                      <button
+                        onMouseEnter={() => handleHoverMuscle(muscle)}
+                        onMouseLeave={handleHoverOut}
+                        onClick={() => handleSelectMuscle(muscle)}
+                        className="flex w-full items-center justify-between rounded-md px-2 py-1 text-left transition-colors hover:bg-neutral-800"
+                      >
+                        <span className="truncate text-xs">{muscle.common_name}</span>
+                        <span className="w-9 text-right text-[11px] tabular-nums text-neutral-300">
+                          {Math.round(muscle.probability * 100)}%
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          )
+        })}
       </ul>
     </section>
   )

@@ -76,17 +76,22 @@ export const PRIMARY_WEIGHT  = 0.75
 export const REFERRED_WEIGHT = 0.25
 
 export const MUSCLE_GROUP_MAP: Record<string, string> = {
-  biceps_femoris:   'Hamstrings',
-  semitendinosus:   'Hamstrings',
-  semimembranosus:  'Hamstrings',
-  supraspinatus:    'Rotator Cuff',
-  infraspinatus:    'Rotator Cuff',
-  teres_minor:      'Rotator Cuff',
-  subscapularis:    'Rotator Cuff',
-  rectus_femoris:   'Quadriceps',
-  vastus_lateralis: 'Quadriceps',
-  vastus_medialis:  'Quadriceps',
+  biceps_femoris:     'Hamstrings',
+  semitendinosus:     'Hamstrings',
+  semimembranosus:    'Hamstrings',
+  supraspinatus:      'Rotator Cuff',
+  infraspinatus:      'Rotator Cuff',
+  teres_minor:        'Rotator Cuff',
+  subscapularis:      'Rotator Cuff',
+  rectus_femoris:     'Quadriceps',
+  vastus_lateralis:   'Quadriceps',
+  vastus_medialis:    'Quadriceps',
   vastus_intermedius: 'Quadriceps',
+  // All three deltoid heads share overlapping pain referral zones and
+  // largely overlap in rehab (shoulder press, lateral raises, band work).
+  deltoid_anterior:   'Deltoid',
+  deltoid_lateral:    'Deltoid',
+  deltoid_posterior:  'Deltoid',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -546,11 +551,13 @@ export function filterMeshIdsBySide(
   clickPoint: THREE.Vector3,
 ): string[] {
   if (meshIds.length <= 1) return meshIds
-  if (clickPoint.x > 0) {
+  // GLB anatomical convention: patient's RIGHT side sits at NEGATIVE world X
+  // (standard anatomical position viewed from front — patient's right is viewer's left).
+  if (clickPoint.x < 0) {
     const right = meshIds.filter((id) => id.endsWith('_R'))
     return right.length ? right : meshIds
   }
-  if (clickPoint.x < 0) {
+  if (clickPoint.x > 0) {
     const left = meshIds.filter((id) => id.endsWith('_L'))
     return left.length ? left : meshIds
   }
@@ -574,7 +581,8 @@ export function pickSideFromClick(
   const rightIds = meshIds.filter((id) => id.endsWith('_R'))
   const leftIds  = meshIds.filter((id) => id.endsWith('_L'))
   if (rightIds.length && leftIds.length) {
-    return clickPoint.x > 0 ? rightIds[0] : leftIds[0]
+    // Patient's RIGHT is at negative world X; patient's LEFT is at positive world X.
+    return clickPoint.x < 0 ? rightIds[0] : leftIds[0]
   }
   return meshIds[0]
 }

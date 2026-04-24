@@ -206,61 +206,84 @@ function EmptyState() {
 
 // ── Pain Voice Button ──────────────────────────────────────────────────────────
 
-// Ordered list of voice names known to sound natural/neural across browsers.
-// The first match found on the user's system is used.
-const PREFERRED_VOICE_NAMES = [
-  // Edge / Windows neural voices (highest quality on Windows)
-  'Microsoft Aria Online (Natural)',
-  'Microsoft Jenny Online (Natural)',
-  'Microsoft Guy Online (Natural)',
-  'Microsoft Steffan Online (Natural)',
-  // Chrome on macOS / Google voices (online, high quality)
-  'Google US English',
-  'Google UK English Female',
-  'Google UK English Male',
-  // macOS built-in (local but good quality)
-  'Samantha',
-  'Alex',
-  'Karen',
-  'Tessa',
-  // iOS / iPadOS
-  'Nicky',
-  'Siri',
-]
+/** Expand common medical shorthand so the TTS reads them as words, not letters. */
+function prepareTextForSpeech(raw: string): string {
+  return raw
+    // Anatomical directions
+    .replace(/\bant\./gi, 'anterior')
+    .replace(/\bpost\./gi, 'posterior')
+    .replace(/\blat\./gi, 'lateral')
+    .replace(/\bmed\./gi, 'medial')
+    .replace(/\bsup\./gi, 'superior')
+    .replace(/\binf\./gi, 'inferior')
+    // Common abbreviations
+    .replace(/\bm\./gi, 'muscle')
+    .replace(/\bnn?\./gi, 'nerve')
+    .replace(/\bv\./gi, 'vein')
+    .replace(/\ba\./gi, 'artery')
+    .replace(/\bL(\d)/g, 'lumbar $1')
+    .replace(/\bC(\d)/g, 'cervical $1')
+    .replace(/\bT(\d)/g, 'thoracic $1')
+    // Ensure sentences have breathing room (comma before conjunctions in long text)
+    .replace(/([^,])\s+(and|but|which|causing|resulting)\s/gi, '$1, $2 ')
+    // Replace semicolons with commas for more natural pausing
+    .replace(/;/g, ',')
+    .trim()
+}
 
+/** Pick the most human-sounding available voice. */
 function pickBestVoice(): SpeechSynthesisVoice | null {
   const voices = window.speechSynthesis.getVoices()
-  // 1. Try preferred names (exact or prefix match)
-  for (const name of PREFERRED_VOICE_NAMES) {
-    const v = voices.find((v) => v.name === name || v.name.startsWith(name))
-    if (v) return v
-  }
-  // 2. Any English online voice (these use server-side neural TTS)
+  if (!voices.length) return null
+
+  // 1. Microsoft Neural voices (Edge/Windows — best quality available in browser)
+  const msNeural = voices.find((v) =>
+    v.name.includes('Natural') && v.name.startsWith('Microsoft') && v.lang.startsWith('en')
+  )
+  if (msNeural) return msNeural
+
+  // 2. Any Microsoft online English voice
+  const msOnline = voices.find((v) =>
+    v.name.startsWith('Microsoft') && !v.localService && v.lang.startsWith('en')
+  )
+  if (msOnline) return msOnline
+
+  // 3. Google online voices (Chrome)
+  const google = voices.find((v) =>
+    v.name.startsWith('Google') && v.lang.startsWith('en')
+  )
+  if (google) return google
+
+  // 4. Any online (server-side) English voice
   const onlineEn = voices.find((v) => v.lang.startsWith('en') && !v.localService)
   if (onlineEn) return onlineEn
-  // 3. Any English local voice
-  const localEn = voices.find((v) => v.lang.startsWith('en'))
-  if (localEn) return localEn
-  // 4. Absolute fallback
-  return voices[0] ?? null
+
+  // 5. Preferred local voices (macOS / iOS — actually sound decent)
+  const goodLocals = ['Samantha', 'Karen', 'Tessa', 'Nicky', 'Alex']
+  for (const name of goodLocals) {
+    const v = voices.find((v) => v.name === name)
+    if (v) return v
+  }
+
+  // 6. Any English voice
+  return voices.find((v) => v.lang.startsWith('en')) ?? voices[0] ?? null
 }
 
 function PainVoiceButton({ text }: { text: string }) {
   const [speaking, setSpeaking] = useState(false)
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null)
 
-  // Trigger re-render when voices load (async in Chrome/Safari)
+  // Voices load asynchronously in Chrome; re-render when ready
   const [voicesReady, setVoicesReady] = useState(false)
   useEffect(() => {
     if (!('speechSynthesis' in window)) return
-    const update = () => setVoicesReady(true)
+    const update = () => setVoicesReady(window.speechSynthesis.getVoices().length > 0)
     window.speechSynthesis.addEventListener('voiceschanged', update)
-    // Already loaded (Firefox / some Safari versions)
     if (window.speechSynthesis.getVoices().length > 0) setVoicesReady(true)
     return () => window.speechSynthesis.removeEventListener('voiceschanged', update)
   }, [])
 
-  // Cancel when the text changes (muscle changed) or component unmounts
+  // Stop if the displayed text changes (user switched muscle)
   useEffect(() => {
     return () => { window.speechSynthesis?.cancel(); setSpeaking(false) }
   }, [text])
@@ -270,13 +293,17 @@ function PainVoiceButton({ text }: { text: string }) {
   const play = () => {
     const synth = window.speechSynthesis
     synth.cancel()
-    const utt = new SpeechSynthesisUtterance(text)
+
+    const cleaned = prepareTextForSpeech(text)
+    const utt = new SpeechSynthesisUtterance(cleaned)
     const voice = pickBestVoice()
     if (voice) utt.voice = voice
-    // Rate 0.92 — slightly slower than default (1.0) so technical terms land clearly
-    // Pitch 1.02 — barely above neutral; avoids the robotic flat-line monotone
-    utt.rate  = 0.92
-    utt.pitch = 1.02
+
+    // Slightly slower than default so neural voices sound measured, not rushed.
+    // Pitch stays at 1.0 (neutral) — neural voices already have natural inflection
+    // baked in; nudging pitch higher makes them sound synthetic.
+    utt.rate  = 0.90
+    utt.pitch = 1.0
     utt.lang  = 'en-US'
     utt.onend   = () => setSpeaking(false)
     utt.onerror = () => setSpeaking(false)
@@ -287,12 +314,11 @@ function PainVoiceButton({ text }: { text: string }) {
 
   const stop = () => { window.speechSynthesis.cancel(); setSpeaking(false) }
 
-  // Show grayed out until voices are available
   return (
     <button
       onClick={speaking ? stop : play}
       disabled={!voicesReady}
-      title={speaking ? 'Stop reading' : 'Read aloud (natural voice)'}
+      title={speaking ? 'Stop' : 'Read aloud'}
       className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border border-slate-600 text-slate-400 hover:text-slate-200 hover:border-slate-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
     >
       {speaking
