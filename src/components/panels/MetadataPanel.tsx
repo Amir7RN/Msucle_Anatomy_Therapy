@@ -29,44 +29,87 @@ interface ExerciseDef {
 const V = (file: string) => `${import.meta.env.BASE_URL}videos/${file}`
 
 // ── Deltoid exercises split by sub-head ──────────────────────────────────────
-// Task 2: Anterior head — front of shoulder, shoulder flexion pattern.
 const DELTOID_ANTERIOR_EXERCISES: ExerciseDef[] = [
-  { id: 'crab_press',         label: 'Crab Press',              subtitle: 'Anterior delt activation',   src: V('Crab_Press.mp4')               },
-  { id: 'doorway_stretch',    label: 'Doorway Stretch',         subtitle: 'Anterior deltoid release',   src: V('DoorWay_Stretch.mp4')          },
-  { id: 'hand_behind_back',   label: 'Behind Back Stretch',     subtitle: 'Internal rotation mob.',     src: V('Hand_Behind_Back_Stretch.mp4') },
-  { id: 'standing_chest',     label: 'Standing Chest Stretch',  subtitle: 'Pec & anterior delt',        src: V('Standing_Chest_Stretch.mp4')   },
+  { id: 'crab_press',        label: 'Crab Press',             subtitle: 'Anterior delt activation',  src: V('Crab_Press.mp4')               },
+  { id: 'doorway_stretch',   label: 'Doorway Stretch',        subtitle: 'Anterior deltoid release',  src: V('DoorWay_Stretch.mp4')          },
+  { id: 'hand_behind_back',  label: 'Behind Back Stretch',    subtitle: 'Internal rotation mob.',    src: V('Hand_Behind_Back_Stretch.mp4') },
+  { id: 'standing_chest',    label: 'Standing Chest Stretch', subtitle: 'Pec & anterior delt',       src: V('Standing_Chest_Stretch.mp4')   },
 ]
 
-// Task 2: Lateral head — outer shoulder, shoulder abduction pattern.
 const DELTOID_LATERAL_EXERCISES: ExerciseDef[] = [
-  { id: 'seated_cross_arm',   label: 'Seated Cross-Arm Stretch', subtitle: 'Lateral deltoid stretch',  src: V('Seated_Cross_Arm_Stretch.mp4') },
-  { id: 'standing_sleeper',   label: 'Sleeper Stretch',          subtitle: 'Posterior capsule mob.',   src: V('Standing_Sleeper_Stretch.mp4') },
+  { id: 'seated_cross_arm',  label: 'Seated Cross-Arm Stretch', subtitle: 'Lateral deltoid stretch', src: V('Seated_Cross_Arm_Stretch.mp4') },
+  { id: 'standing_sleeper',  label: 'Sleeper Stretch',          subtitle: 'Posterior capsule mob.',  src: V('Standing_Sleeper_Stretch.mp4') },
 ]
 
-// Generic fallback when the deltoid is selected without diagnostic sub-context.
 const DELTOID_ALL_EXERCISES: ExerciseDef[] = [
   ...DELTOID_ANTERIOR_EXERCISES,
   ...DELTOID_LATERAL_EXERCISES,
 ]
 
+// ── Rotator cuff exercises ────────────────────────────────────────────────────
+
+// Infraspinatus — primary external rotator; posterior scapula.
+const INFRASPINATUS_EXERCISES: ExerciseDef[] = [
+  { id: 'side_lying_er',     label: 'Side-Lying External Rotation', subtitle: 'Gold-standard IR strengthening', src: V('Side_Lying_External_Rotation.mp4')  },
+  { id: 'wand_rotation',     label: 'Wand Rotation',                subtitle: 'External rotation ROM',          src: V('Wand_Rotation.mp4')                 },
+  { id: 'post_shoulder',     label: 'Posterior Shoulder Stretch',   subtitle: 'Deep release for posterior cuff', src: V('Posterior_Shoulder_Stretch.mp4')    },
+]
+
+// Supraspinatus — initiates abduction; subacromial space stabiliser.
+const SUPRASPINATUS_EXERCISES: ExerciseDef[] = [
+  { id: 'wall_climb',        label: 'Wall Climb (to the side)',      subtitle: 'Low-load abduction rehab',        src: V('Wall_Climb_To_The_Side.mp4')            },
+  { id: 'scapular_reach',    label: 'Scapular Arm Reach',            subtitle: 'Scapulohumeral rhythm training',  src: V('Scapular_Arm_Reach_Lying_Down.mp4')     },
+  { id: 'pendulum',          label: 'Pendulum Swing',                subtitle: 'Joint decompression, early rehab', src: V('Pendulum_Swing.mp4')                   },
+]
+
+// Teres minor — external rotation + adduction; "little brother" to infraspinatus.
+const TERES_MINOR_EXERCISES: ExerciseDef[] = [
+  { id: 'high_low_rows',     label: 'High to Low Rows',              subtitle: 'Teres minor & lower trap',        src: V('High_To_Low_Rows.mp4')                  },
+  { id: 'up_back_stretch',   label: 'Up-the-Back Stretch',           subtitle: 'Stretches posterior cuff',        src: V('Up_The_Back_Shoulder_Stretch.mp4')      },
+  { id: 'supported_ext',     label: 'Supported Extensor Stretch',    subtitle: 'Posterior cuff lengthening',      src: V('Supported_Extensor_Stretch.mp4')        },
+]
+
+// ── Hamstring exercises ───────────────────────────────────────────────────────
+const HAMSTRING_EXERCISES: ExerciseDef[] = [
+  { id: 'hamstring_squeeze', label: 'Hamstring Squeeze',   subtitle: 'Isometric activation',   src: V('Hamstring_Squeeze.mp4')    },
+  { id: 'glute_bridge',      label: 'Glute Bridge',        subtitle: 'Hip extension & loading', src: V('Glute_Bridge_Exercise.mp4') },
+  { id: 'hip_hinge',         label: 'Hip Hinge',           subtitle: 'Eccentric hamstring',     src: V('Hip_Hinge_Exercise.mp4')   },
+]
+
+// ── Master lookup — keyed by both mesh ID and diagnostic muscle ID ────────────
 const EXERCISE_MAP: Record<string, ExerciseDef[]> = {
-  // Real mesh IDs — show all exercises when selected directly
-  MUSC_DELTOID_R: DELTOID_ALL_EXERCISES,
-  MUSC_DELTOID_L: DELTOID_ALL_EXERCISES,
-  // Diagnostic sub-muscle IDs — show targeted exercises
+  // Deltoid (mesh IDs → all; diagnostic sub-IDs → targeted)
+  MUSC_DELTOID_R:    DELTOID_ALL_EXERCISES,
+  MUSC_DELTOID_L:    DELTOID_ALL_EXERCISES,
   deltoid_anterior:  DELTOID_ANTERIOR_EXERCISES,
   deltoid_lateral:   DELTOID_LATERAL_EXERCISES,
-  deltoid_posterior: DELTOID_LATERAL_EXERCISES,  // posterior ≈ lateral rehab pattern
-  MUSC_BICEPS_FEMORIS_R: [
-    { id: 'hamstring_squeeze', label: 'Hamstring Squeeze',   subtitle: 'Isometric activation',   src: V('Hamstring_Squeeze.mp4')    },
-    { id: 'glute_bridge',     label: 'Glute Bridge',        subtitle: 'Hip extension & loading', src: V('Glute_Bridge_Exercise.mp4') },
-    { id: 'hip_hinge',        label: 'Hip Hinge',           subtitle: 'Eccentric hamstring',     src: V('Hip_Hinge_Exercise.mp4')   },
-  ],
-  MUSC_BICEPS_FEMORIS_L: [
-    { id: 'hamstring_squeeze', label: 'Hamstring Squeeze',   subtitle: 'Isometric activation',   src: V('Hamstring_Squeeze.mp4')    },
-    { id: 'glute_bridge',     label: 'Glute Bridge',        subtitle: 'Hip extension & loading', src: V('Glute_Bridge_Exercise.mp4') },
-    { id: 'hip_hinge',        label: 'Hip Hinge',           subtitle: 'Eccentric hamstring',     src: V('Hip_Hinge_Exercise.mp4')   },
-  ],
+  deltoid_posterior: DELTOID_LATERAL_EXERCISES,
+
+  // Infraspinatus
+  MUSC_INFRASPINATUS_R: INFRASPINATUS_EXERCISES,
+  MUSC_INFRASPINATUS_L: INFRASPINATUS_EXERCISES,
+  infraspinatus:        INFRASPINATUS_EXERCISES,
+
+  // Supraspinatus
+  MUSC_SUPRASPINATUS_R: SUPRASPINATUS_EXERCISES,
+  MUSC_SUPRASPINATUS_L: SUPRASPINATUS_EXERCISES,
+  supraspinatus:        SUPRASPINATUS_EXERCISES,
+
+  // Teres minor
+  MUSC_TERES_MINOR_R: TERES_MINOR_EXERCISES,
+  MUSC_TERES_MINOR_L: TERES_MINOR_EXERCISES,
+  teres_minor:        TERES_MINOR_EXERCISES,
+
+  // Hamstrings (mesh IDs → biceps femoris is the representative head)
+  MUSC_BICEPS_FEMORIS_R:    HAMSTRING_EXERCISES,
+  MUSC_BICEPS_FEMORIS_L:    HAMSTRING_EXERCISES,
+  MUSC_SEMITENDINOSUS_R:    HAMSTRING_EXERCISES,
+  MUSC_SEMITENDINOSUS_L:    HAMSTRING_EXERCISES,
+  MUSC_SEMIMEMBRANOSUS_R:   HAMSTRING_EXERCISES,
+  MUSC_SEMIMEMBRANOSUS_L:   HAMSTRING_EXERCISES,
+  biceps_femoris:            HAMSTRING_EXERCISES,
+  semitendinosus:            HAMSTRING_EXERCISES,
+  semimembranosus:           HAMSTRING_EXERCISES,
 }
 
 // ── Individual video thumbnail card ──────────────────────────────────────────
