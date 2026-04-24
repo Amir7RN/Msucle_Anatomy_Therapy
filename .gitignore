@@ -5,3 +5,5 @@ dist/
 .env
 # Large binary model files — check these in separately
 # public/models/*.glb
+vite.config.ts.timestamp-*
+Videos/
