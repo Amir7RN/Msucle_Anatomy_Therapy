@@ -38,14 +38,23 @@ interface AtlasState {
   showPainOverlay: boolean
 
   // Area-to-Muscle diagnostic
-  diagnosticMode:    boolean
-  diagnosticResult:  DiagnosticResult | null
-  diagnosticPulseId: string | null
-  candidateMuscles:  string[]
+  diagnosticMode:       boolean
+  diagnosticResult:     DiagnosticResult | null
+  diagnosticPulseId:    string | null
+  candidateMuscles:     string[]
+  /** The diagnostic muscle_id (e.g. 'deltoid_anterior') that triggered the
+   *  current selection — lets the sidebar show sub-muscle-specific videos even
+   *  though selectedId points to the real mesh ('MUSC_DELTOID_R'). Cleared
+   *  whenever the user selects by clicking a mesh directly. */
+  diagnosticSubMuscleId: string | null
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
   setSelected: (id: string | null) => void
+  /** Set selection from the diagnostic tool — atomically records the sub-muscle
+   *  context (e.g. 'deltoid_anterior') alongside the real mesh ID. */
+  setSelectedFromDiagnostic: (meshId: string, subMuscleId: string) => void
+  setDiagnosticSubMuscleId: (id: string | null) => void
   setHovered:  (id: string | null) => void
 
   toggleHidden:    (id: string) => void
@@ -111,13 +120,19 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   ghostMode:          false,
   showPainOverlay:    true,
 
-  diagnosticMode:     false,
-  diagnosticResult:   null,
-  diagnosticPulseId:  null,
-  candidateMuscles:   [],
+  diagnosticMode:        false,
+  diagnosticResult:      null,
+  diagnosticPulseId:     null,
+  candidateMuscles:      [],
+  diagnosticSubMuscleId: null,
 
   // ── Selection ─────────────────────────────────────────────────────────────
-  setSelected: (id) => set({ selectedId: id }),
+  // Direct mesh click — clears any diagnostic sub-muscle context.
+  setSelected: (id) => set({ selectedId: id, diagnosticSubMuscleId: null }),
+  // Diagnostic selection — atomically sets both mesh ID and sub-muscle context.
+  setSelectedFromDiagnostic: (meshId, subMuscleId) =>
+    set({ selectedId: meshId, diagnosticSubMuscleId: subMuscleId }),
+  setDiagnosticSubMuscleId: (id) => set({ diagnosticSubMuscleId: id }),
   setHovered:  (id) => set({ hoveredId:  id }),
 
   // ── Per-structure visibility ──────────────────────────────────────────────

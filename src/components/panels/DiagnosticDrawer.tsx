@@ -16,10 +16,10 @@ interface DiagnosticDrawerProps {
 }
 
 export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
-  const setSelected = useAtlasStore((s) => s.setSelected)
-  const setHovered = useAtlasStore((s) => s.setHovered)
-  const setDiagnosticPulse = useAtlasStore((s) => s.setDiagnosticPulse)
-  const setCandidateMuscles = useAtlasStore((s) => s.setCandidateMuscles)
+  const setSelectedFromDiagnostic = useAtlasStore((s) => s.setSelectedFromDiagnostic)
+  const setHovered                = useAtlasStore((s) => s.setHovered)
+  const setDiagnosticPulse        = useAtlasStore((s) => s.setDiagnosticPulse)
+  const setCandidateMuscles       = useAtlasStore((s) => s.setCandidateMuscles)
 
   if (!result) return null
 
@@ -63,7 +63,9 @@ export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
     const meshId = pickSideFromClick(c.meshIds, clickVec)
     if (!meshId) return
     setDiagnosticPulse(null)
-    setSelected(meshId)
+    // Atomically sets selectedId = meshId AND diagnosticSubMuscleId = muscle_id
+    // so MetadataPanel can show the correct sub-muscle videos (e.g. deltoid_anterior).
+    setSelectedFromDiagnostic(meshId, c.muscle_id)
     closeDrawer()
   }
 

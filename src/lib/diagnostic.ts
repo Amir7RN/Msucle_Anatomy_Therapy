@@ -310,9 +310,12 @@ export const DIAGNOSTIC_TO_MESH_IDS: Record<string, string[]> = {
   serratus_anterior:              ['MUSC_SERRATUS_ANTERIOR_R', 'MUSC_SERRATUS_ANTERIOR_L'],
   rectus_abdominis:               ['MUSC_RECTUS_ABDOMINIS'],
   external_oblique:               ['MUSC_EXTERNAL_OBLIQUE_R', 'MUSC_EXTERNAL_OBLIQUE_L'],
-  deltoid_anterior:               ['MUSC_DELTOID_ANTERIOR_R', 'MUSC_DELTOID_ANTERIOR_L'],
-  deltoid_lateral:                ['MUSC_DELTOID_LATERAL_R', 'MUSC_DELTOID_LATERAL_L'],
-  deltoid_posterior:              ['MUSC_DELTOID_POSTERIOR_R', 'MUSC_DELTOID_POSTERIOR_L'],
+  // All three deltoid heads share the single 'deltoid' GLB mesh — no separate
+  // ANTERIOR / LATERAL / POSTERIOR meshes exist in the model. Map all three
+  // sub-types to the real mesh so the 3D canvas highlights correctly.
+  deltoid_anterior:               ['MUSC_DELTOID_R', 'MUSC_DELTOID_L'],
+  deltoid_lateral:                ['MUSC_DELTOID_R', 'MUSC_DELTOID_L'],
+  deltoid_posterior:              ['MUSC_DELTOID_R', 'MUSC_DELTOID_L'],
   biceps_brachii:                 ['MUSC_BICEPS_BRACHII_R', 'MUSC_BICEPS_BRACHII_L'],
   triceps_brachii:                ['MUSC_TRICEPS_BRACHII_R', 'MUSC_TRICEPS_BRACHII_L'],
   brachioradialis:                ['MUSC_BRACHIORADIALIS_R', 'MUSC_BRACHIORADIALIS_L'],

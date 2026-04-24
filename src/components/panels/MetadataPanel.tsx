@@ -28,18 +28,35 @@ interface ExerciseDef {
 // Use BASE_URL so paths work both in local dev (/) and GitHub Pages (/Msucle_Anatomy_Therapy/)
 const V = (file: string) => `${import.meta.env.BASE_URL}videos/${file}`
 
-const DELTOID_EXERCISES: ExerciseDef[] = [
-  { id: 'crab_press',            label: 'Crab Press',               subtitle: 'Shoulder activation',       src: V('Crab_Press.mp4')               },
-  { id: 'doorway_stretch',       label: 'Doorway Stretch',          subtitle: 'Anterior deltoid release',  src: V('DoorWay_Stretch.mp4')          },
-  { id: 'hand_behind_back',      label: 'Hand Behind Back Stretch', subtitle: 'Internal rotation mob.',    src: V('Hand_Behind_Back_Stretch.mp4') },
-  { id: 'seated_cross_arm',      label: 'Seated Cross-Arm Stretch', subtitle: 'Posterior deltoid stretch', src: V('Seated_Cross_Arm_Stretch.mp4') },
-  { id: 'standing_chest',        label: 'Standing Chest Stretch',   subtitle: 'Pec & anterior delt',      src: V('Standing_Chest_Stretch.mp4')   },
-  { id: 'standing_sleeper',      label: 'Sleeper Stretch',          subtitle: 'Posterior capsule mob.',    src: V('Standing_Sleeper_Stretch.mp4') },
+// ── Deltoid exercises split by sub-head ──────────────────────────────────────
+// Task 2: Anterior head — front of shoulder, shoulder flexion pattern.
+const DELTOID_ANTERIOR_EXERCISES: ExerciseDef[] = [
+  { id: 'crab_press',         label: 'Crab Press',              subtitle: 'Anterior delt activation',   src: V('Crab_Press.mp4')               },
+  { id: 'doorway_stretch',    label: 'Doorway Stretch',         subtitle: 'Anterior deltoid release',   src: V('DoorWay_Stretch.mp4')          },
+  { id: 'hand_behind_back',   label: 'Behind Back Stretch',     subtitle: 'Internal rotation mob.',     src: V('Hand_Behind_Back_Stretch.mp4') },
+  { id: 'standing_chest',     label: 'Standing Chest Stretch',  subtitle: 'Pec & anterior delt',        src: V('Standing_Chest_Stretch.mp4')   },
+]
+
+// Task 2: Lateral head — outer shoulder, shoulder abduction pattern.
+const DELTOID_LATERAL_EXERCISES: ExerciseDef[] = [
+  { id: 'seated_cross_arm',   label: 'Seated Cross-Arm Stretch', subtitle: 'Lateral deltoid stretch',  src: V('Seated_Cross_Arm_Stretch.mp4') },
+  { id: 'standing_sleeper',   label: 'Sleeper Stretch',          subtitle: 'Posterior capsule mob.',   src: V('Standing_Sleeper_Stretch.mp4') },
+]
+
+// Generic fallback when the deltoid is selected without diagnostic sub-context.
+const DELTOID_ALL_EXERCISES: ExerciseDef[] = [
+  ...DELTOID_ANTERIOR_EXERCISES,
+  ...DELTOID_LATERAL_EXERCISES,
 ]
 
 const EXERCISE_MAP: Record<string, ExerciseDef[]> = {
-  MUSC_DELTOID_R: DELTOID_EXERCISES,
-  MUSC_DELTOID_L: DELTOID_EXERCISES,
+  // Real mesh IDs — show all exercises when selected directly
+  MUSC_DELTOID_R: DELTOID_ALL_EXERCISES,
+  MUSC_DELTOID_L: DELTOID_ALL_EXERCISES,
+  // Diagnostic sub-muscle IDs — show targeted exercises
+  deltoid_anterior:  DELTOID_ANTERIOR_EXERCISES,
+  deltoid_lateral:   DELTOID_LATERAL_EXERCISES,
+  deltoid_posterior: DELTOID_LATERAL_EXERCISES,  // posterior ≈ lateral rehab pattern
   MUSC_BICEPS_FEMORIS_R: [
     { id: 'hamstring_squeeze', label: 'Hamstring Squeeze',   subtitle: 'Isometric activation',   src: V('Hamstring_Squeeze.mp4')    },
     { id: 'glute_bridge',     label: 'Glute Bridge',        subtitle: 'Hip extension & loading', src: V('Glute_Bridge_Exercise.mp4') },
@@ -140,8 +157,13 @@ function VideoCard({
 
 function ExerciseVideos({ muscleId }: { muscleId: string }) {
   const [activeId, setActiveId] = useState<string | null>(null)
+  // When the selection came from the diagnostic tool, use the sub-muscle ID
+  // (e.g. 'deltoid_anterior') for a more targeted exercise lookup.
+  const subMuscleId = useAtlasStore((s) => s.diagnosticSubMuscleId)
 
-  const exercises = EXERCISE_MAP[muscleId]
+  const exercises = (subMuscleId && EXERCISE_MAP[subMuscleId])
+    ? EXERCISE_MAP[subMuscleId]
+    : EXERCISE_MAP[muscleId]
   if (!exercises) return null
 
   return (
