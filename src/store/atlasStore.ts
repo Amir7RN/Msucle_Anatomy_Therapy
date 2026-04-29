@@ -4,6 +4,20 @@ import { buildMetadataOnlyIndex } from '../lib/anatomyIndex'
 import type { CameraPresetKey } from '../lib/cameraUtils'
 import type { DiagnosticResult } from '../lib/diagnostic'
 
+// ── Per-limb pose transform ──────────────────────────────────────────────────
+
+export interface LimbTransform {
+  offsetX: number; offsetY: number; offsetZ: number
+  rotXDeg: number; rotYDeg: number; rotZDeg: number
+  scaleX:  number; scaleY:  number; scaleZ:  number
+}
+
+export const DEFAULT_LIMB_TRANSFORM: LimbTransform = {
+  offsetX: 0, offsetY: 0, offsetZ: 0,
+  rotXDeg: 0, rotYDeg: 0, rotZDeg: 0,
+  scaleX:  1, scaleY:  1, scaleZ:  1,
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface AtlasState {
@@ -42,6 +56,29 @@ interface AtlasState {
   diagnosticResult:     DiagnosticResult | null
   diagnosticPulseId:    string | null
   candidateMuscles:     string[]
+
+  // Meshy single-mesh anatomical base
+  useMeshyModel:        boolean
+  showMuscleDebug:      boolean
+
+  // Triage chat panel
+  triageOpen:           boolean
+
+  // Movement Assessment full-screen
+  movementOpen:         boolean
+
+  // Muscle-overlay calibration onto the Meshy body — non-uniform scale
+  muscleOverlayScaleX:  number
+  muscleOverlayScaleY:  number
+  muscleOverlayScaleZ:  number
+  muscleOverlayOffsetX: number
+  muscleOverlayOffsetY: number
+  muscleOverlayOffsetZ: number
+
+  // Per-limb 9-DOF pose calibration — translate XYZ + rotate XYZ + scale XYZ
+  // applied around the shoulder / hip pivot, with appropriate L/R mirroring.
+  armTransform: LimbTransform
+  legTransform: LimbTransform
   /** The diagnostic muscle_id (e.g. 'deltoid_anterior') that triggered the
    *  current selection — lets the sidebar show sub-muscle-specific videos even
    *  though selectedId points to the real mesh ('MUSC_DELTOID_R'). Cleared
@@ -89,6 +126,23 @@ interface AtlasState {
   setDiagnostic:        (result: DiagnosticResult | null) => void
   setDiagnosticPulse:   (id: string | null) => void
   setCandidateMuscles:  (ids: string[]) => void
+
+  toggleMeshyModel:     () => void
+  toggleMuscleDebug:    () => void
+  toggleTriage:         () => void
+  setTriageOpen:        (open: boolean) => void
+  toggleMovement:       () => void
+  setMovementOpen:      (open: boolean) => void
+
+  setMuscleOverlayScaleX:  (v: number) => void
+  setMuscleOverlayScaleY:  (v: number) => void
+  setMuscleOverlayScaleZ:  (v: number) => void
+  setMuscleOverlayOffsetX: (v: number) => void
+  setMuscleOverlayOffsetY: (v: number) => void
+  setMuscleOverlayOffsetZ: (v: number) => void
+  setArmTransform:         (patch: Partial<LimbTransform>) => void
+  setLegTransform:         (patch: Partial<LimbTransform>) => void
+  resetMuscleOverlay:      () => void
 }
 
 // ── Initial filter state ──────────────────────────────────────────────────────
@@ -125,6 +179,19 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   diagnosticPulseId:     null,
   candidateMuscles:      [],
   diagnosticSubMuscleId: null,
+
+  useMeshyModel:         true,    // overlay 52-mesh muscles onto male-normal.glb
+  showMuscleDebug:       false,
+  triageOpen:            false,
+  movementOpen:          false,
+  muscleOverlayScaleX:   1.0,
+  muscleOverlayScaleY:   1.0,
+  muscleOverlayScaleZ:   1.0,
+  muscleOverlayOffsetX:  0.0,
+  muscleOverlayOffsetY:  0.0,
+  muscleOverlayOffsetZ:  0.0,
+  armTransform:          { ...DEFAULT_LIMB_TRANSFORM },
+  legTransform:          { ...DEFAULT_LIMB_TRANSFORM },
 
   // ── Selection ─────────────────────────────────────────────────────────────
   // Direct mesh click — clears any diagnostic sub-muscle context.
@@ -251,6 +318,32 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   setDiagnostic:      (result) => set({ diagnosticResult: result }),
   setDiagnosticPulse: (id)     => set({ diagnosticPulseId: id }),
   setCandidateMuscles: (ids)   => set({ candidateMuscles: ids }),
+
+  toggleMeshyModel:  () => set((s) => ({ useMeshyModel: !s.useMeshyModel,    selectedId: null, hoveredId: null })),
+  toggleMuscleDebug: () => set((s) => ({ showMuscleDebug: !s.showMuscleDebug })),
+  toggleTriage:      () => set((s) => ({ triageOpen: !s.triageOpen })),
+  setTriageOpen:     (open) => set({ triageOpen: open }),
+  toggleMovement:    () => set((s) => ({ movementOpen: !s.movementOpen })),
+  setMovementOpen:   (open) => set({ movementOpen: open }),
+
+  setMuscleOverlayScaleX:  (v) => set({ muscleOverlayScaleX:  v }),
+  setMuscleOverlayScaleY:  (v) => set({ muscleOverlayScaleY:  v }),
+  setMuscleOverlayScaleZ:  (v) => set({ muscleOverlayScaleZ:  v }),
+  setMuscleOverlayOffsetX: (v) => set({ muscleOverlayOffsetX: v }),
+  setMuscleOverlayOffsetY: (v) => set({ muscleOverlayOffsetY: v }),
+  setMuscleOverlayOffsetZ: (v) => set({ muscleOverlayOffsetZ: v }),
+  setArmTransform:         (patch) => set((s) => ({ armTransform: { ...s.armTransform, ...patch } })),
+  setLegTransform:         (patch) => set((s) => ({ legTransform: { ...s.legTransform, ...patch } })),
+  resetMuscleOverlay:      () => set({
+    muscleOverlayScaleX:   1.0,
+    muscleOverlayScaleY:   1.0,
+    muscleOverlayScaleZ:   1.0,
+    muscleOverlayOffsetX:  0,
+    muscleOverlayOffsetY:  0,
+    muscleOverlayOffsetZ:  0,
+    armTransform:          { ...DEFAULT_LIMB_TRANSFORM },
+    legTransform:          { ...DEFAULT_LIMB_TRANSFORM },
+  }),
 }))
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

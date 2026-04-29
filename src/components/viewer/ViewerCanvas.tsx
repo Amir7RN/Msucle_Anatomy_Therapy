@@ -4,6 +4,8 @@ import * as THREE from 'three'
 import { Lights } from './Lights'
 import { CameraController } from './CameraController'
 import { HumanModel } from './HumanModel'
+import { HumanAtlas } from './HumanAtlas'
+import { MuscleOverlay } from './MuscleOverlay'
 import { BodySurface } from './BodySurface'
 import { PainOverlay } from './PainOverlay'
 import { useAtlasStore } from '../../store/atlasStore'
@@ -107,6 +109,7 @@ function ScreenshotButton({ glRef }: { glRef: React.MutableRefObject<THREE.WebGL
 
 export function ViewerCanvas() {
   const setSelected     = useAtlasStore((s) => s.setSelected)
+  const useMeshyModel   = useAtlasStore((s) => s.useMeshyModel)
   const { modelExists, modelPath } = useAnatomyModelProbe()
 
   // Ref to the WebGL renderer — needed for screenshot
@@ -156,19 +159,164 @@ export function ViewerCanvas() {
           position={[0, -0.925, 0]}
         />
 
-        {/* Base body surface — renders under muscles, provides canvas for pain overlay */}
-        <BodySurface />
-
-        <HumanModel modelExists={modelExists} modelPath={modelPath} />
-
-        {/* Pain referral overlay — renders on top when a muscle is selected */}
-        <PainOverlay />
+        {useMeshyModel ? (
+          <>
+            {/* Meshy charcoal body underneath */}
+            <HumanAtlas />
+            {/* The legacy 52 muscles, calibrated onto the new body */}
+            <MuscleOverlay />
+            {/* Pain referral zone overlay (selection-driven) */}
+            <PainOverlay />
+          </>
+        ) : (
+          <>
+            {/* Legacy: 52-mesh BodyParts3D pipeline */}
+            <BodySurface />
+            <HumanModel modelExists={modelExists} modelPath={modelPath} />
+            <PainOverlay />
+          </>
+        )}
       </Canvas>
 
       <ModelStatusBadge />
       <HoverTooltip />
       <InteractionHint />
       <ScreenshotButton glRef={rendererRef} />
+      <ModelSwitchToggle />
+      {useMeshyModel && <CalibrationPanel />}
+    </div>
+  )
+}
+
+// ── Muscle-overlay calibration sliders ───────────────────────────────────────
+
+function CalibrationPanel() {
+  const sx       = useAtlasStore((s) => s.muscleOverlayScaleX)
+  const sy       = useAtlasStore((s) => s.muscleOverlayScaleY)
+  const sz       = useAtlasStore((s) => s.muscleOverlayScaleZ)
+  const ox       = useAtlasStore((s) => s.muscleOverlayOffsetX)
+  const oy       = useAtlasStore((s) => s.muscleOverlayOffsetY)
+  const oz       = useAtlasStore((s) => s.muscleOverlayOffsetZ)
+  const armT     = useAtlasStore((s) => s.armTransform)
+  const legT     = useAtlasStore((s) => s.legTransform)
+  const setSX    = useAtlasStore((s) => s.setMuscleOverlayScaleX)
+  const setSY    = useAtlasStore((s) => s.setMuscleOverlayScaleY)
+  const setSZ    = useAtlasStore((s) => s.setMuscleOverlayScaleZ)
+  const setOX    = useAtlasStore((s) => s.setMuscleOverlayOffsetX)
+  const setOY    = useAtlasStore((s) => s.setMuscleOverlayOffsetY)
+  const setOZ    = useAtlasStore((s) => s.setMuscleOverlayOffsetZ)
+  const setArmT  = useAtlasStore((s) => s.setArmTransform)
+  const setLegT  = useAtlasStore((s) => s.setLegTransform)
+  const reset    = useAtlasStore((s) => s.resetMuscleOverlay)
+
+  return (
+    <div className="absolute left-3 bottom-12 z-10 w-72 rounded-md border border-slate-700 bg-slate-900/90 p-3 text-slate-200 text-[11px] shadow-lg space-y-2 backdrop-blur max-h-[82vh] overflow-y-auto">
+      <div className="flex items-center justify-between">
+        <span className="font-semibold tracking-wide">Muscle Overlay Calibration</span>
+        <button onClick={reset} className="text-[10px] text-slate-400 hover:text-white">reset</button>
+      </div>
+
+      <div className="text-[10px] uppercase tracking-wider text-slate-500 pt-1">Global Scale</div>
+      <Slider label="Width X"  value={sx} min={0.5} max={2.5} step={0.005} onChange={setSX} format={(v) => v.toFixed(3)} />
+      <Slider label="Height Y" value={sy} min={0.5} max={2.5} step={0.005} onChange={setSY} format={(v) => v.toFixed(3)} />
+      <Slider label="Depth Z"  value={sz} min={0.5} max={2.5} step={0.005} onChange={setSZ} format={(v) => v.toFixed(3)} />
+
+      <div className="text-[10px] uppercase tracking-wider text-slate-500 pt-1">Global Offset</div>
+      <Slider label="X" value={ox} min={-0.5} max={0.5} step={0.002} onChange={setOX} format={(v) => v.toFixed(3)} />
+      <Slider label="Y" value={oy} min={-0.5} max={0.5} step={0.002} onChange={setOY} format={(v) => v.toFixed(3)} />
+      <Slider label="Z" value={oz} min={-0.3} max={0.3} step={0.002} onChange={setOZ} format={(v) => v.toFixed(3)} />
+
+      <LimbControls title="Arms (mirrored L/R)"  transform={armT} onPatch={setArmT} rotRange={30}  offRange={0.30} />
+      <LimbControls title="Legs (mirrored L/R)"  transform={legT} onPatch={setLegT} rotRange={20}  offRange={0.30} />
+    </div>
+  )
+}
+
+// ── Per-limb 9-DOF section ───────────────────────────────────────────────────
+
+interface LimbControlsProps {
+  title:     string
+  transform: import('../../store/atlasStore').LimbTransform
+  onPatch:   (patch: Partial<import('../../store/atlasStore').LimbTransform>) => void
+  rotRange:  number
+  offRange:  number
+}
+
+function LimbControls({ title, transform: t, onPatch, rotRange, offRange }: LimbControlsProps) {
+  return (
+    <>
+      <div className="text-[10px] uppercase tracking-wider text-slate-500 pt-1">{title}</div>
+      <div className="text-[9px] text-slate-500">Translate</div>
+      <Slider label="X (out)" value={t.offsetX} min={-offRange} max={offRange} step={0.002} onChange={(v) => onPatch({ offsetX: v })} format={(v) => v.toFixed(3)} />
+      <Slider label="Y (up)"  value={t.offsetY} min={-offRange} max={offRange} step={0.002} onChange={(v) => onPatch({ offsetY: v })} format={(v) => v.toFixed(3)} />
+      <Slider label="Z (fwd)" value={t.offsetZ} min={-offRange} max={offRange} step={0.002} onChange={(v) => onPatch({ offsetZ: v })} format={(v) => v.toFixed(3)} />
+      <div className="text-[9px] text-slate-500">Rotate</div>
+      <Slider label="X tilt"  value={t.rotXDeg} min={-rotRange} max={rotRange} step={0.5}   onChange={(v) => onPatch({ rotXDeg: v })} format={(v) => v.toFixed(1) + '°'} />
+      <Slider label="Y swing" value={t.rotYDeg} min={-rotRange} max={rotRange} step={0.5}   onChange={(v) => onPatch({ rotYDeg: v })} format={(v) => v.toFixed(1) + '°'} />
+      <Slider label="Z open"  value={t.rotZDeg} min={-rotRange} max={rotRange} step={0.5}   onChange={(v) => onPatch({ rotZDeg: v })} format={(v) => v.toFixed(1) + '°'} />
+      <div className="text-[9px] text-slate-500">Scale</div>
+      <Slider label="W (X)"   value={t.scaleX}  min={0.6} max={1.6} step={0.005} onChange={(v) => onPatch({ scaleX: v })} format={(v) => v.toFixed(3)} />
+      <Slider label="L (Y)"   value={t.scaleY}  min={0.6} max={1.6} step={0.005} onChange={(v) => onPatch({ scaleY: v })} format={(v) => v.toFixed(3)} />
+      <Slider label="D (Z)"   value={t.scaleZ}  min={0.6} max={1.6} step={0.005} onChange={(v) => onPatch({ scaleZ: v })} format={(v) => v.toFixed(3)} />
+    </>
+  )
+}
+
+interface SliderProps {
+  label:    string
+  value:    number
+  min:      number
+  max:      number
+  step:     number
+  onChange: (v: number) => void
+  format:   (v: number) => string
+}
+
+function Slider({ label, value, min, max, step, onChange, format }: SliderProps) {
+  return (
+    <label className="flex items-center gap-2">
+      <span className="w-14 text-slate-400">{label}</span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="flex-1 accent-orange-500"
+      />
+      <span className="w-12 text-right tabular-nums text-slate-300">{format(value)}</span>
+    </label>
+  )
+}
+
+function ModelSwitchToggle() {
+  const useMeshyModel    = useAtlasStore((s) => s.useMeshyModel)
+  const showMuscleDebug  = useAtlasStore((s) => s.showMuscleDebug)
+  const toggleMeshyModel = useAtlasStore((s) => s.toggleMeshyModel)
+  const toggleMuscleDebug = useAtlasStore((s) => s.toggleMuscleDebug)
+  return (
+    <div className="absolute bottom-3 right-3 z-10 flex gap-2">
+      <button
+        onClick={toggleMeshyModel}
+        className="px-2 py-1 bg-slate-800/80 hover:bg-slate-800 text-slate-200 text-[11px] rounded border border-slate-600/60 shadow-sm"
+        title="Toggle between Meshy single-mesh atlas and the legacy 52-mesh model"
+      >
+        {useMeshyModel ? 'Atlas: Meshy' : 'Atlas: Legacy 52-mesh'}
+      </button>
+      {useMeshyModel && (
+        <button
+          onClick={toggleMuscleDebug}
+          className={`px-2 py-1 text-[11px] rounded border shadow-sm ${
+            showMuscleDebug
+              ? 'bg-cyan-700/80 text-white border-cyan-500'
+              : 'bg-slate-800/80 hover:bg-slate-800 text-slate-200 border-slate-600/60'
+          }`}
+          title="Show calibration spheres at every muscle center"
+        >
+          Calibration Dots
+        </button>
+      )}
     </div>
   )
 }

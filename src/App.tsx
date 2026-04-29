@@ -3,8 +3,11 @@ import { AppHeader }    from './components/layout/AppHeader'
 import { LeftSidebar }  from './components/layout/LeftSidebar'
 import { RightPanel }   from './components/layout/RightPanel'
 import { ViewerCanvas } from './components/viewer/ViewerCanvas'
+import { TriageChat }   from './components/triage/TriageChat'
+import { MovementScreen } from './components/movement/MovementScreen'
 import { useAtlasStore } from './store/atlasStore'
 import type { CameraPresetKey } from './lib/cameraUtils'
+import { MessageCircle, Activity } from 'lucide-react'
 
 /**
  * Root application component.
@@ -105,6 +108,8 @@ export default function App() {
         <main className="flex-1 min-w-0 relative">
           <ViewerCanvas />
           <DiagnosticModeToggle />
+          <TriageLauncher />
+          <MovementLauncher />
         </main>
 
         {/* Right panel */}
@@ -113,8 +118,64 @@ export default function App() {
 
       {/* Status bar */}
       <StatusBar />
+
+      {/* Conversational AI Symptom Triage */}
+      <TriageChatMount />
+
+      {/* Phone-camera Movement Assessment */}
+      <MovementScreenMount />
     </div>
   )
+}
+
+// ── Triage chat launcher + mount ────────────────────────────────────────────
+
+function TriageLauncher() {
+  const triageOpen   = useAtlasStore((s) => s.triageOpen)
+  const toggleTriage = useAtlasStore((s) => s.toggleTriage)
+  return (
+    <button
+      onClick={toggleTriage}
+      title="Open AI Symptom Triage"
+      className={`absolute right-4 top-4 z-20 flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold shadow-lg transition-colors ${
+        triageOpen
+          ? 'bg-orange-500 text-white hover:bg-orange-400'
+          : 'bg-slate-800 text-slate-100 hover:bg-slate-700 ring-1 ring-orange-500/40'
+      }`}
+    >
+      <MessageCircle size={14} />
+      {triageOpen ? 'Triage open' : 'AI Triage'}
+    </button>
+  )
+}
+
+function TriageChatMount() {
+  const triageOpen    = useAtlasStore((s) => s.triageOpen)
+  const setTriageOpen = useAtlasStore((s) => s.setTriageOpen)
+  return <TriageChat open={triageOpen} onClose={() => setTriageOpen(false)} />
+}
+
+// ── Movement Assessment launcher + mount ────────────────────────────────────
+
+function MovementLauncher() {
+  const movementOpen   = useAtlasStore((s) => s.movementOpen)
+  const toggleMovement = useAtlasStore((s) => s.toggleMovement)
+  return (
+    <button
+      onClick={toggleMovement}
+      title="Run a Movement Assessment"
+      className="absolute right-4 top-14 z-20 flex items-center gap-1.5 rounded-md bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-100 shadow-lg ring-1 ring-cyan-500/40 hover:bg-slate-700"
+    >
+      <Activity size={14} />
+      {movementOpen ? 'Movement open' : 'Movement Screen'}
+    </button>
+  )
+}
+
+function MovementScreenMount() {
+  const movementOpen    = useAtlasStore((s) => s.movementOpen)
+  const setMovementOpen = useAtlasStore((s) => s.setMovementOpen)
+  return <MovementScreen open={movementOpen} onClose={() => setMovementOpen(false)} />
 }
 
 // ── Diagnostic mode toggle (floating button over canvas) ─────────────────────
