@@ -183,7 +183,7 @@ export function ViewerCanvas() {
       <InteractionHint />
       <ScreenshotButton glRef={rendererRef} />
       <ModelSwitchToggle />
-      {useMeshyModel && <CalibrationPanel />}
+      {/* CalibrationPanel hidden — muscle scaling is locked to baked values */}
     </div>
   )
 }

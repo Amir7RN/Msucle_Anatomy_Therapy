@@ -27,15 +27,24 @@ import { useVoiceOutput } from '../../hooks/useVoice'
 import type { LandmarkSet } from '../../lib/movement/landmarks'
 import { disposeDetector } from '../../lib/movement/poseDetector'
 
-type Phase = 'setup' | 'instruction' | 'countdown' | 'hold' | 'transition' | 'results'
+type Phase =
+  | 'setup'
+  | 'calibrate'      // waiting for full body to enter the frame
+  | 'instruction'    // movement title + cue, auto-progresses
+  | 'countdown'      // 3-2-1
+  | 'hold'           // capture peak metrics
+  | 'transition'     // captured, advancing to next
+  | 'results'
 
 interface Props {
   open:    boolean
   onClose: () => void
 }
 
-const COUNTDOWN_S    = 3
-const TRANSITION_MS  = 1500
+const COUNTDOWN_S        = 3
+const TRANSITION_MS      = 1500
+const INSTRUCTION_MS     = 4500   // auto-advance from instruction → countdown
+const POSE_STABLE_FRAMES = 18     // ~0.7 s of full-body visibility to start
 
 export function MovementScreen({ open, onClose }: Props) {
   const [phase,        setPhase]        = useState<Phase>('setup')
@@ -54,7 +63,19 @@ export function MovementScreen({ open, onClose }: Props) {
   const holdStartRef  = useRef<number | null>(null)
   const lastFrameRef  = useRef<MovementMetrics | null>(null)
 
+  // Pose-stability detector — counts consecutive frames where the full body
+  // is visible.  When count crosses POSE_STABLE_FRAMES we auto-progress out
+  // of the calibration phase, no clicking required.
+  const poseStableRef = useRef<number>(0)
+  const [poseQuality, setPoseQuality] = useState<{ visible: number; total: number }>({ visible: 0, total: 0 })
+
+  // Camera digital zoom (CSS transform).  1.0 = native FOV; lower = wider.
+  const [cameraZoom, setCameraZoom] = useState(1.0)
+
   const tts = useVoiceOutput()
+  // Stable-identity ref to TTS so timer effects don't re-run every render.
+  const ttsRef = useRef(tts)
+  useEffect(() => { ttsRef.current = tts }, [tts])
 
   const currentMovement: MovementDef | undefined = MOVEMENTS[moveIdx]
 
@@ -82,13 +103,16 @@ export function MovementScreen({ open, onClose }: Props) {
     if (countdown <= 0) {
       setPhase('hold')
       holdStartRef.current = performance.now()
-      tts.speak(currentMovement?.holdCue ?? 'Hold.')
+      ttsRef.current?.speak(currentMovement?.holdCue ?? 'Hold.')
       return
     }
-    tts.speak(String(countdown))
+    ttsRef.current?.speak(String(countdown))
     const t = window.setTimeout(() => setCountdown((c) => c - 1), 800)
     return () => window.clearTimeout(t)
-  }, [phase, countdown, currentMovement, tts])
+    // tts intentionally omitted — accessing via ref avoids re-running this
+    // effect every render (which was the "stuck on 3" bug).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, countdown])
 
   // ── Hold timer ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -131,6 +155,19 @@ export function MovementScreen({ open, onClose }: Props) {
 
   // ── Per-frame landmark callback from CameraView ────────────────────────
   function handleLandmarks(lms: LandmarkSet) {
+    // Pose-quality tracker — count how many of the key landmarks are visible.
+    // 12 key points: shoulders, hips, knees, ankles, elbows, wrists.
+    const keyIdx = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]
+    const visibleCount = keyIdx.reduce((n, i) => n + ((lms[i]?.visibility ?? 0) >= 0.5 ? 1 : 0), 0)
+    if (visibleCount >= 10) poseStableRef.current += 1
+    else                    poseStableRef.current = 0
+    setPoseQuality({ visible: visibleCount, total: keyIdx.length })
+
+    // Auto-advance from calibration once we've seen a stable full body.
+    if (phase === 'calibrate' && poseStableRef.current >= POSE_STABLE_FRAMES) {
+      setPhase('instruction')
+    }
+
     if (!currentMovement) return
     const metrics = currentMovement.analyse(lms)
     lastFrameRef.current = metrics
@@ -148,6 +185,18 @@ export function MovementScreen({ open, onClose }: Props) {
     }
     metrics.compensations.forEach((c) => compsRef.current.add(c))
   }
+
+  // ── Auto-advance from instruction → countdown after the cue is read ────
+  useEffect(() => {
+    if (phase !== 'instruction' || !currentMovement) return
+    ttsRef.current?.speak(`${currentMovement.title}. ${currentMovement.instruction}`)
+    const t = window.setTimeout(() => {
+      setCountdown(COUNTDOWN_S)
+      setPhase('countdown')
+    }, INSTRUCTION_MS)
+    return () => window.clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, currentMovement])
 
   function finishCurrentMovement() {
     if (!currentMovement) return
@@ -173,18 +222,14 @@ export function MovementScreen({ open, onClose }: Props) {
 
   function startAssessment() {
     setActive(true)
-    setPhase('instruction')
+    setPhase('calibrate')           // wait for full body in frame
     setMoveIdx(0)
     setCountdown(COUNTDOWN_S)
     setResults([])
     setSummary(null)
     peakRef.current = {}
     compsRef.current = new Set()
-  }
-
-  function beginCountdown() {
-    setCountdown(COUNTDOWN_S)
-    setPhase('countdown')
+    poseStableRef.current = 0
   }
 
   function restartAssessment() {
@@ -221,19 +266,25 @@ export function MovementScreen({ open, onClose }: Props) {
 
         {phase !== 'setup' && phase !== 'results' && (
           <>
-            {/* Camera */}
+            {/* Camera with digital zoom (CSS scale) */}
             <div className="relative h-full w-full">
-              <CameraView
-                active={active}
-                onLandmarks={handleLandmarks}
-                onReady={() => setCameraReady(true)}
-                onError={(m) => { setCameraError(m); setActive(false); setPhase('setup') }}
-              />
+              <div className="h-full w-full" style={{ transform: `scale(${cameraZoom})`, transformOrigin: 'center center' }}>
+                <CameraView
+                  active={active}
+                  onLandmarks={handleLandmarks}
+                  onReady={() => setCameraReady(true)}
+                  onError={(m) => { setCameraError(m); setActive(false); setPhase('setup') }}
+                />
+              </div>
               {!cameraReady && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/70">
                   <div className="text-sm text-slate-300">Initialising pose model…</div>
                 </div>
               )}
+              {phase === 'calibrate' && cameraReady && (
+                <CalibrationOverlay quality={poseQuality} stableFrames={poseStableRef.current} threshold={POSE_STABLE_FRAMES} />
+              )}
+              <ZoomSlider value={cameraZoom} onChange={setCameraZoom} />
               <ProgressDots total={MOVEMENTS.length} done={moveIdx} />
             </div>
 
@@ -243,8 +294,6 @@ export function MovementScreen({ open, onClose }: Props) {
               movement={currentMovement}
               countdown={countdown}
               holdProgress={holdProgress}
-              onBegin={beginCountdown}
-              onSpeak={(text) => tts.speak(text)}
             />
           </>
         )}
@@ -318,42 +367,88 @@ function ProgressDots({ total, done }: { total: number; done: number }) {
   )
 }
 
+// ── Calibration overlay ──────────────────────────────────────────────────────
+// Big silhouette + status banner.  Auto-advances to instruction once the
+// landmark visibility count crosses POSE_STABLE_FRAMES.
+
+function CalibrationOverlay({
+  quality, stableFrames, threshold,
+}: {
+  quality: { visible: number; total: number }
+  stableFrames: number
+  threshold: number
+}) {
+  const ready = stableFrames >= threshold
+  const progress = Math.min(1, stableFrames / threshold)
+  return (
+    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+      {/* Body silhouette guide */}
+      <svg viewBox="0 0 200 480" className="h-[78%] opacity-60">
+        <ellipse cx="100" cy="40"  rx="22" ry="28" fill="none" stroke={ready ? '#10b981' : '#fb923c'} strokeWidth="2.5" strokeDasharray="6 6" />
+        <path
+          d="M 80 70 L 60 90 L 30 200 M 120 70 L 140 90 L 170 200    M 80 70 L 80 240 L 70 470  M 120 70 L 120 240 L 130 470  M 80 240 L 120 240"
+          fill="none" stroke={ready ? '#10b981' : '#fb923c'} strokeWidth="3" strokeDasharray="8 6" strokeLinecap="round"
+        />
+      </svg>
+
+      <div className="absolute bottom-16 max-w-md rounded-lg bg-black/75 px-4 py-3 text-center backdrop-blur">
+        <div className={`text-sm font-semibold ${ready ? 'text-emerald-300' : 'text-orange-300'}`}>
+          {ready ? 'Got you — starting the assessment' : 'Stand back so your full body fits the outline'}
+        </div>
+        <div className="mt-1 text-[11px] text-slate-400">
+          Detected {quality.visible} / {quality.total} key landmarks
+        </div>
+        <div className="mt-2 h-1.5 w-48 overflow-hidden rounded-full bg-slate-800">
+          <div className="h-full bg-orange-400 transition-all" style={{ width: `${progress * 100}%` }} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Zoom slider ──────────────────────────────────────────────────────────────
+
+function ZoomSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="absolute right-3 top-3 z-10 flex items-center gap-2 rounded-md bg-black/70 px-2 py-1.5 backdrop-blur">
+      <span className="text-[10px] text-slate-300">Zoom</span>
+      <input
+        type="range"
+        min={0.5}
+        max={1.6}
+        step={0.05}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-28 accent-orange-500"
+      />
+      <span className="w-10 text-right text-[10px] tabular-nums text-slate-300">{value.toFixed(2)}×</span>
+    </div>
+  )
+}
+
 // ── Movement HUD overlay ─────────────────────────────────────────────────────
 
 function MovementHUD({
-  phase, movement, countdown, holdProgress, onBegin, onSpeak,
+  phase, movement, countdown, holdProgress,
 }: {
   phase: Phase
   movement?: MovementDef
   countdown: number
   holdProgress: number
-  onBegin: () => void
-  onSpeak: (text: string) => void
 }) {
   if (!movement) return null
   return (
     <div className="pointer-events-none absolute inset-0 flex flex-col">
-      <div className="pointer-events-auto m-3 max-w-sm self-start rounded-lg bg-black/70 p-3 backdrop-blur">
-        <div className="text-[10px] uppercase tracking-wider text-orange-400">Movement</div>
-        <div className="mt-0.5 text-base font-semibold">{movement.title}</div>
-        <p className="mt-1 text-xs text-slate-200">{movement.instruction}</p>
-        {phase === 'instruction' && (
-          <div className="mt-2 flex items-center gap-2">
-            <button
-              onClick={() => { onSpeak(movement.instruction); onBegin() }}
-              className="rounded-md bg-orange-500 px-3 py-1 text-xs font-semibold text-white hover:bg-orange-400"
-            >
-              Ready — start
-            </button>
-            <button
-              onClick={() => onSpeak(movement.instruction)}
-              className="rounded-md bg-slate-800 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-700"
-            >
-              Read aloud
-            </button>
-          </div>
-        )}
-      </div>
+      {(phase === 'instruction' || phase === 'countdown' || phase === 'hold') && (
+        <div className="m-3 max-w-sm self-start rounded-lg bg-black/70 p-3 backdrop-blur">
+          <div className="text-[10px] uppercase tracking-wider text-orange-400">Movement</div>
+          <div className="mt-0.5 text-base font-semibold">{movement.title}</div>
+          <p className="mt-1 text-xs text-slate-200">{movement.instruction}</p>
+          {phase === 'instruction' && (
+            <div className="mt-2 text-[11px] text-emerald-300">Get into position — auto-starting…</div>
+          )}
+        </div>
+      )}
 
       {phase === 'countdown' && (
         <div className="m-auto flex h-32 w-32 items-center justify-center rounded-full bg-orange-500/20 ring-4 ring-orange-500/60">
