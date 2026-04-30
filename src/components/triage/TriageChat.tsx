@@ -79,6 +79,10 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
   useEffect(() => { sendingRef.current   = sending },   [sending])
   useEffect(() => { voiceModeRef.current = voiceMode }, [voiceMode])
 
+  // submitTextRef — always points to the current render's submitText so the
+  // stable handleSilence callback never closes over stale history/apiKey/catalogue.
+  const submitTextRef = useRef<(text?: string) => void>(() => {})
+
   // Auto-submit when the user pauses speaking.
   // NOTE: we intentionally do NOT gate on voiceModeRef here — the user can tap
   // the mic indicator without toggling "Voice Mode" and still expect the captured
@@ -86,8 +90,10 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
   const handleSilence = useCallback((finalText: string) => {
     if (sendingRef.current) return
     if (!finalText.trim())  return
-    submitText(finalText.trim())
-  }, []) // intentionally stable; submitText reads from refs/state
+    // Call via ref so we always invoke the latest render's submitText,
+    // which has current history, apiKey, catalogue, and sendNextTurn.
+    submitTextRef.current(finalText.trim())
+  }, []) // stable — only reads refs
 
   // Duplex barge-in: as soon as the user starts speaking, cut off the AI's TTS.
   // Forward declaration — voiceOut is created below; we use a ref for the cancel fn.
@@ -116,7 +122,10 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
   useVoiceActivity({
     enabled:  voiceMode && voiceOut.speaking,
     onActive: () => {
-      if (voiceOut.speaking) voiceOut.cancel()
+      // Cancel both the hook's speaking state AND the raw Web Speech queue
+      // so there is zero delay even if the hook state update hasn't flushed yet.
+      if (typeof window !== 'undefined') window.speechSynthesis?.cancel()
+      voiceOut.cancel()
     },
   })
 
@@ -158,7 +167,11 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
   }, [open, diagnosticResult])
 
   async function sendNextTurn(nextHistory: TriageChatMessage[]) {
-    if (!catalogue) return
+    if (!catalogue) {
+      // Catalogue loads async — tell the user instead of silently dropping the message.
+      setError('Still loading muscle data — tap Send again in a moment.')
+      return
+    }
     if (!apiKey) { setError('Please add your Anthropic API key first.'); return }
     setSending(true); setError(null)
     // Stop the mic while we wait for the LLM so we don't pick up our own speech.
@@ -176,18 +189,14 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
         setContribs(contribs)
       }
 
-      // Voice-mode duplex loop:
-      //   • Mic OFF during TTS — VAD analyser handles barge-in instead, so
-      //     Web Speech can't transcribe TTS bleed back into the chat.
-      //   • TTS plays.  If user hits volume threshold → useVoiceActivity
-      //     cancels TTS instantly (the hard-fix interrupt).
-      //   • 300ms blanking after TTS ends, THEN re-arm Web Speech.
-      if (voiceModeRef.current && reply.content) {
+      // Always speak the reply — even if the user only pressed the mic once
+      // without toggling Voice Mode.  TTS fires whenever voiceIn was listening
+      // (i.e. the user expected a spoken answer) OR if Voice Mode is on.
+      if (reply.content) {
         voiceIn.stop()
         voiceIn.reset()
         voiceOut.speak(reply.content, () => {
-          // 300ms blanking period — let the audio buffer drain and any
-          // residual echo decay before opening the mic to Web Speech again.
+          // 300ms blanking — let audio buffer drain before re-arming mic.
           window.setTimeout(() => {
             if (voiceModeRef.current) voiceIn.start()
           }, 300)
@@ -211,6 +220,10 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
     setInput('')
     void sendNextTurn(nextHist)
   }
+
+  // Keep the ref pointing at the current render's submitText so handleSilence
+  // (which is stable / never re-created) always calls the freshest version.
+  submitTextRef.current = submitText
 
   function toggleVoiceMode() {
     const turningOn = !voiceMode
@@ -617,3 +630,4 @@ function ApiKeyEntry({ onSave }: { onSave: (key: string) => void }) {
     </div>
   )
 }
+   

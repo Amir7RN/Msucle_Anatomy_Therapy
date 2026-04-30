@@ -92,7 +92,7 @@ function getSystemPrompt(catalogue: DiagnosticMuscle[]): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ANTHROPIC_URL  = 'https://api.anthropic.com/v1/messages'
-const MODEL_ID       = 'claude-sonnet-4-5'   // recent, fast, supports tool use
+const MODEL_ID       = 'claude-haiku-4-5-20251001'   // fast + cheap; ideal for 1-2 sentence triage replies
 
 interface AnthropicContentBlockText { type: 'text'; text: string }
 interface AnthropicContentBlockToolUse {

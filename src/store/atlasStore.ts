@@ -184,14 +184,24 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   showMuscleDebug:       false,
   triageOpen:            false,
   movementOpen:          false,
-  muscleOverlayScaleX:   1.0,
-  muscleOverlayScaleY:   1.0,
-  muscleOverlayScaleZ:   1.0,
-  muscleOverlayOffsetX:  0.0,
-  muscleOverlayOffsetY:  0.0,
-  muscleOverlayOffsetZ:  0.0,
-  armTransform:          { ...DEFAULT_LIMB_TRANSFORM },
-  legTransform:          { ...DEFAULT_LIMB_TRANSFORM },
+  // Baked calibration values — tuned so the 52-mesh muscles align with
+  // the male-normal.glb ghost body without needing the slider panel open.
+  muscleOverlayScaleX:   1.090,
+  muscleOverlayScaleY:   1.000,
+  muscleOverlayScaleZ:   1.090,
+  muscleOverlayOffsetX:  0.000,
+  muscleOverlayOffsetY:  0.000,
+  muscleOverlayOffsetZ: -0.064,
+  armTransform: {
+    offsetX: 0.110, offsetY: -0.110, offsetZ: 0.000,
+    rotXDeg: 0.0,   rotYDeg:  0.0,   rotZDeg: 5.5,
+    scaleX:  1.000, scaleY:   1.105, scaleZ:  1.000,
+  },
+  legTransform: {
+    offsetX: 0.060, offsetY:  0.000, offsetZ: 0.000,
+    rotXDeg: 0.0,   rotYDeg:  0.0,   rotZDeg: 5.5,
+    scaleX:  1.000, scaleY:   1.000, scaleZ:  1.000,
+  },
 
   // ── Selection ─────────────────────────────────────────────────────────────
   // Direct mesh click — clears any diagnostic sub-muscle context.
@@ -335,14 +345,22 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   setArmTransform:         (patch) => set((s) => ({ armTransform: { ...s.armTransform, ...patch } })),
   setLegTransform:         (patch) => set((s) => ({ legTransform: { ...s.legTransform, ...patch } })),
   resetMuscleOverlay:      () => set({
-    muscleOverlayScaleX:   1.0,
-    muscleOverlayScaleY:   1.0,
-    muscleOverlayScaleZ:   1.0,
-    muscleOverlayOffsetX:  0,
-    muscleOverlayOffsetY:  0,
-    muscleOverlayOffsetZ:  0,
-    armTransform:          { ...DEFAULT_LIMB_TRANSFORM },
-    legTransform:          { ...DEFAULT_LIMB_TRANSFORM },
+    muscleOverlayScaleX:   1.090,
+    muscleOverlayScaleY:   1.000,
+    muscleOverlayScaleZ:   1.090,
+    muscleOverlayOffsetX:  0.000,
+    muscleOverlayOffsetY:  0.000,
+    muscleOverlayOffsetZ: -0.064,
+    armTransform: {
+      offsetX: 0.110, offsetY: -0.110, offsetZ: 0.000,
+      rotXDeg: 0.0,   rotYDeg:  0.0,   rotZDeg: 5.5,
+      scaleX:  1.000, scaleY:   1.105, scaleZ:  1.000,
+    },
+    legTransform: {
+      offsetX: 0.060, offsetY:  0.000, offsetZ: 0.000,
+      rotXDeg: 0.0,   rotYDeg:  0.0,   rotZDeg: 5.5,
+      scaleX:  1.000, scaleY:   1.000, scaleZ:  1.000,
+    },
   }),
 }))
 

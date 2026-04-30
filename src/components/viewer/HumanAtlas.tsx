@@ -41,21 +41,20 @@ export const MESHY_MODEL_PATH = `${import.meta.env.BASE_URL}models/male-normal.g
 // ─────────────────────────────────────────────────────────────────────────────
 
 function buildClinicalSkinMaterial(): THREE.MeshStandardMaterial {
-  // Translucent neutral skin tone — body acts as a tinted "shell" so muscles
-  // underneath read through clearly while the human silhouette is still
-  // recognisable.  depthWrite=false + renderOrder=1 means muscles render
-  // first (opaque) and the skin is alpha-composited on top, giving the
-  // classic écorché appearance without any custom shader work.
+  // Ghostly skin shell — opacity 0.15 keeps the body as a faint outline.
+  // depthWrite=false ensures the body never z-occludes muscles regardless
+  // of camera angle.  renderOrder=2 (set on each mesh) puts the body's
+  // alpha compositing AFTER the muscles, so colour blends look correct.
   return new THREE.MeshStandardMaterial({
     color:             '#d9b08c',       // warm light skin tone
     roughness:         0.55,
     metalness:         0.0,
-    emissive:          '#3a2618',       // very subtle SSS warmth
-    emissiveIntensity: 0.15,
+    emissive:          '#3a2618',
+    emissiveIntensity: 0.10,
     side:              THREE.FrontSide,
     flatShading:       false,
     transparent:       true,
-    opacity:           0.55,
+    opacity:           0.15,            // very subtle ghost — muscles dominate visually
     depthWrite:        false,
     depthTest:         true,
   })
