@@ -46,9 +46,8 @@ interface Props {
 }
 
 export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, onClose }: Props) {
-  if (!exerciseId) return null
-
-  const biofeedbackKey = EXERCISE_TO_BIOFEEDBACK[exerciseId]
+  // All hooks MUST come before any early returns (Rules of Hooks).
+  const biofeedbackKey = exerciseId ? EXERCISE_TO_BIOFEEDBACK[exerciseId] : null
   const def: BiofeedbackDef | null = biofeedbackKey ? BIOFEEDBACK_DEFS[biofeedbackKey] ?? null : null
 
   const [cameraReady, setCameraReady] = useState(false)
@@ -114,6 +113,9 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, onClose 
 
   // Reset buffer when exercise changes
   useEffect(() => { frameBuffer.current = []; setSnapshot(null) }, [exerciseId])
+
+  // Early return AFTER all hooks
+  if (!exerciseId) return null
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black text-white">

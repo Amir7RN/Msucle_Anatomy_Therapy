@@ -49,9 +49,11 @@ jobs:
       - name: Build for GitHub Pages
         # VITE_BASE_PATH tells vite.config.ts to prefix all asset URLs with
         # the repo sub-path so the app works at /Msucle_Anatomy_Therapy/
+        # NODE_OPTIONS gives the Node process extra heap for minifying large bundles.
         run: npm run build
         env:
           VITE_BASE_PATH: /Msucle_Anatomy_Therapy/
+          NODE_OPTIONS: --max-old-space-size=4096
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v4
