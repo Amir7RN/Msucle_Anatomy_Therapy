@@ -44,17 +44,19 @@ import {
   type MuscleContribution,
 } from '../../lib/diagnostic'
 import { exportTriagePdf } from '../../lib/triage/pdf'
-import { useVoiceInput, useVoiceOutput } from '../../hooks/useVoice'
+import { useVoiceInput, useVoiceOutput, useVoiceActivity } from '../../hooks/useVoice'
 import { DIAGNOSTIC_TO_MESH_IDS } from '../../lib/diagnostic'
 
 interface Props {
   open:    boolean
   onClose: () => void
+  /** When true the panel renders inline (fills parent) instead of as a fixed overlay */
+  inline?: boolean
 }
 
-const SILENCE_MS = 5000    // pause length that triggers auto-send (5s)
+const SILENCE_MS = 1500    // pause length that triggers auto-send — snappier feel
 
-export function TriageChat({ open, onClose }: Props) {
+export function TriageChat({ open, onClose, inline = false }: Props) {
   const catalogue = useDiagnosticCatalogue()
   const setSelected = useAtlasStore((s) => s.setSelected)
   const setHovered  = useAtlasStore((s) => s.setHovered)
@@ -77,19 +79,46 @@ export function TriageChat({ open, onClose }: Props) {
   useEffect(() => { sendingRef.current   = sending },   [sending])
   useEffect(() => { voiceModeRef.current = voiceMode }, [voiceMode])
 
-  // Auto-submit when the user pauses speaking
+  // Auto-submit when the user pauses speaking.
+  // NOTE: we intentionally do NOT gate on voiceModeRef here — the user can tap
+  // the mic indicator without toggling "Voice Mode" and still expect the captured
+  // speech to be sent.  The voiceMode toggle only controls the TTS ↔ mic loop.
   const handleSilence = useCallback((finalText: string) => {
-    if (!voiceModeRef.current) return
-    if (sendingRef.current)    return
-    if (!finalText.trim())     return
+    if (sendingRef.current) return
+    if (!finalText.trim())  return
     submitText(finalText.trim())
   }, []) // intentionally stable; submitText reads from refs/state
 
+  // Duplex barge-in: as soon as the user starts speaking, cut off the AI's TTS.
+  // Forward declaration — voiceOut is created below; we use a ref for the cancel fn.
+  const barginRef = useRef<() => void>(() => {})
+  const handleSpeechDetected = useCallback(() => {
+    barginRef.current()
+  }, [])
+
   const voiceIn = useVoiceInput({
-    silenceMs: SILENCE_MS,
-    onSilence: handleSilence,
+    silenceMs:        SILENCE_MS,
+    onSilence:        handleSilence,
+    onSpeechDetected: handleSpeechDetected,
   })
   const voiceOut = useVoiceOutput()
+  // Update the barge-in fn now that voiceOut is in scope.
+  useEffect(() => {
+    barginRef.current = () => {
+      if (voiceOut.speaking) voiceOut.cancel()
+    }
+  }, [voiceOut])
+
+  // Volume-based barge-in: while TTS is speaking, sustained user volume
+  // above the threshold cancels speech instantly.  This is the hard-fix
+  // the user requested — the Web Audio analyser is independent of Web
+  // Speech, so it can't be confused by the AI's own audio bleed.
+  useVoiceActivity({
+    enabled:  voiceMode && voiceOut.speaking,
+    onActive: () => {
+      if (voiceOut.speaking) voiceOut.cancel()
+    },
+  })
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -101,18 +130,16 @@ export function TriageChat({ open, onClose }: Props) {
     if (voiceIn.listening) setInput(voiceIn.fullTranscript)
   }, [voiceIn.fullTranscript, voiceIn.listening])
 
-  // ── Hard mute: mic must NEVER be live while the AI is speaking ─────────
-  //  Without this, Web Speech happily transcribes the speaker's audio as if
-  //  it were the user, triggering the silence timer and auto-submitting
-  //  garbage right back into the LLM (the echo-loop bug).
-  useEffect(() => {
-    if (voiceOut.speaking && voiceIn.listening) {
-      voiceIn.stop()
-      voiceIn.reset()
-      setInput('')
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [voiceOut.speaking, voiceIn.listening])
+  // ── Duplex mode ────────────────────────────────────────────────────────
+  //  Mic stays ARMED during TTS so the user can barge in.  The first speech
+  //  event during TTS triggers handleSpeechDetected → cancels TTS instantly.
+  //  Browser echo cancellation (default in getUserMedia) plus the Web Speech
+  //  API's noise gate keeps the AI from transcribing its own voice in most
+  //  setups.  If a small TTS bleed slips through, the silence timer (1.5 s)
+  //  will discard it as a too-short fragment.
+  //
+  //  When TTS ends, the mic re-arm is handled by the .speak(..., onEnd)
+  //  callback in sendNextTurn — see below.
 
   // ── Body-click seed ────────────────────────────────────────────────────
   useEffect(() => {
@@ -149,17 +176,21 @@ export function TriageChat({ open, onClose }: Props) {
         setContribs(contribs)
       }
 
-      // Voice-mode loop: speak the reply, then re-open the mic.
-      // CRITICAL: keep the mic muted for the entire duration of TTS so the
-      // STT doesn't pick up the AI's own voice through the speakers.
+      // Voice-mode duplex loop:
+      //   • Mic OFF during TTS — VAD analyser handles barge-in instead, so
+      //     Web Speech can't transcribe TTS bleed back into the chat.
+      //   • TTS plays.  If user hits volume threshold → useVoiceActivity
+      //     cancels TTS instantly (the hard-fix interrupt).
+      //   • 300ms blanking after TTS ends, THEN re-arm Web Speech.
       if (voiceModeRef.current && reply.content) {
         voiceIn.stop()
         voiceIn.reset()
         voiceOut.speak(reply.content, () => {
-          // Small grace period so the audio buffer fully drains before listening.
+          // 300ms blanking period — let the audio buffer drain and any
+          // residual echo decay before opening the mic to Web Speech again.
           window.setTimeout(() => {
             if (voiceModeRef.current) voiceIn.start()
-          }, 250)
+          }, 300)
         })
       }
     } catch (e) {
@@ -238,8 +269,13 @@ export function TriageChat({ open, onClose }: Props) {
     : voiceIn.listening ? 'listening'
     : 'idle'
 
+  // Inline mode: fill the sidebar slot; fixed-overlay mode: float over the canvas
+  const wrapperCls = inline
+    ? 'flex flex-col flex-1 min-h-0 bg-slate-900 text-slate-100'
+    : 'fixed right-4 top-20 bottom-6 z-30 flex w-[380px] flex-col rounded-lg border border-slate-700 bg-slate-900/95 text-slate-100 shadow-2xl backdrop-blur'
+
   return (
-    <aside className="fixed right-4 top-20 bottom-6 z-30 flex w-[380px] flex-col rounded-lg border border-slate-700 bg-slate-900/95 text-slate-100 shadow-2xl backdrop-blur">
+    <aside className={wrapperCls}>
       {/* Header */}
       <header className="flex items-center justify-between border-b border-slate-700 px-3 py-2">
         <div className="flex items-center gap-2">

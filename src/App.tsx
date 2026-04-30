@@ -3,7 +3,6 @@ import { AppHeader }    from './components/layout/AppHeader'
 import { LeftSidebar }  from './components/layout/LeftSidebar'
 import { RightPanel }   from './components/layout/RightPanel'
 import { ViewerCanvas } from './components/viewer/ViewerCanvas'
-import { TriageChat }   from './components/triage/TriageChat'
 import { MovementScreen } from './components/movement/MovementScreen'
 import { useAtlasStore } from './store/atlasStore'
 import type { CameraPresetKey } from './lib/cameraUtils'
@@ -119,9 +118,6 @@ export default function App() {
       {/* Status bar */}
       <StatusBar />
 
-      {/* Conversational AI Symptom Triage */}
-      <TriageChatMount />
-
       {/* Phone-camera Movement Assessment */}
       <MovementScreenMount />
     </div>
@@ -147,12 +143,6 @@ function TriageLauncher() {
       {triageOpen ? 'Triage open' : 'AI Triage'}
     </button>
   )
-}
-
-function TriageChatMount() {
-  const triageOpen    = useAtlasStore((s) => s.triageOpen)
-  const setTriageOpen = useAtlasStore((s) => s.setTriageOpen)
-  return <TriageChat open={triageOpen} onClose={() => setTriageOpen(false)} />
 }
 
 // ── Movement Assessment launcher + mount ────────────────────────────────────

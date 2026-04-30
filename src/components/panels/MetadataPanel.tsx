@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
-import { MousePointerClick, MapPin, Zap, StickyNote, Activity, Play, Mic, Square, Volume2, ChevronDown, ChevronRight } from 'lucide-react'
+import { MousePointerClick, MapPin, Zap, StickyNote, Activity, Play, Mic, Square, Volume2, ChevronDown, ChevronRight, Camera } from 'lucide-react'
+import { ExerciseGuidance } from '../movement/ExerciseGuidance'
 import { useAtlasStore } from '../../store/atlasStore'
 import { Badge, systemBadgeColor, layerBadgeColor } from '../ui/Badge'
 import { Button } from '../ui/Button'
@@ -122,10 +123,12 @@ function VideoCard({
   ex,
   isActive,
   onSelect,
+  onGuide,
 }: {
   ex:       ExerciseDef
   isActive: boolean
   onSelect: () => void
+  onGuide:  (ex: ExerciseDef) => void
 }) {
   const videoRef            = useRef<HTMLVideoElement>(null)
   const [playing, setPlaying] = useState(false)
@@ -154,43 +157,55 @@ function VideoCard({
 
   return (
     <div
-      onClick={handleClick}
       className={[
-        'relative cursor-pointer rounded-lg overflow-hidden border transition-colors group',
+        'relative rounded-lg overflow-hidden border transition-colors group',
         isActive
           ? 'border-emerald-500 dark:border-emerald-500'
           : 'border-slate-200 dark:border-slate-700 hover:border-emerald-400/60 dark:hover:border-emerald-600/60',
       ].join(' ')}
     >
       {/* Video — doubles as thumbnail (first frame) and inline player */}
-      <video
-        ref={videoRef}
-        src={ex.src}
-        preload="auto"
-        playsInline
-        className="w-full block bg-black"
-        onLoadedData={handleLoaded}
-        onEnded={() => setPlaying(false)}
-      />
+      <div onClick={handleClick} className="cursor-pointer">
+        <video
+          ref={videoRef}
+          src={ex.src}
+          preload="auto"
+          playsInline
+          className="w-full block bg-black"
+          onLoadedData={handleLoaded}
+          onEnded={() => setPlaying(false)}
+        />
 
-      {/* Play-icon overlay — fades out while playing */}
-      <div
-        className={[
-          'absolute inset-0 flex items-center justify-center transition-opacity duration-150',
-          playing
-            ? 'opacity-0 pointer-events-none'
-            : 'opacity-100 bg-black/38 group-hover:bg-black/28',
-        ].join(' ')}
-      >
-        <div className="w-10 h-10 rounded-full bg-white/22 backdrop-blur-sm flex items-center justify-center ring-1 ring-white/30">
-          <Play size={15} className="text-white ml-0.5" fill="white" />
+        {/* Play-icon overlay — fades out while playing */}
+        <div
+          className={[
+            'absolute inset-0 flex items-center justify-center transition-opacity duration-150',
+            playing
+              ? 'opacity-0 pointer-events-none'
+              : 'opacity-100 bg-black/38 group-hover:bg-black/28',
+          ].join(' ')}
+        >
+          <div className="w-10 h-10 rounded-full bg-white/22 backdrop-blur-sm flex items-center justify-center ring-1 ring-white/30">
+            <Play size={15} className="text-white ml-0.5" fill="white" />
+          </div>
         </div>
       </div>
 
       {/* Label bar — always visible at bottom */}
-      <div className="absolute bottom-0 left-0 right-0 px-2.5 py-2 bg-gradient-to-t from-black/80 to-transparent">
-        <p className="text-xs font-semibold text-white leading-tight">{ex.label}</p>
-        <p className="text-[10px] text-white/58 leading-tight">{ex.subtitle}</p>
+      <div className="absolute bottom-0 left-0 right-0 px-2.5 py-2 bg-gradient-to-t from-black/80 to-transparent flex items-end justify-between gap-1">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-white leading-tight truncate">{ex.label}</p>
+          <p className="text-[10px] text-white/58 leading-tight">{ex.subtitle}</p>
+        </div>
+        {/* Guide Me button */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onGuide(ex) }}
+          title="Guide Me — camera form check"
+          className="flex-shrink-0 flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-semibold bg-cyan-600/80 hover:bg-cyan-500 text-white backdrop-blur-sm transition-colors"
+        >
+          <Camera size={10} />
+          Guide
+        </button>
       </div>
     </div>
   )
@@ -199,7 +214,9 @@ function VideoCard({
 // ── Exercise video section ────────────────────────────────────────────────────
 
 function ExerciseVideos({ muscleId }: { muscleId: string }) {
-  const [activeId, setActiveId] = useState<string | null>(null)
+  const [activeId, setActiveId]         = useState<string | null>(null)
+  const [guidanceEx, setGuidanceEx]     = useState<ExerciseDef | null>(null)
+
   // When the selection came from the diagnostic tool, use the sub-muscle ID
   // (e.g. 'deltoid_anterior') for a more targeted exercise lookup.
   const subMuscleId = useAtlasStore((s) => s.diagnosticSubMuscleId)
@@ -210,23 +227,36 @@ function ExerciseVideos({ muscleId }: { muscleId: string }) {
   if (!exercises) return null
 
   return (
-    <div className="py-2 border-b border-slate-100 dark:border-slate-700/60">
-      <div className="flex items-center gap-1.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-2">
-        <Play size={10} />
-        Exercises
-      </div>
+    <>
+      {/* Camera-guided overlay — mounts outside the scrollable panel */}
+      {guidanceEx && (
+        <ExerciseGuidance
+          exerciseId={guidanceEx.id}
+          exerciseLabel={guidanceEx.label}
+          videoSrc={guidanceEx.src}
+          onClose={() => setGuidanceEx(null)}
+        />
+      )}
 
-      <div className="flex flex-col gap-2">
-        {exercises.map((ex) => (
-          <VideoCard
-            key={ex.id}
-            ex={ex}
-            isActive={activeId === ex.id}
-            onSelect={() => setActiveId(ex.id)}
-          />
-        ))}
+      <div className="py-2 border-b border-slate-100 dark:border-slate-700/60">
+        <div className="flex items-center gap-1.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-2">
+          <Play size={10} />
+          Exercises
+        </div>
+
+        <div className="flex flex-col gap-2">
+          {exercises.map((ex) => (
+            <VideoCard
+              key={ex.id}
+              ex={ex}
+              isActive={activeId === ex.id}
+              onSelect={() => setActiveId(ex.id)}
+              onGuide={(e) => setGuidanceEx(e)}
+            />
+          ))}
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 
