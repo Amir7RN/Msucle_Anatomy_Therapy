@@ -307,24 +307,27 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
   return (
     <aside className={wrapperCls}>
       {/* Header */}
-      <header className="flex items-center justify-between border-b border-slate-700 px-3 py-2">
+      <header className="flex items-center justify-between border-b border-slate-700 px-3 py-2 flex-shrink-0">
         <div className="flex items-center gap-2">
-          <MessageCircle size={16} className="text-orange-400" />
-          <span className="text-sm font-semibold tracking-wide">Symptom Triage</span>
+          <MessageCircle size={15} className="text-orange-400" />
+          <span className="text-[13px] font-semibold tracking-wide">AI Diagnosis</span>
         </div>
         <div className="flex items-center gap-1">
           {differential && (
             <button onClick={exportPdf} title="Export PDF" className="rounded p-1 text-slate-300 hover:bg-slate-800 hover:text-white">
-              <FileDown size={14} />
+              <FileDown size={13} />
             </button>
           )}
           <button onClick={startNew} title="New session" className="rounded px-2 py-0.5 text-[10px] text-slate-400 hover:bg-slate-800 hover:text-white">new</button>
           <button onClick={() => { setApiKey(null); clearStoredApiKey() }} title="Clear API key" className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white">
-            <KeyRound size={14} />
+            <KeyRound size={13} />
           </button>
-          <button onClick={onClose} title="Close" className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white">
-            <X size={14} />
-          </button>
+          {/* Only show close button when floating (not inline) */}
+          {!inline && (
+            <button onClick={onClose} title="Close" className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white">
+              <X size={13} />
+            </button>
+          )}
         </div>
       </header>
 
@@ -489,19 +492,18 @@ function VoiceStrip({
 function EmptyState({ voiceSupported }: { voiceSupported: boolean }) {
   return (
     <div className="space-y-2 rounded-md bg-slate-800/50 p-3 text-xs text-slate-300">
-      <div className="font-semibold text-slate-100">Start a triage</div>
+      <div className="font-semibold text-slate-100">AI Diagnosis</div>
       <p className="text-slate-400">
-        Describe where it hurts, when it started, what makes it worse — type or
-        {voiceSupported ? ' speak.' : ' write it out.'}
+        Describe where it hurts, when it started, and what makes it worse —
+        {voiceSupported ? ' type or speak.' : ' write it out.'}
       </p>
       {voiceSupported && (
         <p className="text-slate-500 text-[11px]">
-          Turn on <span className="font-semibold text-orange-400">Voice mode</span> for a hands-free conversation:
-          you talk, the AI talks back. Pause for a beat to send.
+          Tap the mic to talk hands-free. The AI responds aloud and shows likely sources on the 3D model.
         </p>
       )}
       <p className="text-slate-500 text-[11px]">
-        Or click the body in Diagnostic Mode and I'll pick up that area as the starting point.
+        Or click the body in Diagnostic Mode and I'll start from that area automatically.
       </p>
     </div>
   )

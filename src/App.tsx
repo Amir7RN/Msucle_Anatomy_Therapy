@@ -6,7 +6,7 @@ import { ViewerCanvas } from './components/viewer/ViewerCanvas'
 import { MovementScreen } from './components/movement/MovementScreen'
 import { useAtlasStore } from './store/atlasStore'
 import type { CameraPresetKey } from './lib/cameraUtils'
-import { MessageCircle, Activity } from 'lucide-react'
+import { Activity } from 'lucide-react'
 
 /**
  * Root application component.
@@ -107,7 +107,6 @@ export default function App() {
         <main className="flex-1 min-w-0 relative">
           <ViewerCanvas />
           <DiagnosticModeToggle />
-          <TriageLauncher />
           <MovementLauncher />
         </main>
 
@@ -121,27 +120,6 @@ export default function App() {
       {/* Phone-camera Movement Assessment */}
       <MovementScreenMount />
     </div>
-  )
-}
-
-// ── Triage chat launcher + mount ────────────────────────────────────────────
-
-function TriageLauncher() {
-  const triageOpen   = useAtlasStore((s) => s.triageOpen)
-  const toggleTriage = useAtlasStore((s) => s.toggleTriage)
-  return (
-    <button
-      onClick={toggleTriage}
-      title="Open AI Symptom Triage"
-      className={`absolute right-4 top-4 z-20 flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold shadow-lg transition-colors ${
-        triageOpen
-          ? 'bg-orange-500 text-white hover:bg-orange-400'
-          : 'bg-slate-800 text-slate-100 hover:bg-slate-700 ring-1 ring-orange-500/40'
-      }`}
-    >
-      <MessageCircle size={14} />
-      {triageOpen ? 'Triage open' : 'AI Triage'}
-    </button>
   )
 }
 

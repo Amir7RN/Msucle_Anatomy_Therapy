@@ -1,57 +1,85 @@
+/**
+ * LeftSidebar.tsx
+ *
+ * New layout — the sidebar is always split:
+ *   80 %  AI Diagnosis chat  (always visible, voice-ready)
+ *   20 %  Structures tree    (compact, scrollable, mini search)
+ *
+ * FilterPanel and LayerVisibilityPanel have been removed — the AI chat
+ * is now the primary discovery surface.
+ */
+
 import React from 'react'
-import { SearchBar } from '../controls/SearchBar'
-import { FilterPanel } from '../controls/FilterPanel'
-import { StructureTree } from '../controls/StructureTree'
 import { TriageChat } from '../triage/TriageChat'
+import { StructureTree } from '../controls/StructureTree'
 import { useStructureSearch } from '../../hooks/useStructureSearch'
 import { useAtlasStore } from '../../store/atlasStore'
 
+// ── Compact result count ──────────────────────────────────────────────────────
 function ResultCount() {
   const results = useStructureSearch()
   return (
-    <span className="text-[10px] text-slate-400 dark:text-slate-500">
-      {results.length} structure{results.length !== 1 ? 's' : ''}
+    <span className="text-[10px] text-slate-500">
+      {results.length}
     </span>
   )
 }
 
-export function LeftSidebar() {
-  const triageOpen    = useAtlasStore((s) => s.triageOpen)
-  const setTriageOpen = useAtlasStore((s) => s.setTriageOpen)
-
+// ── Mini search for the structures section ────────────────────────────────────
+function MiniSearch() {
+  const query    = useAtlasStore((s) => s.searchQuery)
+  const setQuery = useAtlasStore((s) => s.setSearchQuery)
   return (
-    <aside className="w-64 flex flex-col border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-shrink-0 overflow-hidden">
-      {/* Search — always visible */}
-      <div className="p-3 border-b border-slate-100 dark:border-slate-700/80 flex-shrink-0">
-        <SearchBar />
-      </div>
+    <input
+      type="text"
+      value={query}
+      onChange={(e) => setQuery(e.target.value)}
+      placeholder="Search…"
+      className="w-full text-[11px] bg-slate-800 text-slate-100 rounded px-2 py-1 border border-slate-700 focus:border-orange-500 focus:outline-none placeholder:text-slate-600"
+    />
+  )
+}
 
-      {triageOpen ? (
-        /* When triage is open: fill the remaining sidebar space with the chat */
+// ── Main sidebar ──────────────────────────────────────────────────────────────
+export function LeftSidebar() {
+  return (
+    <aside
+      className="flex flex-col border-r border-slate-700 bg-slate-900 flex-shrink-0 overflow-hidden"
+      style={{ width: 300 }}
+    >
+      {/* ── AI Diagnosis — 80 % ─────────────────────────────────────────── */}
+      {/* Always open, inline, no close button. */}
+      <div className="flex flex-col min-h-0" style={{ flex: 4 }}>
         <TriageChat
-          open={triageOpen}
-          onClose={() => setTriageOpen(false)}
+          open
+          onClose={() => {/* panel is always open — no-op */}}
           inline
         />
-      ) : (
-        /* Normal view: filters + structure tree */
-        <>
-          <div className="p-3 border-b border-slate-100 dark:border-slate-700/80 flex-shrink-0">
-            <FilterPanel />
-          </div>
+      </div>
 
-          <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100 dark:border-slate-700/80 flex-shrink-0">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              Structures
-            </span>
-            <ResultCount />
-          </div>
+      {/* ── Structures — 20 % ───────────────────────────────────────────── */}
+      <div
+        className="flex flex-col border-t border-slate-700 flex-shrink-0"
+        style={{ flex: 1, minHeight: 0 }}
+      >
+        {/* Header row */}
+        <div className="flex items-center justify-between px-3 py-1.5 flex-shrink-0 border-b border-slate-700/60">
+          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+            Structures
+          </span>
+          <ResultCount />
+        </div>
 
-          <div className="flex-1 overflow-y-auto p-2">
-            <StructureTree />
-          </div>
-        </>
-      )}
+        {/* Mini search */}
+        <div className="px-2 py-1.5 flex-shrink-0">
+          <MiniSearch />
+        </div>
+
+        {/* Tree */}
+        <div className="flex-1 overflow-y-auto px-1.5 pb-1">
+          <StructureTree />
+        </div>
+      </div>
     </aside>
   )
 }
