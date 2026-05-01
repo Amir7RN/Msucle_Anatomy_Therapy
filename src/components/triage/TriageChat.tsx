@@ -45,7 +45,6 @@ import {
 } from '../../lib/diagnostic'
 import { exportTriagePdf } from '../../lib/triage/pdf'
 import { useVoiceInput, useVoiceOutput, useVoiceActivity } from '../../hooks/useVoice'
-import { DIAGNOSTIC_TO_MESH_IDS } from '../../lib/diagnostic'
 
 interface Props {
   open:    boolean
@@ -58,8 +57,6 @@ const SILENCE_MS = 1500    // pause length that triggers auto-send — snappier 
 
 export function TriageChat({ open, onClose, inline = false }: Props) {
   const catalogue = useDiagnosticCatalogue()
-  const setSelected = useAtlasStore((s) => s.setSelected)
-  const setHovered  = useAtlasStore((s) => s.setHovered)
   const diagnosticResult = useAtlasStore((s) => s.diagnosticResult)
   const setDiagnostic    = useAtlasStore((s) => s.setDiagnostic)
 
@@ -72,6 +69,8 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
   const [error,  setError]         = useState<string | null>(null)
   const [voiceMode, setVoiceMode]  = useState(false)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
+  // Tracks whether voice mode has been auto-armed for this open session
+  const voiceModeAutoRef = useRef(false)
 
   // Refs the silence callback uses (it's stable; we look up live state through these)
   const sendingRef   = useRef(sending)
@@ -114,6 +113,16 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
       if (voiceOut.speaking) voiceOut.cancel()
     }
   }, [voiceOut])
+
+  // ── Persistent mic: auto-enable voice mode each time the panel opens ────────
+  // Resets on close so it re-arms on the next open too.
+  useEffect(() => {
+    if (!open || !voiceIn.supported || voiceModeAutoRef.current) return
+    voiceModeAutoRef.current = true
+    setVoiceMode(true)
+    voiceIn.start()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   // Volume-based barge-in: while TTS is speaking, sustained user volume
   // above the threshold cancels speech instantly.  This is the hard-fix
@@ -187,6 +196,12 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
         setDifferential(result.differential)
         const contribs = calculateMuscleContribution(result.differential.zones, catalogue as DiagnosticMuscle[])
         setContribs(contribs)
+        // Push to schematic overlay on the 3D model — patient-right side by default
+        setDiagnostic({
+          clickedZones:  result.differential.zones,
+          clickPoint:    [-0.01, 0, 0],
+          contributions: contribs,
+        })
       }
 
       // Always speak the reply — even if the user only pressed the mic once
@@ -252,6 +267,7 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
     setInput('')
     voiceOut.cancel()
     voiceIn.reset()
+    setDiagnostic(null)   // clear schematic overlay on the model
   }
 
   function exportPdf() {
@@ -264,12 +280,13 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
     })
   }
 
-  // Cancel everything when the panel closes
+  // Cancel everything when the panel closes; reset auto-start so it re-arms next open
   useEffect(() => {
     if (!open) {
       voiceIn.stop()
       voiceOut.cancel()
       setVoiceMode(false)
+      voiceModeAutoRef.current = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -350,19 +367,7 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
           ))}
 
           {differential && contribs.length > 0 && (
-            <DifferentialCard
-              differential={differential}
-              contribs={contribs}
-              onHighlight={(muscle_id) => {
-                const meshIds = DIAGNOSTIC_TO_MESH_IDS[muscle_id] ?? []
-                if (meshIds.length > 0) setSelected(meshIds[0])
-              }}
-              onHover={(muscle_id) => {
-                if (!muscle_id) { setHovered(null); return }
-                const meshIds = DIAGNOSTIC_TO_MESH_IDS[muscle_id] ?? []
-                setHovered(meshIds[0] ?? null)
-              }}
-            />
+            <ModelResultsHint differential={differential} />
           )}
 
           {sending && (
@@ -540,49 +545,21 @@ function Bubble({
   )
 }
 
-function DifferentialCard({
-  differential, contribs, onHighlight, onHover,
-}: {
-  differential: DifferentialPayload
-  contribs:     MuscleContribution[]
-  onHighlight:  (muscle_id: string) => void
-  onHover:      (muscle_id: string | null) => void
-}) {
+/**
+ * ModelResultsHint — replaces the old in-chat differential card.
+ * The ranked muscle list is now shown on the 3D anatomy model as a
+ * schematic overlay (leader lines + label boxes).  This card just confirms
+ * that and surfaces any red-flag warnings.
+ */
+function ModelResultsHint({ differential }: { differential: DifferentialPayload }) {
   return (
-    <div className="space-y-2 rounded-md border border-orange-700/40 bg-gradient-to-b from-orange-900/30 to-slate-800/30 p-3">
-      <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-orange-400">
-        Likely sources
+    <div className="space-y-2 rounded-md border border-orange-700/30 bg-orange-900/15 p-2.5">
+      <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-orange-400">
+        <span>◈</span> Likely sources — shown on model
       </div>
-      <div className="space-y-1">
-        {contribs.slice(0, 8).map((c) => (
-          <button
-            key={c.muscle_id}
-            onMouseEnter={() => onHover(c.muscle_id)}
-            onMouseLeave={() => onHover(null)}
-            onClick={() => onHighlight(c.muscle_id)}
-            className="group flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left hover:bg-slate-800"
-          >
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-xs text-slate-100">{c.common_name}</div>
-              <div className="text-[9px] uppercase text-slate-500">{c.matchType} zone</div>
-            </div>
-            <div className="flex w-20 items-center gap-1">
-              <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-slate-800">
-                <div
-                  className="absolute left-0 top-0 h-full rounded-full"
-                  style={{
-                    width: `${Math.round(c.probability * 100)}%`,
-                    backgroundColor: c.matchType === 'primary' ? '#FF8C00' : '#B45309',
-                  }}
-                />
-              </div>
-              <span className="w-7 text-right text-[10px] tabular-nums text-slate-300">
-                {Math.round(c.probability * 100)}%
-              </span>
-            </div>
-          </button>
-        ))}
-      </div>
+      <p className="text-[10px] leading-snug text-slate-400">
+        Muscle candidates with leader lines are displayed on the 3D anatomy model. Click any label box to select the muscle.
+      </p>
       {differential.red_flags.length > 0 && (
         <div className="rounded border border-red-700 bg-red-950/40 p-2 text-[10px] text-red-300">
           <div className="mb-1 flex items-center gap-1 font-semibold">

@@ -64,6 +64,31 @@ export const EXERCISE_TO_BIOFEEDBACK: Record<string, string> = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Wall-arm detector
+//
+//  For exercises where one arm rests on a wall (e.g. Standing Chest Stretch),
+//  we must NOT hard-code left vs right because the user can stand on either
+//  side.  Instead we detect the "wall arm" as the one whose elbow has the
+//  greatest lateral abduction from the body (i.e. the arm sticking furthest
+//  outward, roughly horizontal at chest height).
+//
+//  vectorVerticalAngleDeg(shoulder→elbow) gives the deviation from straight
+//  up (0°).  90° = fully horizontal.  The arm with the larger absolute value
+//  is the one in contact with the wall.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function pickWallArm(lms: LandmarkSet): 'L' | 'R' | null {
+  const hasL = visible(lms, LM.L_HIP, LM.L_SHOULDER, LM.L_ELBOW)
+  const hasR = visible(lms, LM.R_HIP, LM.R_SHOULDER, LM.R_ELBOW)
+  if (!hasL && !hasR) return null
+  if (!hasL) return 'R'
+  if (!hasR) return 'L'
+  const abductionL = Math.abs(vectorVerticalAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_ELBOW]))
+  const abductionR = Math.abs(vectorVerticalAngleDeg(lms[LM.R_SHOULDER], lms[LM.R_ELBOW]))
+  return abductionL >= abductionR ? 'L' : 'R'
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Biofeedback definitions
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -177,30 +202,45 @@ export const BIOFEEDBACK_DEFS: Record<string, BiofeedbackDef> = {
   // Stand next to a wall, reach the arm back so the palm rests on the wall
   // at chest height, then rotate the body away to stretch the anterior deltoid.
   //
-  // Check 1: arm at chest/shoulder height (hip→shoulder→elbow ≈ 80–100°).
-  // Check 2: shoulder not shrugged up — spine-to-shoulder vector stays vertical.
+  // SIDE-AGNOSTIC: user can stand with left or right arm on the wall.
+  // pickWallArm() detects which elbow is most abducted (further from vertical)
+  // and tracks that arm — so the guidance works regardless of which side faces
+  // the wall.
+  //
+  // Check 1: wall arm at chest/shoulder height (hip→shoulder→elbow ≈ 75–105°).
+  // Check 2: shoulder not shrugged up — hip→shoulder vector stays vertical.
   standing_chest: {
     exerciseId: 'standing_chest',
     title:      'Standing Chest Stretch',
-    introCue:   'Place your palm on the wall at chest height, elbow slightly bent. Slowly rotate your body away from the arm until you feel a stretch across your chest and front shoulder.',
+    introCue:   'Place your palm on the wall at chest height, elbow slightly bent. Slowly rotate your body away from the arm until you feel a stretch across your chest and front shoulder. Either side works — I\'ll find your wall arm automatically.',
     checks: [
       {
-        label:    'Arm at chest height',
+        label:    'Wall arm at chest height',
         ideal:    [75, 105],
-        measure:  (lms) =>
-          visible(lms, LM.R_HIP, LM.R_SHOULDER, LM.R_ELBOW)
-            ? jointAngleDeg(lms[LM.R_HIP], lms[LM.R_SHOULDER], lms[LM.R_ELBOW])
-            : null,
-        belowCue: 'Raise your arm — keep the palm on the wall at chest/shoulder height.',
-        aboveCue: 'Lower your arm slightly — aim for chest height, not overhead.',
+        measure:  (lms) => {
+          const side = pickWallArm(lms)
+          if (!side) return null
+          const hip      = lms[side === 'L' ? LM.L_HIP      : LM.R_HIP]
+          const shoulder = lms[side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER]
+          const elbow    = lms[side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW]
+          return jointAngleDeg(hip, shoulder, elbow)
+        },
+        belowCue: 'Raise your wall arm — keep the palm on the wall at chest/shoulder height.',
+        aboveCue: 'Lower your wall arm slightly — aim for chest height, not overhead.',
       },
       {
         label:    'Shoulder relaxed down',
         ideal:    [0, 20],
-        measure:  (lms) =>
-          visible(lms, LM.R_HIP, LM.R_SHOULDER)
-            ? Math.abs(vectorVerticalAngleDeg(lms[LM.R_HIP], lms[LM.R_SHOULDER]))
-            : null,
+        measure:  (lms) => {
+          const side = pickWallArm(lms)
+          if (!side) return null
+          const hip      = lms[side === 'L' ? LM.L_HIP      : LM.R_HIP]
+          const shoulder = lms[side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER]
+          return visible(lms, side === 'L' ? LM.L_HIP : LM.R_HIP,
+                              side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER)
+            ? Math.abs(vectorVerticalAngleDeg(hip, shoulder))
+            : null
+        },
         belowCue: '',
         aboveCue: 'Relax your shoulder down — avoid letting it rise toward your ear.',
       },
