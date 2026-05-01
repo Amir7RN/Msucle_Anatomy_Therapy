@@ -8,6 +8,8 @@ import { HumanAtlas } from './HumanAtlas'
 import { MuscleOverlay } from './MuscleOverlay'
 import { BodySurface } from './BodySurface'
 import { PainOverlay } from './PainOverlay'
+import { SchematicMarkers } from '../schematic/SchematicMarkers'
+import { SchematicOverlay } from '../schematic/SchematicOverlay'
 import { useAtlasStore } from '../../store/atlasStore'
 import { DEFAULT_CAMERA_POSITION } from '../../lib/cameraUtils'
 import { useAnatomyModelProbe } from '../../hooks/useAnatomyModel'
@@ -176,7 +178,13 @@ export function ViewerCanvas() {
             <PainOverlay />
           </>
         )}
+
+        {/* Robot-Schematic markers — projects muscle world-pos to screen each frame */}
+        <SchematicMarkers />
       </Canvas>
+
+      {/* HTML/SVG schematic overlay — leader lines + label cards */}
+      <SchematicOverlay />
 
       <ModelStatusBadge />
       <HoverTooltip />

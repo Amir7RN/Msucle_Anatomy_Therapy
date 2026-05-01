@@ -33,8 +33,11 @@ import { useAtlasStore } from '../../store/atlasStore'
 import { useDiagnosticClickFromStore } from '../../hooks/useDiagnosticClick'
 import { MESHY_SCALE, MESHY_GROUND_Y } from '../../lib/muscleMap'
 
-// Free3D "Male Base 88907" — verify license terms before commercial release.
-export const MESHY_MODEL_PATH = `${import.meta.env.BASE_URL}models/male-normal.glb`
+// Free3D "Male Base 88907", optimised with @gltf-transform/cli to ~4 MB
+// (meshopt-compressed).  Drops ~85% of file size with no visible quality loss.
+// Run `npx @gltf-transform/cli optimize male-normal.glb male-normal-opt.glb`
+// after replacing the source.
+export const MESHY_MODEL_PATH = `${import.meta.env.BASE_URL}models/male-normal-opt.glb`
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Material factory — clinical charcoal, per spec
@@ -76,7 +79,9 @@ class ModelErrorBoundary extends Component<{ children: React.ReactNode; fallback
 // ─────────────────────────────────────────────────────────────────────────────
 
 function MeshyScene() {
-  const { scene } = useGLTF(MESHY_MODEL_PATH)
+  // Third arg = useMeshOpt — required because the optimised GLB uses
+  // EXT_meshopt_compression.  drei loads MeshoptDecoder lazily.
+  const { scene } = useGLTF(MESHY_MODEL_PATH, true, true)
   const setSelected     = useAtlasStore((s) => s.setSelected)
   const diagnosticClick = useDiagnosticClickFromStore()
 
@@ -160,4 +165,4 @@ export function HumanAtlas() {
 }
 
 // Eager-load so the suspense fallback period is short on second mount.
-useGLTF.preload(MESHY_MODEL_PATH)
+useGLTF.preload(MESHY_MODEL_PATH, true, true)
