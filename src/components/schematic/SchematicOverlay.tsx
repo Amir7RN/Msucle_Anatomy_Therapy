@@ -31,7 +31,11 @@ import { useSchematicStore, type SchematicMarker } from './schematicStore'
 const LABEL_W      = 172   // px  — compact card width
 const LABEL_H      = 52    // px  — card height
 const LABEL_GAP    = 8     // px  — vertical gap between cards
-const COL_MARGIN   = 18    // px  — distance from screen edge to column
+// Pull cards ~90 px away from the screen edge so they sit in the middle
+// band rather than hard against the border.  On wider screens this positions
+// them roughly 1/4 of the way in from the right, which keeps leader lines
+// reasonably short without crowding the 3D model.
+const COL_MARGIN   = 90    // px  — distance from screen edge to column
 const LINE_COLOR   = '#FF8C00'
 const LINE_HOVER   = '#FFD080'
 const ACCENT_PRI   = '#FF8C00'

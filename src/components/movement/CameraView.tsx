@@ -1,13 +1,25 @@
 /**
  * CameraView.tsx
  *
- * Renders the user's webcam, runs MediaPipe pose detection on each frame,
- * and draws the skeleton overlay on a transparent canvas.  Fires a callback
- * with each new landmark set for the orchestrator to analyse.
+ * Renders the webcam feed, runs MediaPipe Pose each frame, and draws a
+ * coloured skeleton overlay on a transparent canvas.
  *
- * The video element is mirrored (selfie-style) so movements feel natural;
- * landmark coordinates are mirrored back to body-space (left limb = body's
- * left) before being passed to the analyser.
+ * Mirror strategy (the double-flip bug fix)
+ * ─────────────────────────────────────────
+ * The video element uses CSS  scaleX(-1)  so the user sees themselves in
+ * "selfie" orientation (raising your right hand = right hand on screen).
+ * The canvas overlay uses the same CSS  scaleX(-1).
+ *
+ * IMPORTANT: because the canvas is already flipped by CSS, we must draw
+ * landmarks with RAW coordinates (no manual 1-x inversion).  The CSS flip
+ * then mirrors the drawn skeleton to match the flipped video perfectly.
+ *
+ * The old code did  x → 1-x  AND  scaleX(-1)  — a double flip — which put
+ * every joint on the opposite side from the real limb.
+ *
+ * For biofeedback callbacks we emit raw landmark coordinates.  Angle
+ * calculations use vectors between landmarks, which are invariant to a
+ * horizontal flip, so the measured degrees are identical either way.
  */
 
 import React, { useEffect, useRef } from 'react'
@@ -151,9 +163,11 @@ export function CameraView({ active, onLandmarks, onReady, onError }: Props) {
             const ctx = c.getContext('2d')!
             ctx.clearRect(0, 0, c.width, c.height)
             if (lms) {
-              const mirrored = lms.map((p) => ({ ...p, x: 1 - p.x }))
-              drawSkeleton(ctx, mirrored, c.width, c.height)
-              onLandmarks(mirrored)
+              // Draw with RAW coordinates — the CSS scaleX(-1) on the canvas
+              // handles the visual flip so the skeleton matches the video.
+              // No manual 1-x inversion needed (that was the double-flip bug).
+              drawSkeleton(ctx, lms, c.width, c.height)
+              onLandmarks(lms)
             }
           } catch (e) {
             // Per-frame errors shouldn't tear down the whole pipeline;
