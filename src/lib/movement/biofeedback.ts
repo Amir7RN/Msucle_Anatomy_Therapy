@@ -77,15 +77,63 @@ export const EXERCISE_TO_BIOFEEDBACK: Record<string, string> = {
 //  is the one in contact with the wall.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * pickWallArm — detects which arm is in contact with the wall.
+ *
+ * The wall arm is held roughly HORIZONTAL at chest height (≈ 90° from
+ * vertical in the shoulder→elbow vector).  The hanging/free arm hangs down
+ * (≈ 170–180° from vertical).
+ *
+ * BUG FIX: original code picked the arm with the LARGEST absolute angle,
+ * which selected the hanging arm (180°) instead of the wall arm (90°).
+ * Correct criterion: arm whose shoulder→elbow vector is CLOSEST TO 90°.
+ */
 function pickWallArm(lms: LandmarkSet): 'L' | 'R' | null {
   const hasL = visible(lms, LM.L_HIP, LM.L_SHOULDER, LM.L_ELBOW)
   const hasR = visible(lms, LM.R_HIP, LM.R_SHOULDER, LM.R_ELBOW)
   if (!hasL && !hasR) return null
   if (!hasL) return 'R'
   if (!hasR) return 'L'
-  const abductionL = Math.abs(vectorVerticalAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_ELBOW]))
-  const abductionR = Math.abs(vectorVerticalAngleDeg(lms[LM.R_SHOULDER], lms[LM.R_ELBOW]))
-  return abductionL >= abductionR ? 'L' : 'R'
+  const angL = Math.abs(vectorVerticalAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_ELBOW]))
+  const angR = Math.abs(vectorVerticalAngleDeg(lms[LM.R_SHOULDER], lms[LM.R_ELBOW]))
+  // Closest to 90° = most horizontal = wall arm
+  return Math.abs(angL - 90) <= Math.abs(angR - 90) ? 'L' : 'R'
+}
+
+/**
+ * pickRaisedArm — detects which arm is held at shoulder height.
+ *
+ * Used for cross-arm stretch: the user raises ONE arm to shoulder height
+ * (hip→shoulder→elbow ≈ 90°), then pulls it across with the other hand.
+ * We pick the arm whose HIP→SHOULDER→ELBOW angle is closest to 90°.
+ */
+function pickRaisedArm(lms: LandmarkSet): 'L' | 'R' | null {
+  const hasL = visible(lms, LM.L_HIP, LM.L_SHOULDER, LM.L_ELBOW)
+  const hasR = visible(lms, LM.R_HIP, LM.R_SHOULDER, LM.R_ELBOW)
+  if (!hasL && !hasR) return null
+  if (!hasL) return 'R'
+  if (!hasR) return 'L'
+  const angL = jointAngleDeg(lms[LM.L_HIP], lms[LM.L_SHOULDER], lms[LM.L_ELBOW])
+  const angR = jointAngleDeg(lms[LM.R_HIP], lms[LM.R_SHOULDER], lms[LM.R_ELBOW])
+  // Closest hip→shoulder→elbow angle to 90° = arm held at shoulder height
+  return Math.abs(angL - 90) <= Math.abs(angR - 90) ? 'L' : 'R'
+}
+
+/**
+ * pickHighElbow — detects which arm has the elbow ABOVE the shoulder.
+ *
+ * Used for hand-behind-back: the top arm has its elbow raised toward the
+ * ceiling.  In MediaPipe image coords Y increases downward, so the higher
+ * elbow has the SMALLER Y value.
+ */
+function pickHighElbow(lms: LandmarkSet): 'L' | 'R' | null {
+  const hasL = visible(lms, LM.L_SHOULDER, LM.L_ELBOW)
+  const hasR = visible(lms, LM.R_SHOULDER, LM.R_ELBOW)
+  if (!hasL && !hasR) return null
+  if (!hasL) return 'R'
+  if (!hasR) return 'L'
+  // Smaller image Y = higher in the frame = the arm going behind the head
+  return lms[LM.L_ELBOW].y <= lms[LM.R_ELBOW].y ? 'L' : 'R'
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -95,67 +143,87 @@ function pickWallArm(lms: LandmarkSet): 'L' | 'R' | null {
 export const BIOFEEDBACK_DEFS: Record<string, BiofeedbackDef> = {
 
   // ── Doorway Stretch ───────────────────────────────────────────────────────
-  // Stand in a doorway, forearms resting on the frame at chest height,
-  // step forward so the chest opens and the anterior deltoid stretches.
+  // Stand in a doorway, both forearms on the frame at chest height,
+  // step forward so the chest opens and both anterior deltoids stretch.
   //
-  // Check 1: elbow at shoulder height (hip→shoulder→elbow angle ≈ 90°).
-  // Check 2: elbow bent ~90° so the forearm rests on the frame.
+  // BOTH-ARM check: evaluate each arm independently and return the value
+  // for the arm that is FURTHEST from ideal (worst offender drives the cue).
   doorway_stretch: {
     exerciseId: 'doorway_stretch',
     title:      'Doorway Stretch',
     introCue:   'Step into the doorway with your forearms on the frame at shoulder height, elbows bent to 90 degrees. Step one foot forward to open your chest.',
     checks: [
       {
-        label:    'Elbow at shoulder height',
+        label:    'Elbows at shoulder height',
         ideal:    [80, 105],
-        measure:  (lms) =>
-          visible(lms, LM.L_HIP, LM.L_SHOULDER, LM.L_ELBOW)
-            ? jointAngleDeg(lms[LM.L_HIP], lms[LM.L_SHOULDER], lms[LM.L_ELBOW])
-            : null,
+        // Return the angle for the WORSE arm (furthest from 90°) so the cue
+        // targets whichever side needs the most correction.
+        measure:  (lms) => {
+          const hasL = visible(lms, LM.L_HIP, LM.L_SHOULDER, LM.L_ELBOW)
+          const hasR = visible(lms, LM.R_HIP, LM.R_SHOULDER, LM.R_ELBOW)
+          if (!hasL && !hasR) return null
+          const angL = hasL ? jointAngleDeg(lms[LM.L_HIP], lms[LM.L_SHOULDER], lms[LM.L_ELBOW]) : 90
+          const angR = hasR ? jointAngleDeg(lms[LM.R_HIP], lms[LM.R_SHOULDER], lms[LM.R_ELBOW]) : 90
+          // Return the angle furthest from the ideal midpoint (92.5°)
+          return Math.abs(angL - 92.5) >= Math.abs(angR - 92.5) ? angL : angR
+        },
         belowCue: 'Raise your elbows to shoulder height on the doorframe.',
         aboveCue: 'Lower your elbows slightly — they should be at shoulder level.',
       },
       {
-        label:    'Elbow bent 90°',
+        label:    'Elbows bent 90°',
         ideal:    [80, 105],
-        measure:  (lms) =>
-          visible(lms, LM.L_SHOULDER, LM.L_ELBOW, LM.L_WRIST)
-            ? jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_ELBOW], lms[LM.L_WRIST])
-            : null,
-        belowCue: 'Bend your elbow more — aim for 90 degrees on the frame.',
-        aboveCue: 'Bend your elbow a little more to rest the forearm on the frame.',
+        measure:  (lms) => {
+          const hasL = visible(lms, LM.L_SHOULDER, LM.L_ELBOW, LM.L_WRIST)
+          const hasR = visible(lms, LM.R_SHOULDER, LM.R_ELBOW, LM.R_WRIST)
+          if (!hasL && !hasR) return null
+          const angL = hasL ? jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_ELBOW], lms[LM.L_WRIST]) : 90
+          const angR = hasR ? jointAngleDeg(lms[LM.R_SHOULDER], lms[LM.R_ELBOW], lms[LM.R_WRIST]) : 90
+          return Math.abs(angL - 92.5) >= Math.abs(angR - 92.5) ? angL : angR
+        },
+        belowCue: 'Bend your elbows more — aim for 90 degrees on the frame.',
+        aboveCue: 'Bend your elbows a little more to rest the forearms on the frame.',
       },
     ],
   },
 
   // ── Seated / Standing Cross-Arm Stretch ───────────────────────────────────
-  // Used for both seated_cross_arm and standing_sleeper (which in practice is
-  // the arm-across-chest variant, not the floor-lying sleeper stretch).
+  // The user raises ONE arm (either side) to shoulder height, bends the elbow,
+  // then uses the opposite hand to pull it across the chest.
   //
-  // The stretching arm is held at shoulder height (hip→shoulder→elbow ≈ 90°),
-  // elbow bent ~90° so the opposite hand can grip and pull it across the chest.
+  // SIDE-AGNOSTIC via pickRaisedArm: the arm whose hip→shoulder→elbow angle
+  // is closest to 90° is the one being stretched — works left or right.
   cross_arm_stretch: {
     exerciseId: 'cross_arm_stretch',
     title:      'Cross-Arm Stretch',
-    introCue:   'Raise your arm to shoulder height, bend the elbow, and use your opposite hand to pull the elbow across your chest. Relax your neck and shoulder.',
+    introCue:   'Raise either arm to shoulder height, bend the elbow, and use your opposite hand to pull the elbow across your chest. Relax your neck and shoulder.',
     checks: [
       {
         label:    'Arm at shoulder height',
         ideal:    [75, 105],
-        measure:  (lms) =>
-          visible(lms, LM.L_HIP, LM.L_SHOULDER, LM.L_ELBOW)
-            ? jointAngleDeg(lms[LM.L_HIP], lms[LM.L_SHOULDER], lms[LM.L_ELBOW])
-            : null,
+        measure:  (lms) => {
+          const side = pickRaisedArm(lms)
+          if (!side) return null
+          const hip      = lms[side === 'L' ? LM.L_HIP      : LM.R_HIP]
+          const shoulder = lms[side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER]
+          const elbow    = lms[side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW]
+          return jointAngleDeg(hip, shoulder, elbow)
+        },
         belowCue: 'Lift your arm to shoulder height before pulling it across.',
         aboveCue: 'Lower your arm to shoulder level — don\'t let it rise above.',
       },
       {
         label:    'Elbow bent ~90°',
         ideal:    [75, 110],
-        measure:  (lms) =>
-          visible(lms, LM.L_SHOULDER, LM.L_ELBOW, LM.L_WRIST)
-            ? jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_ELBOW], lms[LM.L_WRIST])
-            : null,
+        measure:  (lms) => {
+          const side = pickRaisedArm(lms)
+          if (!side) return null
+          const shoulder = lms[side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER]
+          const elbow    = lms[side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW]
+          const wrist    = lms[side === 'L' ? LM.L_WRIST    : LM.R_WRIST]
+          if (!visible(lms, side === 'L' ? LM.L_WRIST : LM.R_WRIST)) return null
+          return jointAngleDeg(shoulder, elbow, wrist)
+        },
         belowCue: 'Bend the elbow more — aim for about 90 degrees.',
         aboveCue: 'Relax the elbow into a gentle 90-degree bend.',
       },
@@ -163,36 +231,46 @@ export const BIOFEEDBACK_DEFS: Record<string, BiofeedbackDef> = {
   },
 
   // ── Hand Behind Back Stretch ───────────────────────────────────────────────
-  // One hand reaches behind the head (top arm, elbow pointing to ceiling),
-  // the other hand reaches behind the lower back.  They hold opposite ends
-  // of a towel.  The top hand then slides up to deepen the stretch.
+  // One hand reaches behind the head (top arm, elbow pointing up),
+  // the other reaches behind the lower back.  Either arm can be the top one.
   //
-  // Check 1: top elbow raised (vector shoulder→elbow should point upward).
-  //          vectorVerticalAngleDeg ≈ 0° = straight up, so ideal 0–55°.
-  // Check 2: upright spine — hip→shoulder vector should be close to vertical.
+  // SIDE-AGNOSTIC via pickHighElbow: whichever elbow is higher in the frame
+  // is the "top arm" going behind the head.
+  //
+  // Check 1: top elbow pointing toward ceiling (shoulder→elbow ≈ 0–55° from up).
+  // Check 2: upright spine — measured on the OPPOSITE (low) arm's hip→shoulder.
   hand_behind_back: {
     exerciseId: 'hand_behind_back',
     title:      'Hand Behind Back Stretch',
-    introCue:   'Reach one hand behind your head and the other behind your lower back, holding a towel between them. Keep your spine tall and your shoulder blades down.',
+    introCue:   'Reach one hand behind your head and the other behind your lower back, holding a towel between them. Keep your spine tall and your shoulder blades down. Either arm can go up.',
     checks: [
       {
         label:    'Top elbow pointing up',
         ideal:    [0, 55],
-        measure:  (lms) =>
-          visible(lms, LM.R_SHOULDER, LM.R_ELBOW)
-            ? Math.abs(vectorVerticalAngleDeg(lms[LM.R_SHOULDER], lms[LM.R_ELBOW]))
-            : null,
+        measure:  (lms) => {
+          const side = pickHighElbow(lms)
+          if (!side) return null
+          const shoulder = lms[side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER]
+          const elbow    = lms[side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW]
+          return Math.abs(vectorVerticalAngleDeg(shoulder, elbow))
+        },
         belowCue: '',   // Math.abs() ≥ 0, so belowCue never fires
         aboveCue: 'Raise your top elbow higher — point it toward the ceiling.',
       },
       {
         label:    'Upright posture',
         ideal:    [0, 18],
-        measure:  (lms) =>
-          visible(lms, LM.L_HIP, LM.L_SHOULDER)
-            ? Math.abs(vectorVerticalAngleDeg(lms[LM.L_HIP], lms[LM.L_SHOULDER]))
-            : null,
-        belowCue: '',   // never fires (Math.abs ≥ 0)
+        measure:  (lms) => {
+          // Use the lower arm's side for the spine check (less obscured)
+          const topSide  = pickHighElbow(lms)
+          const lowSide  = topSide === 'L' ? 'R' : 'L'
+          const hip      = lms[lowSide === 'L' ? LM.L_HIP      : LM.R_HIP]
+          const shoulder = lms[lowSide === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER]
+          if (!visible(lms, lowSide === 'L' ? LM.L_HIP : LM.R_HIP,
+                            lowSide === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER)) return null
+          return Math.abs(vectorVerticalAngleDeg(hip, shoulder))
+        },
+        belowCue: '',
         aboveCue: 'Stand tall — keep your shoulder blades down and your spine straight.',
       },
     ],
