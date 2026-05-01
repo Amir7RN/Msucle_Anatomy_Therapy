@@ -98,7 +98,12 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, onClose 
           )}
         </div>
         <button
-          onClick={onClose}
+          onClick={() => {
+            // Cancel TTS synchronously BEFORE React unmounts AiCoach —
+            // relying on the cleanup effect alone is too slow (one render late).
+            window.speechSynthesis?.cancel()
+            onClose()
+          }}
           className="rounded-full p-1.5 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
         >
           <X size={18} />
@@ -232,13 +237,14 @@ function AiCoach({ def, snapshot }: { def: BiofeedbackDef; snapshot: FormSnapsho
   const voiceIn  = useVoiceInput({ silenceMs: 1400, onSilence: handleSilence })
   const voiceOut = useVoiceOutput()
 
-  // Auto-start mic the first time the component mounts
-  const autoStarted = useRef(false)
+  // Cleanup: stop mic + cancel TTS when the overlay is closed / unmounted
   useEffect(() => {
-    if (autoStarted.current || !voiceIn.supported) return
-    autoStarted.current = true
-    voiceIn.start()
-  }, [voiceIn.supported]) // eslint-disable-line react-hooks/exhaustive-deps
+    return () => {
+      voiceIn.stop()
+      voiceOut.cancel()
+      if (typeof window !== 'undefined') window.speechSynthesis?.cancel()
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Barge-in: user speaking while coach talks → cancel TTS
   useEffect(() => {
@@ -444,8 +450,8 @@ Rules:
           <p className="text-[10px] text-slate-500 leading-relaxed">
             {def.introCue.length > 120 ? def.introCue.slice(0, 120) + '…' : def.introCue}
             <br />
-            <span className="text-orange-400 not-italic mt-0.5 block">
-              Mic is on — ask me anything or just get into position.
+            <span className="text-slate-600 not-italic mt-0.5 block">
+              Tap the mic to start voice, or type a question below.
             </span>
           </p>
         )}

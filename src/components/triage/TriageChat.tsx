@@ -69,8 +69,6 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
   const [error,  setError]         = useState<string | null>(null)
   const [voiceMode, setVoiceMode]  = useState(false)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
-  // Tracks whether voice mode has been auto-armed for this open session
-  const voiceModeAutoRef = useRef(false)
 
   // Refs the silence callback uses (it's stable; we look up live state through these)
   const sendingRef   = useRef(sending)
@@ -108,21 +106,19 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
   })
   const voiceOut = useVoiceOutput()
   // Update the barge-in fn now that voiceOut is in scope.
+  // DUPLEX FIX: always call window.speechSynthesis.cancel() directly —
+  // voiceOut.speaking is React state and may not have flushed yet, so
+  // relying on it causes a one-render delay.  Hitting the native API is
+  // instant and idempotent (safe to call even when nothing is playing).
   useEffect(() => {
     barginRef.current = () => {
-      if (voiceOut.speaking) voiceOut.cancel()
+      if (typeof window !== 'undefined') window.speechSynthesis?.cancel()
+      voiceOut.cancel()
     }
   }, [voiceOut])
 
-  // ── Persistent mic: auto-enable voice mode each time the panel opens ────────
-  // Resets on close so it re-arms on the next open too.
-  useEffect(() => {
-    if (!open || !voiceIn.supported || voiceModeAutoRef.current) return
-    voiceModeAutoRef.current = true
-    setVoiceMode(true)
-    voiceIn.start()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  // Voice mode is OFF by default — user turns it on via the toggle in VoiceStrip.
+  // No mic permission is requested until the user explicitly enables it.
 
   // Volume-based barge-in: while TTS is speaking, sustained user volume
   // above the threshold cancels speech instantly.  This is the hard-fix
@@ -280,13 +276,12 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
     })
   }
 
-  // Cancel everything when the panel closes; reset auto-start so it re-arms next open
+  // Cancel everything when the panel closes
   useEffect(() => {
     if (!open) {
       voiceIn.stop()
       voiceOut.cancel()
       setVoiceMode(false)
-      voiceModeAutoRef.current = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
