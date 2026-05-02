@@ -57,7 +57,6 @@ const SILENCE_MS = 1500    // pause length that triggers auto-send — snappier 
 
 export function TriageChat({ open, onClose, inline = false }: Props) {
   const catalogue = useDiagnosticCatalogue()
-  const diagnosticResult = useAtlasStore((s) => s.diagnosticResult)
   const setDiagnostic    = useAtlasStore((s) => s.setDiagnostic)
 
   const [history, setHistory]      = useState<TriageChatMessage[]>([])
@@ -155,18 +154,11 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
   //  When TTS ends, the mic re-arm is handled by the .speak(..., onEnd)
   //  callback in sendNextTurn — see below.
 
-  // ── Body-click seed ────────────────────────────────────────────────────
-  //  When the user clicks a body area in Diagnostic Mode, pre-fill the input
-  //  field with the zone context.  The AI only responds when the user
-  //  explicitly sends — by pressing Enter, clicking Send, or speaking.
-  //  No message is auto-sent.
-  useEffect(() => {
-    if (!open || !diagnosticResult) return
-    const zones = diagnosticResult.clickedZones.join(', ')
-    setInput(`I have pain around my ${zones} area — what could be causing it?`)
-    setDiagnostic(null)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, diagnosticResult])
+  // ── Body-click is handled entirely by DiagnosticDrawer via atlasStore ──
+  //  Clicking the body in Diagnostic Mode sets diagnosticResult in the store;
+  //  DiagnosticDrawer reads it and renders the muscle % boxes.
+  //  The chat is NOT involved — it only sends when the user explicitly types
+  //  or speaks a message.
 
   async function sendNextTurn(nextHistory: TriageChatMessage[]) {
     if (!catalogue) {
