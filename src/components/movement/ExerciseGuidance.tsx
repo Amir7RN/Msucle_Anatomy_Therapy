@@ -32,8 +32,11 @@ import {
   BIOFEEDBACK_DEFS,
   EXERCISE_TO_BIOFEEDBACK,
   evaluateExercise,
+  EXERCISE_TO_PROCEDURE,
+  EXERCISE_PROCEDURES,
   type FormSnapshot,
   type BiofeedbackDef,
+  type StepCheck,
 } from '../../lib/movement/biofeedback'
 import { useVoiceInput, useVoiceOutput } from '../../hooks/useVoice'
 import { getStoredApiKey, setStoredApiKey } from '../../lib/triage/llm'
@@ -64,10 +67,15 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, onClose 
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [snapshot, setSnapshot]       = useState<FormSnapshot | null>(null)
 
+  // Live landmark ref — updated every camera frame, read by AiCoach's RAF loop
+  const lmsRef = useRef<LandmarkSet | null>(null)
+
   // Frame smoothing
   const frameBuffer = useRef<FormSnapshot[]>([])
 
   const handleLandmarks = useCallback((lms: LandmarkSet) => {
+    // Always update lmsRef so AiCoach step-machine can read it
+    lmsRef.current = lms
     if (!def) return
     const snap = evaluateExercise(lms, def)
     frameBuffer.current.push(snap)
@@ -80,7 +88,7 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, onClose 
     setSnapshot(smoothed)
   }, [def])
 
-  useEffect(() => { frameBuffer.current = []; setSnapshot(null) }, [exerciseId])
+  useEffect(() => { frameBuffer.current = []; setSnapshot(null); lmsRef.current = null }, [exerciseId])
 
   if (!exerciseId) return null
 
@@ -158,7 +166,7 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, onClose 
 
           {/* AI Coach — replaces static "Setup" text */}
           {def
-            ? <AiCoach def={def} snapshot={snapshot} />
+            ? <AiCoach def={def} snapshot={snapshot} lmsRef={lmsRef} />
             : (
               <div className="p-3 border-b border-slate-700 flex items-start gap-2">
                 <Info size={14} className="text-slate-400 mt-0.5 flex-shrink-0" />
@@ -204,11 +212,15 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, onClose 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  AiCoach — interactive Claude-powered physical therapist
+//  AiCoach — step-by-step procedure machine + live AI physical therapist
 //
-//  Receives live biofeedback and uses it as context for every API call.
-//  Voice is always on (auto-starts on mount); proactive cues fire every 12 s
-//  when form needs correction.  The user can also speak or type questions.
+//  Architecture:
+//    • A RAF loop reads lmsRef every frame and runs the current step's check().
+//    • When check() returns done:true, a hold timer accumulates (500 ms grace).
+//    • After holdMs ms of sustained "done", the coach advances to the next step.
+//    • Each transition fires a TTS cue (completion → next instruction).
+//    • For isTimedHold steps, a circular SVG countdown ring is rendered.
+//    • The user can ask free questions at any time via voice or text input.
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface CoachMessage {
@@ -216,20 +228,88 @@ interface CoachMessage {
   content: string
 }
 
-function AiCoach({ def, snapshot }: { def: BiofeedbackDef; snapshot: FormSnapshot | null }) {
+// Grace period — how long (ms) the pose can break without resetting the hold
+const HOLD_GRACE_MS = 500
+
+// SVG countdown ring for timed holds
+function CountdownRing({
+  elapsed, total, label,
+}: { elapsed: number; total: number; label: string }) {
+  const r = 34
+  const circ = 2 * Math.PI * r
+  const frac = Math.min(elapsed / total, 1)
+  const dashOffset = circ * (1 - frac)
+  const secsLeft = Math.max(0, Math.ceil((total - elapsed) / 1000))
+  return (
+    <div className="flex flex-col items-center py-3">
+      <svg width={84} height={84} viewBox="0 0 84 84">
+        {/* Track */}
+        <circle cx={42} cy={42} r={r} fill="none" stroke="#334155" strokeWidth={6} />
+        {/* Progress arc — rotated so it starts at 12 o'clock */}
+        <circle
+          cx={42} cy={42} r={r}
+          fill="none"
+          stroke={frac >= 1 ? '#34d399' : '#22d3ee'}
+          strokeWidth={6}
+          strokeLinecap="round"
+          strokeDasharray={circ}
+          strokeDashoffset={dashOffset}
+          transform="rotate(-90 42 42)"
+          style={{ transition: 'stroke-dashoffset 0.2s linear' }}
+        />
+        <text x={42} y={46} textAnchor="middle" fontSize={18} fontWeight="bold" fill="white">
+          {frac >= 1 ? '✓' : secsLeft}
+        </text>
+      </svg>
+      <p className="text-[10px] text-slate-400 mt-1">{label}</p>
+    </div>
+  )
+}
+
+function AiCoach({
+  def,
+  snapshot,
+  lmsRef,
+}: {
+  def:     BiofeedbackDef
+  snapshot: FormSnapshot | null
+  lmsRef:  React.MutableRefObject<LandmarkSet | null>
+}) {
   const [apiKey, setApiKey]   = useState<string | null>(getStoredApiKey)
   const [messages, setMessages] = useState<CoachMessage[]>([])
   const [input, setInput]     = useState('')
   const [sending, setSending] = useState(false)
 
-  const snapshotRef  = useRef(snapshot)
-  const sendingRef   = useRef(sending)
-  const messagesRef  = useRef(messages)
-  useEffect(() => { snapshotRef.current  = snapshot },  [snapshot])
-  useEffect(() => { sendingRef.current   = sending },   [sending])
-  useEffect(() => { messagesRef.current  = messages },  [messages])
+  // ── Step machine state ──────────────────────────────────────────────────
+  const procedureKey = def.exerciseId ? EXERCISE_TO_PROCEDURE[def.exerciseId] : undefined
+  const procedure    = procedureKey ? EXERCISE_PROCEDURES[procedureKey] : null
+  const steps        = procedure?.steps ?? []
+
+  const [stepIdx,     setStepIdx]     = useState(0)
+  const [holdElapsed, setHoldElapsed] = useState(0)      // ms held so far (for ring)
+  const [stepCheck,   setStepCheck]   = useState<StepCheck | null>(null)
+  const [allDone,     setAllDone]     = useState(false)
+
+  // Refs so the RAF closure always has fresh values
+  const stepIdxRef      = useRef(0)
+  const holdStartRef    = useRef<number | null>(null)    // when current "done" run started
+  const graceStartRef   = useRef<number | null>(null)    // when pose last broke
+  const allDoneRef      = useRef(false)
+  const midCueFiredRef  = useRef(false)
+  const stepSpokenRef   = useRef(false)                  // prevent double-speak on mount
+
+  // Keep refs in sync with state
+  useEffect(() => { stepIdxRef.current = stepIdx }, [stepIdx])
+  useEffect(() => { allDoneRef.current = allDone },   [allDone])
 
   // ── Voice I/O ───────────────────────────────────────────────────────────
+  const sendingRef   = useRef(sending)
+  const messagesRef  = useRef(messages)
+  const snapshotRef  = useRef(snapshot)
+  useEffect(() => { sendingRef.current  = sending },   [sending])
+  useEffect(() => { messagesRef.current = messages },  [messages])
+  useEffect(() => { snapshotRef.current = snapshot },  [snapshot])
+
   const handleSilence = useCallback((text: string) => {
     if (text.trim() && !sendingRef.current) void sendToCoach(text)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -237,7 +317,10 @@ function AiCoach({ def, snapshot }: { def: BiofeedbackDef; snapshot: FormSnapsho
   const voiceIn  = useVoiceInput({ silenceMs: 1400, onSilence: handleSilence })
   const voiceOut = useVoiceOutput()
 
-  // Cleanup: stop mic + cancel TTS when the overlay is closed / unmounted
+  const voiceOutRef = useRef(voiceOut)
+  useEffect(() => { voiceOutRef.current = voiceOut })
+
+  // Cleanup: stop mic + cancel TTS on unmount
   useEffect(() => {
     return () => {
       voiceIn.stop()
@@ -251,7 +334,101 @@ function AiCoach({ def, snapshot }: { def: BiofeedbackDef; snapshot: FormSnapsho
     if (voiceIn.listening && voiceOut.speaking) voiceOut.cancel()
   }, [voiceIn.listening, voiceOut.speaking, voiceOut])
 
-  // ── Build live form context for every API call ──────────────────────────
+  // ── Speak helper: queue after current TTS ends ─────────────────────────
+  const speakQueued = useCallback((text: string, onEnd?: () => void) => {
+    if (!text) return
+    // If speaking, cancel first so the new cue lands immediately
+    if (voiceOutRef.current.speaking) voiceOutRef.current.cancel()
+    setTimeout(() => voiceOutRef.current.speak(text, onEnd), 80)
+  }, [])
+
+  // ── Announce step instruction on step advance ──────────────────────────
+  // Speak first step instruction on mount (once)
+  useEffect(() => {
+    if (steps.length === 0 || stepSpokenRef.current) return
+    stepSpokenRef.current = true
+    // Small delay to let the overlay render first
+    const t = setTimeout(() => speakQueued(steps[0].instruction), 800)
+    return () => clearTimeout(t)
+  }, [steps, speakQueued])
+
+  // ── RAF loop — step machine ─────────────────────────────────────────────
+  useEffect(() => {
+    if (steps.length === 0) return
+    let rafId = 0
+
+    const tick = (now: number) => {
+      if (allDoneRef.current) return
+
+      const idx  = stepIdxRef.current
+      if (idx >= steps.length) return
+
+      const step = steps[idx]
+      const lms  = lmsRef.current
+      if (!lms) { rafId = requestAnimationFrame(tick); return }
+
+      const check = step.check(lms)
+      if (check) setStepCheck(check)
+
+      if (!check || !check.done) {
+        // Pose broken — start grace period
+        if (graceStartRef.current === null) graceStartRef.current = now
+        if (now - graceStartRef.current > HOLD_GRACE_MS) {
+          // Grace expired — reset hold accumulation
+          holdStartRef.current = null
+          graceStartRef.current = null
+          setHoldElapsed(0)
+        }
+        rafId = requestAnimationFrame(tick)
+        return
+      }
+
+      // Pose is satisfied — clear grace, start/continue hold timer
+      graceStartRef.current = null
+      if (holdStartRef.current === null) holdStartRef.current = now
+      const held = now - holdStartRef.current
+      setHoldElapsed(held)
+
+      // Mid-hold encouragement at ~40%
+      if (!midCueFiredRef.current && held >= step.holdMs * 0.4 && step.isTimedHold) {
+        midCueFiredRef.current = true
+        const secsLeft = Math.ceil((step.holdMs - held) / 1000)
+        speakQueued(`Great — keep holding! About ${secsLeft} seconds left.`)
+      }
+
+      if (held >= step.holdMs) {
+        // ── Advance ──
+        holdStartRef.current  = null
+        graceStartRef.current = null
+        midCueFiredRef.current = false
+        setHoldElapsed(0)
+
+        const nextIdx = idx + 1
+        if (nextIdx >= steps.length) {
+          // All done
+          allDoneRef.current = true
+          setAllDone(true)
+          speakQueued(step.completionText + ' All steps complete — excellent work!')
+        } else {
+          // Speak completion + next instruction
+          speakQueued(step.completionText, () => {
+            setTimeout(() => speakQueued(steps[nextIdx].instruction), 200)
+          })
+          setStepIdx(nextIdx)
+          stepIdxRef.current = nextIdx
+          setStepCheck(null)
+        }
+        return
+      }
+
+      rafId = requestAnimationFrame(tick)
+    }
+
+    rafId = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(rafId)
+  }, [steps, lmsRef, speakQueued]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Build live form context for API calls ───────────────────────────────
   function buildFormContext(): string {
     const snap = snapshotRef.current
     if (!snap || snap.details.length === 0) return 'Camera is still detecting your pose…'
@@ -261,13 +438,23 @@ function AiCoach({ def, snapshot }: { def: BiofeedbackDef; snapshot: FormSnapsho
     return `Overall: ${snap.good ? 'GOOD FORM ✓' : 'NEEDS CORRECTION'}\n${lines.join('\n')}`
   }
 
+  function buildStepContext(): string {
+    if (steps.length === 0) return ''
+    const idx   = stepIdxRef.current
+    const step  = steps[idx]
+    if (!step) return ''
+    return `Current step ${idx + 1} of ${steps.length}: "${step.instruction}"`
+  }
+
   // ── Core API call ───────────────────────────────────────────────────────
   async function sendToCoach(userText: string, isProactive = false) {
     if (!apiKey || sendingRef.current) return
     setSending(true)
     voiceIn.stop()
 
-    const systemPrompt = `You are a warm, expert physical therapist coaching a patient through the "${def.title}" exercise. You have real-time pose-tracking data from a camera.
+    const systemPrompt = `You are a warm, expert physical therapist coaching a patient through the "${def.title}" exercise. You have real-time pose-tracking data and step-by-step procedure tracking.
+
+${buildStepContext()}
 
 Current joint angles (live):
 ${buildFormContext()}
@@ -275,18 +462,16 @@ ${buildFormContext()}
 Rules:
 • Keep every reply to 1–2 short sentences — it is read aloud during the exercise hold.
 • Be encouraging and specific.
-• When form is GOOD: affirm it and offer one tip to deepen the benefit.
-• When form needs correction: give ONE clear, actionable adjustment.
-• You may answer questions about the exercise, muscles involved, or sensations felt.
-• Do NOT list multiple things at once — one cue per turn.`
+• You may answer questions about the exercise, muscles, or sensations.
+• Do NOT repeat the step instruction verbatim — they already heard it.
+• Do NOT list multiple things at once.`
 
-    const userMsg    = isProactive ? 'Give me a coaching cue based on my current form.' : userText
-    const baseHistory: CoachMessage[] = isProactive ? messagesRef.current : [...messagesRef.current, { role: 'user', content: userText }]
+    const userMsg    = isProactive ? 'Give me a brief motivating cue.' : userText
+    const baseHistory: CoachMessage[] = isProactive
+      ? messagesRef.current
+      : [...messagesRef.current, { role: 'user', content: userText }]
 
-    if (!isProactive) {
-      setMessages(baseHistory)
-      setInput('')
-    }
+    if (!isProactive) { setMessages(baseHistory); setInput('') }
 
     try {
       const res = await fetch(ANTHROPIC_URL, {
@@ -299,20 +484,17 @@ Rules:
         },
         body: JSON.stringify({
           model:      COACH_MODEL,
-          max_tokens: 120,
+          max_tokens: 100,
           system:     systemPrompt,
           messages:   [...baseHistory, { role: 'user', content: userMsg }],
         }),
       })
-      const data = await res.json()
+      const data  = await res.json()
       const reply: string = data.content?.[0]?.text ?? ''
       if (reply) {
         const assistantMsg: CoachMessage = { role: 'assistant', content: reply }
         setMessages((m) => [...(isProactive ? m : baseHistory), assistantMsg])
-        voiceOut.speak(reply, () => {
-          // Re-arm mic after TTS finishes
-          if (voiceIn.supported) voiceIn.start()
-        })
+        voiceOut.speak(reply, () => { if (voiceIn.supported) voiceIn.start() })
       }
     } catch (e) {
       console.error('[AiCoach]', e)
@@ -321,24 +503,25 @@ Rules:
     }
   }
 
-  // ── Proactive coaching every 12 s when form is off ──────────────────────
+  // ── Proactive coaching every 15 s during hold step when form needs work ─
   const lastProactiveRef = useRef(0)
   useEffect(() => {
     const id = setInterval(() => {
-      if (!apiKey || sendingRef.current || voiceOut.speaking) return
+      if (!apiKey || sendingRef.current || voiceOutRef.current.speaking) return
       const snap = snapshotRef.current
-      if (!snap || snap.good) return           // only coach when form needs work
+      const stepDone = allDoneRef.current
+      if (!snap || snap.good || stepDone) return
       const now = Date.now()
-      if (now - lastProactiveRef.current < 12_000) return
+      if (now - lastProactiveRef.current < 15_000) return
       lastProactiveRef.current = now
       void sendToCoach('', true)
-    }, 3_000)
+    }, 4_000)
     return () => clearInterval(id)
   }, [apiKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Render ──────────────────────────────────────────────────────────────
 
-  // API key gate — if no key, show a compact entry prompt
+  // API key gate
   if (!apiKey) {
     return (
       <div className="p-3 border-b border-slate-700">
@@ -347,7 +530,6 @@ Rules:
         </div>
         <p className="text-[10px] text-slate-400 mb-2 leading-snug">
           Add your Anthropic API key to enable the live AI physical therapist.
-          (If you've already added it in the Triage chat, reload the page.)
         </p>
         <div className="flex items-center gap-1.5">
           <KeyRound size={11} className="text-slate-500 flex-shrink-0" />
@@ -361,18 +543,18 @@ Rules:
             }}
           />
         </div>
-        {/* Fallback: show intro cue text when coach isn't available */}
         <p className="mt-2.5 text-[10px] text-slate-500 uppercase tracking-wide font-semibold">Setup</p>
         <p className="mt-1 text-xs text-slate-300 leading-relaxed">{def.introCue}</p>
       </div>
     )
   }
 
-  const lastMsg = messages[messages.length - 1]
+  const currentStep = steps[stepIdx]
+  const isHoldStep  = currentStep?.isTimedHold && !allDone
 
   // Phase indicator
   const phase =
-    sending        ? 'thinking'
+    sending             ? 'thinking'
     : voiceOut.speaking ? 'speaking'
     : voiceIn.listening ? 'listening'
     : 'idle'
@@ -383,22 +565,18 @@ Rules:
     : phase === 'speaking' ? 'text-cyan-400 animate-pulse'
     : 'text-slate-600'
 
-  const PhaseIcon =
-    phase === 'thinking' ? Brain
-    : voiceIn.listening  ? Mic
-    : voiceOut.speaking  ? Mic
-    : MicOff
+  const PhaseIcon = phase === 'thinking' ? Brain : voiceIn.listening ? Mic : voiceOut.speaking ? Mic : MicOff
+
+  const lastMsg = messages[messages.length - 1]
 
   return (
     <div className="border-b border-slate-700 flex flex-col">
 
-      {/* Coach header strip */}
-      <div className="flex items-center justify-between px-3 pt-2.5 pb-1.5">
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between px-3 pt-2.5 pb-1">
         <div className="flex items-center gap-1.5">
           <PhaseIcon size={13} className={phaseColor} />
-          <span className="text-[10px] uppercase tracking-wider text-cyan-400 font-semibold">
-            AI Coach
-          </span>
+          <span className="text-[10px] uppercase tracking-wider text-cyan-400 font-semibold">AI Coach</span>
         </div>
         <button
           title={voiceIn.listening ? 'Mute mic' : 'Start mic'}
@@ -413,51 +591,106 @@ Rules:
         </button>
       </div>
 
-      {/* Coach message area — last AI + user turn visible */}
+      {/* ── Step dots ── */}
+      {steps.length > 0 && (
+        <div className="flex items-center gap-1.5 px-3 pb-1.5">
+          {steps.map((s, i) => (
+            <div
+              key={s.id}
+              className={`transition-all rounded-full ${
+                i < stepIdx || allDone
+                  ? 'w-2 h-2 bg-emerald-500'           // completed
+                  : i === stepIdx && !allDone
+                    ? 'w-2.5 h-2.5 bg-cyan-400 ring-2 ring-cyan-400/40' // active
+                    : 'w-2 h-2 bg-slate-600'            // upcoming
+              }`}
+              title={s.instruction}
+            />
+          ))}
+          <span className="text-[9px] text-slate-500 ml-1">
+            {allDone ? 'Done!' : `Step ${stepIdx + 1} / ${steps.length}`}
+          </span>
+        </div>
+      )}
+
+      {/* ── All done banner ── */}
+      {allDone && (
+        <div className="mx-3 mb-2 rounded bg-emerald-700/40 border border-emerald-600/50 px-3 py-2 text-center">
+          <CheckCircle size={14} className="mx-auto text-emerald-400 mb-0.5" />
+          <p className="text-[11px] text-emerald-300 font-semibold">Exercise complete!</p>
+          <p className="text-[10px] text-slate-400">You can repeat or ask your coach anything.</p>
+        </div>
+      )}
+
+      {/* ── Timed hold ring ── */}
+      {isHoldStep && (
+        <CountdownRing
+          elapsed={holdElapsed}
+          total={currentStep!.holdMs}
+          label={currentStep!.holdLabel ?? 'Hold…'}
+        />
+      )}
+
+      {/* ── Current step instruction + progress bar (non-hold steps) ── */}
+      {currentStep && !allDone && (
+        <div className="px-3 pb-2">
+          <p className="text-xs text-slate-100 leading-snug mb-1.5">
+            {currentStep.instruction}
+          </p>
+
+          {/* Progress bar for positioning steps */}
+          {!isHoldStep && stepCheck && (
+            <div className="h-1.5 rounded-full bg-slate-700 overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-200"
+                style={{
+                  width: `${Math.round(stepCheck.progress * 100)}%`,
+                  backgroundColor: stepCheck.done ? '#34d399' : '#22d3ee',
+                }}
+              />
+            </div>
+          )}
+
+          {/* Hint text when not in position */}
+          {stepCheck && !stepCheck.done && stepCheck.hint && (
+            <p className="mt-1 text-[10px] text-orange-300 leading-snug">{stepCheck.hint}</p>
+          )}
+          {stepCheck && stepCheck.done && !isHoldStep && (
+            <p className="mt-1 text-[10px] text-emerald-400">
+              ✓ Hold position…
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* ── AI conversation (last message) ── */}
       <div
-        className="px-3 pb-2 min-h-[60px] cursor-pointer"
+        className="px-3 pb-2 cursor-pointer"
         onClick={() => voiceOut.speaking && voiceOut.cancel()}
         title={voiceOut.speaking ? 'Tap to interrupt' : undefined}
       >
         {phase === 'thinking' && (
           <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
             <Brain size={10} className="animate-pulse text-yellow-400" />
-            Analyzing your form…
+            Thinking…
           </div>
         )}
-
-        {/* Interim transcript while listening */}
         {phase === 'listening' && voiceIn.interimTranscript && (
-          <p className="text-[10px] text-orange-300 italic">
-            "{voiceIn.interimTranscript}"
-          </p>
+          <p className="text-[10px] text-orange-300 italic">"{voiceIn.interimTranscript}"</p>
         )}
-
-        {/* Show last message */}
         {phase !== 'thinking' && lastMsg && (
-          <p className={`text-xs leading-snug ${
-            lastMsg.role === 'assistant' ? 'text-slate-100' : 'text-slate-400 italic'
+          <p className={`text-[11px] leading-snug ${
+            lastMsg.role === 'assistant' ? 'text-slate-300' : 'text-slate-500 italic'
           }`}>
             {lastMsg.content}
             {lastMsg.role === 'assistant' && voiceOut.speaking && (
-              <span className="ml-1.5 text-[9px] text-cyan-400 not-italic">tap to skip ▶</span>
+              <span className="ml-1 text-[9px] text-cyan-400 not-italic">tap to skip ▶</span>
             )}
-          </p>
-        )}
-
-        {/* Initial state — show a trimmed intro cue until first coach response */}
-        {!lastMsg && phase === 'idle' && (
-          <p className="text-[10px] text-slate-500 leading-relaxed">
-            {def.introCue.length > 120 ? def.introCue.slice(0, 120) + '…' : def.introCue}
-            <br />
-            <span className="text-slate-600 not-italic mt-0.5 block">
-              Tap the mic to start voice, or type a question below.
-            </span>
           </p>
         )}
       </div>
 
-      {/* Text input — optional backup for voice */}
+      {/* ── Text input ── */}
       <div className="px-3 pb-3 flex items-center gap-1.5">
         <input
           value={input}

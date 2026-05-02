@@ -457,6 +457,728 @@ export const BIOFEEDBACK_DEFS: Record<string, BiofeedbackDef> = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Step-by-step Procedure system
+//
+//  Each exercise has an ordered list of ExerciseStep entries.  The AiCoach
+//  component drives a state machine through these steps:
+//    1. Show the step's instruction aloud and on screen.
+//    2. Check the current pose on every animation frame.
+//    3. When `check()` returns { done: true }, start an accumulation timer.
+//    4. Once the pose has been held for `holdMs` ms, advance to the next step
+//       (or finish).
+//  Intermediate setup steps use a short holdMs (≈1 500 ms) so the transition
+//  feels instant.  The final stretch hold uses a long holdMs (20 000 ms) and
+//  renders a circular countdown ring.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Returned by a step's check() function every animation frame. */
+export interface StepCheck {
+  /** True when the pose satisfies this step's requirement. */
+  done:     boolean
+  /** 0–1 progress toward the required position (drives the progress bar). */
+  progress: number
+  /** Short cue to show/speak when done is false. */
+  hint:     string
+}
+
+/** One step in a guided exercise procedure. */
+export interface ExerciseStep {
+  id:             string
+  /** Text spoken + displayed when this step first becomes active. */
+  instruction:    string
+  /** Short celebratory text spoken when this step completes. */
+  completionText: string
+  /**
+   * How long (ms) the "done" pose must be maintained to advance.
+   * Use ≈1 500 ms for positioning steps, 5 000–20 000 ms for timed holds.
+   */
+  holdMs:         number
+  /** When true the UI renders a circular countdown ring instead of a fill bar. */
+  isTimedHold?:   boolean
+  /** Label shown inside the hold ring (default "Hold…"). */
+  holdLabel?:     string
+  /**
+   * Evaluate the current pose for this step.
+   * Returns null when the required landmarks are not visible.
+   */
+  check: (lms: LandmarkSet) => StepCheck | null
+}
+
+/** Ordered step list for one exercise. */
+export interface ExerciseProcedure {
+  exerciseId: string
+  steps:      ExerciseStep[]
+}
+
+// ── Internal helpers ──────────────────────────────────────────────────────────
+
+function clamp01(x: number): number { return Math.max(0, Math.min(1, x)) }
+
+/** 0–1 closeness of `value` to `target`; drops to 0 at `maxDev` away. */
+function nearTarget(v: number, target: number, maxDev: number): number {
+  return clamp01(1 - Math.abs(v - target) / maxDev)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Exercise ID → procedure key
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const EXERCISE_TO_PROCEDURE: Record<string, string> = {
+  doorway_stretch:  'doorway_stretch',
+  seated_cross_arm: 'cross_arm_stretch',
+  standing_sleeper: 'cross_arm_stretch',
+  hand_behind_back: 'hand_behind_back',
+  standing_chest:   'standing_chest',
+  crab_press:       'crab_press',
+  side_lying_er:    'side_lying_er',
+  post_shoulder:    'sleeper_stretch',
+  glute_bridge:     'glute_bridge',
+  hip_hinge:        'hip_hinge',
+  side_clamshell:   'side_clamshell',
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Procedure definitions
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const EXERCISE_PROCEDURES: Record<string, ExerciseProcedure> = {
+
+  // ── Standing Chest Stretch ─────────────────────────────────────────────────
+  standing_chest: {
+    exerciseId: 'standing_chest',
+    steps: [
+      {
+        id: 'raise_arm',
+        instruction: 'Stand sideways next to a wall and raise your arm out to the side at shoulder height.',
+        completionText: 'Arm is up!',
+        holdMs: 1500,
+        check(lms) {
+          const side = pickWallArm(lms)
+          if (!side) return null
+          if (!visible(lms, side === 'L' ? LM.L_HIP : LM.R_HIP,
+                            side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER,
+                            side === 'L' ? LM.L_ELBOW : LM.R_ELBOW)) return null
+          const angle = jointAngleDeg(
+            lms[side === 'L' ? LM.L_HIP      : LM.R_HIP],
+            lms[side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER],
+            lms[side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW],
+          )
+          return {
+            done:     angle >= 70 && angle <= 115,
+            progress: nearTarget(angle, 90, 60),
+            hint:     angle < 70 ? 'Raise your arm higher — aim for shoulder height.'
+                                 : 'Lower your arm slightly to shoulder level.',
+          }
+        },
+      },
+      {
+        id: 'place_on_wall',
+        instruction: 'Place your palm flat against the wall, then slowly rotate your body away to feel the stretch.',
+        completionText: 'Great — feeling the stretch!',
+        holdMs: 2000,
+        check(lms) {
+          const side = pickWallArm(lms)
+          if (!side) return null
+          if (!visible(lms, side === 'L' ? LM.L_HIP : LM.R_HIP,
+                            side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER,
+                            side === 'L' ? LM.L_ELBOW : LM.R_ELBOW)) return null
+          const hip      = lms[side === 'L' ? LM.L_HIP      : LM.R_HIP]
+          const shoulder = lms[side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER]
+          const elbow    = lms[side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW]
+          const angle    = jointAngleDeg(hip, shoulder, elbow)
+          const shrug    = Math.abs(vectorVerticalAngleDeg(hip, shoulder))
+          const done     = angle >= 70 && angle <= 115 && shrug <= 25
+          return {
+            done,
+            progress: done ? 1 : nearTarget(angle, 90, 60) * 0.8,
+            hint: shrug > 25 ? 'Relax your shoulder down — don\'t let it shrug.'
+                             : 'Keep your arm on the wall and lean your chest forward.',
+          }
+        },
+      },
+      {
+        id: 'hold',
+        instruction: 'Hold the stretch — breathe and feel the pull across your chest and front shoulder.',
+        completionText: 'Excellent stretch — well done!',
+        holdMs: 20000,
+        isTimedHold: true,
+        holdLabel: 'Hold the stretch…',
+        check(lms) {
+          const side = pickWallArm(lms)
+          if (!side) return { done: true, progress: 1, hint: '' }  // can't see: benefit of doubt
+          if (!visible(lms, side === 'L' ? LM.L_HIP : LM.R_HIP,
+                            side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER,
+                            side === 'L' ? LM.L_ELBOW : LM.R_ELBOW))
+            return { done: true, progress: 1, hint: '' }
+          const angle = jointAngleDeg(
+            lms[side === 'L' ? LM.L_HIP      : LM.R_HIP],
+            lms[side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER],
+            lms[side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW],
+          )
+          return {
+            done:     angle >= 60 && angle <= 125,
+            progress: nearTarget(angle, 90, 60),
+            hint:     'Keep your arm on the wall — don\'t let it drop.',
+          }
+        },
+      },
+    ],
+  },
+
+  // ── Doorway Stretch ────────────────────────────────────────────────────────
+  doorway_stretch: {
+    exerciseId: 'doorway_stretch',
+    steps: [
+      {
+        id: 'raise_both_arms',
+        instruction: 'Step into a doorway and raise both arms to shoulder height with elbows bent to 90°.',
+        completionText: 'Both arms are up — nice!',
+        holdMs: 1500,
+        check(lms) {
+          const hasL = visible(lms, LM.L_HIP, LM.L_SHOULDER, LM.L_ELBOW)
+          const hasR = visible(lms, LM.R_HIP, LM.R_SHOULDER, LM.R_ELBOW)
+          if (!hasL && !hasR) return null
+          const angL = hasL ? jointAngleDeg(lms[LM.L_HIP], lms[LM.L_SHOULDER], lms[LM.L_ELBOW]) : 90
+          const angR = hasR ? jointAngleDeg(lms[LM.R_HIP], lms[LM.R_SHOULDER], lms[LM.R_ELBOW]) : 90
+          const lOk = angL >= 75 && angL <= 110
+          const rOk = angR >= 75 && angR <= 110
+          return {
+            done:     lOk && rOk,
+            progress: (nearTarget(angL, 90, 55) + nearTarget(angR, 90, 55)) / 2,
+            hint:     !lOk ? 'Adjust your left arm to shoulder height.'
+                   : !rOk ? 'Adjust your right arm to shoulder height.'
+                   :        'Raise both arms to shoulder height.',
+          }
+        },
+      },
+      {
+        id: 'step_forward',
+        instruction: 'Step one foot forward through the doorway — feel your chest open as you lean in.',
+        completionText: 'Chest is open — hold the stretch.',
+        holdMs: 2000,
+        check(lms) {
+          const hasL = visible(lms, LM.L_HIP, LM.L_SHOULDER, LM.L_ELBOW)
+          const hasR = visible(lms, LM.R_HIP, LM.R_SHOULDER, LM.R_ELBOW)
+          if (!hasL && !hasR) return null
+          const angL = hasL ? jointAngleDeg(lms[LM.L_HIP], lms[LM.L_SHOULDER], lms[LM.L_ELBOW]) : 90
+          const angR = hasR ? jointAngleDeg(lms[LM.R_HIP], lms[LM.R_SHOULDER], lms[LM.R_ELBOW]) : 90
+          const done = angL >= 70 && angL <= 115 && angR >= 70 && angR <= 115
+          return {
+            done,
+            progress: done ? 1 : (nearTarget(angL, 90, 55) + nearTarget(angR, 90, 55)) / 2,
+            hint: 'Keep both forearms on the doorframe as you lean forward.',
+          }
+        },
+      },
+      {
+        id: 'hold',
+        instruction: 'Hold — push your chest through the doorway, breathe into the stretch.',
+        completionText: 'Great doorway stretch!',
+        holdMs: 20000,
+        isTimedHold: true,
+        holdLabel: 'Hold the stretch…',
+        check(lms) {
+          const hasL = visible(lms, LM.L_HIP, LM.L_SHOULDER, LM.L_ELBOW)
+          const hasR = visible(lms, LM.R_HIP, LM.R_SHOULDER, LM.R_ELBOW)
+          if (!hasL && !hasR) return { done: true, progress: 1, hint: '' }
+          const angL = hasL ? jointAngleDeg(lms[LM.L_HIP], lms[LM.L_SHOULDER], lms[LM.L_ELBOW]) : 90
+          const angR = hasR ? jointAngleDeg(lms[LM.R_HIP], lms[LM.R_SHOULDER], lms[LM.R_ELBOW]) : 90
+          return {
+            done:     angL >= 60 && angL <= 125 && angR >= 60 && angR <= 125,
+            progress: (nearTarget(angL, 90, 55) + nearTarget(angR, 90, 55)) / 2,
+            hint:     'Keep your forearms on the doorframe — don\'t let them drop.',
+          }
+        },
+      },
+    ],
+  },
+
+  // ── Cross-Arm Stretch  (seated_cross_arm + standing_sleeper) ───────────────
+  cross_arm_stretch: {
+    exerciseId: 'cross_arm_stretch',
+    steps: [
+      {
+        id: 'raise_arm',
+        instruction: 'Raise one arm to shoulder height directly in front of you.',
+        completionText: 'Arm at shoulder height!',
+        holdMs: 1500,
+        check(lms) {
+          const side = pickRaisedArm(lms)
+          if (!side) return null
+          if (!visible(lms, side === 'L' ? LM.L_HIP : LM.R_HIP,
+                            side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER,
+                            side === 'L' ? LM.L_ELBOW : LM.R_ELBOW)) return null
+          const angle = jointAngleDeg(
+            lms[side === 'L' ? LM.L_HIP      : LM.R_HIP],
+            lms[side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER],
+            lms[side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW],
+          )
+          return {
+            done:     angle >= 75 && angle <= 105,
+            progress: nearTarget(angle, 90, 55),
+            hint:     angle < 75 ? 'Lift your arm more — aim for shoulder height.'
+                                 : 'Lower your arm a touch to shoulder level.',
+          }
+        },
+      },
+      {
+        id: 'pull_across',
+        instruction: 'Use your opposite hand to pull the elbow across your chest. Keep the shoulder pressed down.',
+        completionText: 'Good pull — feel the stretch!',
+        holdMs: 2000,
+        check(lms) {
+          const side = pickRaisedArm(lms)
+          if (!side) return null
+          const eSide = side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW
+          const lSide = side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER
+          const rSide = side === 'L' ? LM.R_SHOULDER : LM.L_SHOULDER
+          if (!visible(lms, eSide, lSide, rSide)) return null
+          const shoulderWidth = Math.abs(lms[LM.L_SHOULDER].x - lms[LM.R_SHOULDER].x)
+          // "across" = elbow has moved ≥25% of shoulder width toward the opposite side
+          const elbowAcross = side === 'L'
+            ? lms[eSide].x < lms[lSide].x - shoulderWidth * 0.25
+            : lms[eSide].x > lms[lSide].x + shoulderWidth * 0.25
+          const hipSide = side === 'L' ? LM.L_HIP : LM.R_HIP
+          const angle = visible(lms, hipSide, lSide, eSide)
+            ? jointAngleDeg(lms[hipSide], lms[lSide], lms[eSide])
+            : 90
+          const armUp = angle >= 65 && angle <= 115
+          return {
+            done:     elbowAcross && armUp,
+            progress: (elbowAcross ? 0.6 : 0) + (armUp ? 0.4 : 0),
+            hint:     !armUp ? 'Keep your arm at shoulder height as you pull.'
+                             : 'Pull the elbow further across your chest.',
+          }
+        },
+      },
+      {
+        id: 'hold',
+        instruction: 'Hold the pull — relax your neck, keep the shoulder blade down, breathe.',
+        completionText: 'Excellent cross-arm stretch!',
+        holdMs: 20000,
+        isTimedHold: true,
+        holdLabel: 'Hold the pull…',
+        check(lms) {
+          const side = pickRaisedArm(lms)
+          if (!side) return { done: true, progress: 1, hint: '' }
+          const hipSide = side === 'L' ? LM.L_HIP : LM.R_HIP
+          const sSide   = side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER
+          const eSide   = side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW
+          if (!visible(lms, hipSide, sSide, eSide)) return { done: true, progress: 1, hint: '' }
+          const angle = jointAngleDeg(lms[hipSide], lms[sSide], lms[eSide])
+          return {
+            done:     angle >= 60 && angle <= 120,
+            progress: nearTarget(angle, 90, 55),
+            hint:     'Keep the elbow pulled across and your arm at shoulder height.',
+          }
+        },
+      },
+    ],
+  },
+
+  // ── Hand Behind Back ────────────────────────────────────────────────────────
+  hand_behind_back: {
+    exerciseId: 'hand_behind_back',
+    steps: [
+      {
+        id: 'raise_top_arm',
+        instruction: 'Reach one arm up and behind your head — point the elbow toward the ceiling.',
+        completionText: 'Top arm is up!',
+        holdMs: 1500,
+        check(lms) {
+          const side = pickHighElbow(lms)
+          if (!side) return null
+          const sSide = side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER
+          const eSide = side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW
+          if (!visible(lms, sSide, eSide)) return null
+          const angle = Math.abs(vectorVerticalAngleDeg(lms[sSide], lms[eSide]))
+          return {
+            done:     angle <= 60,
+            progress: clamp01(1 - angle / 90),
+            hint:     'Point the elbow more toward the ceiling — hand behind the head.',
+          }
+        },
+      },
+      {
+        id: 'reach_behind_back',
+        instruction: 'Now reach your lower hand behind your lower back. Use a towel if you can\'t touch.',
+        completionText: 'Both hands in position!',
+        holdMs: 2000,
+        check(lms) {
+          const side = pickHighElbow(lms)
+          if (!side) return null
+          const sSide = side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER
+          const eSide = side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW
+          if (!visible(lms, sSide, eSide)) return null
+          const angle = Math.abs(vectorVerticalAngleDeg(lms[sSide], lms[eSide]))
+          return {
+            done:     angle <= 65,
+            progress: angle <= 65 ? 1 : clamp01(1 - angle / 90),
+            hint:     'Keep the top elbow pointing up as you settle into position.',
+          }
+        },
+      },
+      {
+        id: 'hold',
+        instruction: 'Hold — stand tall, shoulder blades down, breathe through the stretch.',
+        completionText: 'Great hold — arms working together!',
+        holdMs: 20000,
+        isTimedHold: true,
+        holdLabel: 'Hold…',
+        check(lms) {
+          const side = pickHighElbow(lms)
+          if (!side) return { done: true, progress: 1, hint: '' }
+          const sSide = side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER
+          const eSide = side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW
+          if (!visible(lms, sSide, eSide)) return { done: true, progress: 1, hint: '' }
+          const angle = Math.abs(vectorVerticalAngleDeg(lms[sSide], lms[eSide]))
+          return {
+            done:     angle <= 75,
+            progress: clamp01(1 - angle / 90),
+            hint:     'Keep that top elbow reaching toward the ceiling.',
+          }
+        },
+      },
+    ],
+  },
+
+  // ── Crab Press ─────────────────────────────────────────────────────────────
+  crab_press: {
+    exerciseId: 'crab_press',
+    steps: [
+      {
+        id: 'sit_position',
+        instruction: 'Sit on the floor with hands planted behind you, fingers pointing away from your body.',
+        completionText: 'Starting position — now press up!',
+        holdMs: 1500,
+        check(lms) {
+          if (!visible(lms, LM.L_SHOULDER, LM.L_HIP, LM.L_KNEE)) return null
+          const angle = jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_HIP], lms[LM.L_KNEE])
+          return {
+            done:     angle >= 80 && angle <= 130,
+            progress: nearTarget(angle, 105, 45),
+            hint:     'Sit on the floor with knees bent, hands planted behind you.',
+          }
+        },
+      },
+      {
+        id: 'press_hips_up',
+        instruction: 'Press through your hands and feet — drive your hips up toward the ceiling.',
+        completionText: 'Hips are up — hold the table!',
+        holdMs: 1000,
+        check(lms) {
+          if (!visible(lms, LM.L_SHOULDER, LM.L_HIP, LM.L_KNEE)) return null
+          const angle = jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_HIP], lms[LM.L_KNEE])
+          return {
+            done:     angle >= 145,
+            progress: clamp01((angle - 90) / 70),
+            hint:     angle < 130 ? 'Push harder — drive those hips all the way up.'
+                                  : 'Almost there — press through your hands and feet.',
+          }
+        },
+      },
+      {
+        id: 'hold',
+        instruction: 'Hold the tabletop — body flat, arms straight, core engaged.',
+        completionText: 'Solid crab press — great work!',
+        holdMs: 10000,
+        isTimedHold: true,
+        holdLabel: 'Hold the table…',
+        check(lms) {
+          if (!visible(lms, LM.L_SHOULDER, LM.L_HIP, LM.L_KNEE))
+            return { done: true, progress: 1, hint: '' }
+          const angle = jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_HIP], lms[LM.L_KNEE])
+          return {
+            done:     angle >= 148,
+            progress: clamp01((angle - 110) / 55),
+            hint:     'Hips are dropping — press through your hands and feet to lift up.',
+          }
+        },
+      },
+    ],
+  },
+
+  // ── Sleeper Stretch ─────────────────────────────────────────────────────────
+  sleeper_stretch: {
+    exerciseId: 'sleeper_stretch',
+    steps: [
+      {
+        id: 'starting_position',
+        instruction: 'Lie on your side with your bottom arm stretched out, elbow bent to 90°.',
+        completionText: 'Elbow is at 90° — now press gently.',
+        holdMs: 1500,
+        check(lms) {
+          if (!visible(lms, LM.L_SHOULDER, LM.L_ELBOW, LM.L_WRIST)) return null
+          const angle = jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_ELBOW], lms[LM.L_WRIST])
+          return {
+            done:     angle >= 75 && angle <= 100,
+            progress: nearTarget(angle, 90, 50),
+            hint:     angle < 75 ? 'Bend your elbow more — aim for 90 degrees.'
+                                 : 'Straighten slightly — 90 degrees is the target.',
+          }
+        },
+      },
+      {
+        id: 'press_forearm',
+        instruction: 'Gently press the forearm toward the floor with your top hand — feel the stretch in the back of your shoulder.',
+        completionText: 'Stretch is on — hold it.',
+        holdMs: 2000,
+        check(lms) {
+          if (!visible(lms, LM.L_SHOULDER, LM.L_ELBOW, LM.L_WRIST)) return null
+          const angle = jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_ELBOW], lms[LM.L_WRIST])
+          return {
+            done:     angle >= 60 && angle <= 95,
+            progress: nearTarget(angle, 78, 40),
+            hint:     'Gently press your forearm toward the floor — keep it controlled.',
+          }
+        },
+      },
+      {
+        id: 'hold',
+        instruction: 'Hold the gentle pressure — breathe and let the shoulder relax.',
+        completionText: 'Great sleeper stretch!',
+        holdMs: 20000,
+        isTimedHold: true,
+        holdLabel: 'Hold the pressure…',
+        check(lms) {
+          if (!visible(lms, LM.L_SHOULDER, LM.L_ELBOW, LM.L_WRIST))
+            return { done: true, progress: 1, hint: '' }
+          const angle = jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_ELBOW], lms[LM.L_WRIST])
+          return {
+            done:     angle >= 55 && angle <= 100,
+            progress: nearTarget(angle, 78, 45),
+            hint:     'Maintain gentle pressure — keep the elbow in position.',
+          }
+        },
+      },
+    ],
+  },
+
+  // ── Side-Lying External Rotation ───────────────────────────────────────────
+  side_lying_er: {
+    exerciseId: 'side_lying_er',
+    steps: [
+      {
+        id: 'starting_position',
+        instruction: 'Lie on your side with your elbow bent to 90°, forearm pointing forward.',
+        completionText: 'Elbow set — now rotate up.',
+        holdMs: 1500,
+        check(lms) {
+          if (!visible(lms, LM.L_SHOULDER, LM.L_ELBOW, LM.L_WRIST)) return null
+          const angle = jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_ELBOW], lms[LM.L_WRIST])
+          return {
+            done:     angle >= 80 && angle <= 100,
+            progress: nearTarget(angle, 90, 45),
+            hint:     angle < 80 ? 'Bend your elbow to 90 degrees.'
+                                 : 'Straighten slightly — 90 degrees is the starting position.',
+          }
+        },
+      },
+      {
+        id: 'rotate_up',
+        instruction: 'Slowly rotate your forearm upward toward the ceiling, keeping the elbow pinned to your side.',
+        completionText: 'At the top — hold!',
+        holdMs: 1000,
+        check(lms) {
+          if (!visible(lms, LM.L_ELBOW, LM.L_WRIST)) return null
+          const wristAbove = lms[LM.L_WRIST].y < lms[LM.L_ELBOW].y
+          return {
+            done:     wristAbove,
+            progress: wristAbove ? 1 : clamp01(1 - (lms[LM.L_WRIST].y - lms[LM.L_ELBOW].y) / 0.15),
+            hint:     'Rotate the forearm upward — lift the wrist toward the ceiling.',
+          }
+        },
+      },
+      {
+        id: 'hold',
+        instruction: 'Hold at the top — elbow stays pinned, wrist pointing up.',
+        completionText: 'Great external rotation!',
+        holdMs: 5000,
+        isTimedHold: true,
+        holdLabel: 'Hold at the top…',
+        check(lms) {
+          if (!visible(lms, LM.L_ELBOW, LM.L_WRIST)) return { done: true, progress: 1, hint: '' }
+          const done = lms[LM.L_WRIST].y < lms[LM.L_ELBOW].y
+          return {
+            done,
+            progress: done ? 1 : 0.3,
+            hint:     'Keep the wrist pointing toward the ceiling.',
+          }
+        },
+      },
+    ],
+  },
+
+  // ── Glute Bridge ───────────────────────────────────────────────────────────
+  glute_bridge: {
+    exerciseId: 'glute_bridge',
+    steps: [
+      {
+        id: 'lie_down',
+        instruction: 'Lie on your back with knees bent to about 90° and feet flat on the floor.',
+        completionText: 'Good starting position!',
+        holdMs: 1500,
+        check(lms) {
+          if (!visible(lms, LM.L_SHOULDER, LM.L_HIP, LM.L_KNEE)) return null
+          const angle = jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_HIP], lms[LM.L_KNEE])
+          return {
+            done:     angle >= 80 && angle <= 130,
+            progress: nearTarget(angle, 105, 45),
+            hint:     'Lie on your back with knees bent, feet flat on the floor.',
+          }
+        },
+      },
+      {
+        id: 'lift_hips',
+        instruction: 'Drive through your heels — squeeze your glutes and lift your hips toward the ceiling.',
+        completionText: 'Hips are up — hold the bridge!',
+        holdMs: 1000,
+        check(lms) {
+          if (!visible(lms, LM.L_SHOULDER, LM.L_HIP, LM.L_KNEE)) return null
+          const angle = jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_HIP], lms[LM.L_KNEE])
+          return {
+            done:     angle >= 150,
+            progress: clamp01((angle - 90) / 75),
+            hint:     angle < 130 ? 'Push your hips higher — drive through the heels.'
+                                  : 'Almost there — squeeze the glutes to finish the lift.',
+          }
+        },
+      },
+      {
+        id: 'hold',
+        instruction: 'Hold the bridge — squeeze your glutes, keep knees hip-width.',
+        completionText: 'Strong glute bridge — excellent!',
+        holdMs: 10000,
+        isTimedHold: true,
+        holdLabel: 'Hold the bridge…',
+        check(lms) {
+          if (!visible(lms, LM.L_SHOULDER, LM.L_HIP, LM.L_KNEE))
+            return { done: true, progress: 1, hint: '' }
+          const angle = jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_HIP], lms[LM.L_KNEE])
+          return {
+            done:     angle >= 148,
+            progress: clamp01((angle - 110) / 60),
+            hint:     'Hips are dropping — squeeze the glutes and drive them back up.',
+          }
+        },
+      },
+    ],
+  },
+
+  // ── Side-Lying Clamshell ───────────────────────────────────────────────────
+  side_clamshell: {
+    exerciseId: 'side_clamshell',
+    steps: [
+      {
+        id: 'starting_position',
+        instruction: 'Lie on your side with knees bent and stacked on top of each other.',
+        completionText: 'Good starting position!',
+        holdMs: 1500,
+        check(lms) {
+          if (!visible(lms, LM.L_SHOULDER, LM.L_HIP, LM.L_KNEE)) return null
+          const angle = jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_HIP], lms[LM.L_KNEE])
+          return {
+            done:     angle >= 80 && angle <= 130,
+            progress: nearTarget(angle, 105, 40),
+            hint:     'Lie on your side with both knees bent and stacked together.',
+          }
+        },
+      },
+      {
+        id: 'open_knee',
+        instruction: 'Slowly lift your top knee like a clamshell opening — keep your heels together.',
+        completionText: 'Good range — hold it open!',
+        holdMs: 1000,
+        check(lms) {
+          if (!visible(lms, LM.L_SHOULDER, LM.L_HIP, LM.L_KNEE)) return null
+          const abduction = Math.abs(180 - jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_HIP], lms[LM.L_KNEE]))
+          return {
+            done:     abduction >= 20,
+            progress: clamp01(abduction / 35),
+            hint:     'Open the knee further — feel the outer hip working.',
+          }
+        },
+      },
+      {
+        id: 'hold',
+        instruction: 'Hold at the top — don\'t roll the pelvis back.',
+        completionText: 'Excellent clamshell!',
+        holdMs: 5000,
+        isTimedHold: true,
+        holdLabel: 'Hold it open…',
+        check(lms) {
+          if (!visible(lms, LM.L_SHOULDER, LM.L_HIP, LM.L_KNEE))
+            return { done: true, progress: 1, hint: '' }
+          const abduction = Math.abs(180 - jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_HIP], lms[LM.L_KNEE]))
+          return {
+            done:     abduction >= 15,
+            progress: clamp01(abduction / 35),
+            hint:     'Keep the knee lifted — don\'t let it drop.',
+          }
+        },
+      },
+    ],
+  },
+
+  // ── Hip Hinge ──────────────────────────────────────────────────────────────
+  hip_hinge: {
+    exerciseId: 'hip_hinge',
+    steps: [
+      {
+        id: 'stand_tall',
+        instruction: 'Stand tall with feet hip-width apart, arms relaxed at your sides.',
+        completionText: 'Good upright posture — now hinge.',
+        holdMs: 1500,
+        check(lms) {
+          if (!visible(lms, LM.L_HIP, LM.L_SHOULDER)) return null
+          const tilt = Math.abs(vectorVerticalAngleDeg(lms[LM.L_HIP], lms[LM.L_SHOULDER]))
+          return {
+            done:     tilt <= 20,
+            progress: clamp01(1 - tilt / 40),
+            hint:     'Stand straight — keep your spine vertical before you hinge.',
+          }
+        },
+      },
+      {
+        id: 'hinge_forward',
+        instruction: 'Push your hips back and hinge forward at the hip — flat back, soft knees.',
+        completionText: 'Good hinge — hold it!',
+        holdMs: 1500,
+        check(lms) {
+          if (!visible(lms, LM.L_SHOULDER, LM.L_HIP, LM.L_KNEE)) return null
+          const flexion = 180 - jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_HIP], lms[LM.L_KNEE])
+          return {
+            done:     flexion >= 60 && flexion <= 105,
+            progress: nearTarget(flexion, 80, 50),
+            hint:     flexion < 60 ? 'Push your hips further back — hinge deeper.'
+                                   : 'Don\'t drop your chest too low — flat back.',
+          }
+        },
+      },
+      {
+        id: 'hold',
+        instruction: 'Hold the hinge — hamstrings loaded, flat back, hips pushed back.',
+        completionText: 'Perfect hip hinge — great body awareness!',
+        holdMs: 5000,
+        isTimedHold: true,
+        holdLabel: 'Hold the hinge…',
+        check(lms) {
+          if (!visible(lms, LM.L_SHOULDER, LM.L_HIP, LM.L_KNEE))
+            return { done: true, progress: 1, hint: '' }
+          const flexion = 180 - jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_HIP], lms[LM.L_KNEE])
+          return {
+            done:     flexion >= 50 && flexion <= 115,
+            progress: nearTarget(flexion, 80, 50),
+            hint:     'Maintain the hinge — keep pushing those hips back.',
+          }
+        },
+      },
+    ],
+  },
+
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Frame evaluator
 // ─────────────────────────────────────────────────────────────────────────────
 
