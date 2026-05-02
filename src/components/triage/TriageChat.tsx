@@ -156,18 +156,15 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
   //  callback in sendNextTurn — see below.
 
   // ── Body-click seed ────────────────────────────────────────────────────
+  //  When the user clicks a body area in Diagnostic Mode, pre-fill the input
+  //  field with the zone context.  The AI only responds when the user
+  //  explicitly sends — by pressing Enter, clicking Send, or speaking.
+  //  No message is auto-sent.
   useEffect(() => {
     if (!open || !diagnosticResult) return
-    if (history.length > 0) return
     const zones = diagnosticResult.clickedZones.join(', ')
-    const seed: TriageChatMessage = {
-      role:    'user',
-      content: `I clicked on the body around: ${zones}. Help me understand what could be causing pain there.`,
-      ts:      Date.now(),
-    }
-    setHistory([seed])
+    setInput(`I have pain around my ${zones} area — what could be causing it?`)
     setDiagnostic(null)
-    void sendNextTurn([seed])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, diagnosticResult])
 
