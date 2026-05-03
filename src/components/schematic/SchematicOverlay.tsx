@@ -23,9 +23,12 @@ import * as THREE from 'three'
 import { useAtlasStore } from '../../store/atlasStore'
 import {
   DIAGNOSTIC_TO_MESH_IDS,
+  MUSCLE_GROUP_MAP,
   pickSideFromClick,
 } from '../../lib/diagnostic'
 import { useSchematicStore, type SchematicMarker } from './schematicStore'
+
+const MIN_DISPLAY_PROBABILITY = 0.10   // hide anything below 10%
 
 // ── Layout constants ─────────────────────────────────────────────────────────
 const LABEL_W      = 172   // px  — compact card width
@@ -92,11 +95,42 @@ function SchematicOverlayInner({ className = '' }: { className?: string }) {
     return () => ro.disconnect()
   }, [])
 
-  // Sorted markers — highest probability first.
+  // Sorted markers — highest probability first, filtered to ≥10%, with
+  // grouped muscles (Hamstrings, Deltoid, Quadriceps, etc.) collapsed
+  // into a single representative entry whose probability is the SUM of
+  // the group's children.  We pick the highest-probability child as the
+  // representative for screen-position purposes.
   const markers = useMemo<SchematicMarker[]>(() => {
-    return Object.values(markersMap)
+    const visible = Object.values(markersMap)
       .filter((m) => m.visible)
       .sort((a, b) => b.probability - a.probability)
+
+    // First pass: bucket by group label (or muscle_id when ungrouped).
+    const buckets = new Map<string, { rep: SchematicMarker; total: number; count: number; childIds: string[] }>()
+    for (const m of visible) {
+      const groupLabel = MUSCLE_GROUP_MAP[m.muscle_id] ?? m.common_name
+      const cur = buckets.get(groupLabel)
+      if (!cur) {
+        buckets.set(groupLabel, { rep: m, total: m.probability, count: 1, childIds: [m.muscle_id] })
+      } else {
+        cur.total += m.probability
+        cur.count += 1
+        cur.childIds.push(m.muscle_id)
+      }
+    }
+
+    // Second pass: emit one marker per bucket, only if ≥10%.
+    const grouped: SchematicMarker[] = []
+    for (const [label, b] of buckets) {
+      if (b.total < MIN_DISPLAY_PROBABILITY) continue
+      const isGrouped = b.count > 1 && MUSCLE_GROUP_MAP[b.rep.muscle_id]
+      grouped.push({
+        ...b.rep,
+        probability: Math.min(1, b.total),
+        common_name: isGrouped ? `${label} (${b.count})` : b.rep.common_name,
+      })
+    }
+    return grouped.sort((a, b) => b.probability - a.probability)
   }, [markersMap])
 
   // ── Which column side? ───────────────────────────────────────────────────

@@ -76,22 +76,49 @@ export const PRIMARY_WEIGHT  = 0.75
 export const REFERRED_WEIGHT = 0.25
 
 export const MUSCLE_GROUP_MAP: Record<string, string> = {
+  // Hamstrings — three muscles, almost identical pain referral on the back of thigh
   biceps_femoris:     'Hamstrings',
   semitendinosus:     'Hamstrings',
   semimembranosus:    'Hamstrings',
-  supraspinatus:      'Rotator Cuff',
-  infraspinatus:      'Rotator Cuff',
-  teres_minor:        'Rotator Cuff',
-  subscapularis:      'Rotator Cuff',
+  // Quadriceps — four heads, anterior thigh
   rectus_femoris:     'Quadriceps',
   vastus_lateralis:   'Quadriceps',
   vastus_medialis:    'Quadriceps',
   vastus_intermedius: 'Quadriceps',
-  // All three deltoid heads share overlapping pain referral zones and
-  // largely overlap in rehab (shoulder press, lateral raises, band work).
+  // Rotator cuff — four muscles around the shoulder blade
+  supraspinatus:      'Rotator Cuff',
+  infraspinatus:      'Rotator Cuff',
+  teres_minor:        'Rotator Cuff',
+  subscapularis:      'Rotator Cuff',
+  // Deltoid — three heads on the shoulder cap; treat as one group for the UI
   deltoid_anterior:   'Deltoid',
   deltoid_lateral:    'Deltoid',
   deltoid_posterior:  'Deltoid',
+  // Trapezius — three regions on the upper back
+  trapezius_upper:    'Trapezius',
+  trapezius_middle:   'Trapezius',
+  trapezius_lower:    'Trapezius',
+  // Rhomboids — major + minor between the scapulae
+  rhomboid_major:     'Rhomboids',
+  rhomboid_minor:     'Rhomboids',
+  // Glutes — three layers
+  gluteus_maximus:    'Glutes',
+  gluteus_medius:     'Glutes',
+  gluteus_minimus:    'Glutes',
+  // Hip flexors — iliacus + psoas
+  iliacus:            'Hip Flexors',
+  psoas_major:        'Hip Flexors',
+  // Calf — gastroc + soleus
+  gastrocnemius:      'Calf',
+  soleus:             'Calf',
+  // Forearm extensors / flexors
+  extensor_carpi_radialis_longus: 'Forearm Extensors',
+  extensor_digitorum:             'Forearm Extensors',
+  flexor_carpi_radialis:          'Forearm Flexors',
+  palmaris_longus:                'Forearm Flexors',
+  // Deep neck extensors
+  splenius_capitis:               'Neck Extensors',
+  semispinalis_capitis:           'Neck Extensors',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

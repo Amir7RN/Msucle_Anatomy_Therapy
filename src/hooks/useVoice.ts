@@ -384,12 +384,16 @@ export function useVoiceOutput(lang = 'en-US'): UseVoiceOutputResult {
 
   const speak = useCallback((text: string, onEnd?: () => void) => {
     if (!supported || !text) { onEnd?.(); return }
+    // ── iOS / Safari resilience ──────────────────────────────────────────
+    // The synthesis engine on iOS gets stuck in 'paused' state after tab
+    // switching / backgrounding.  Force-resume before each speak so a
+    // mobile user doesn't have to tap "play" on every reply.
     window.speechSynthesis.cancel()
+    if (window.speechSynthesis.paused) {
+      try { window.speechSynthesis.resume() } catch {}
+    }
     const utt = new SpeechSynthesisUtterance(text)
     utt.lang  = lang
-    // Slightly slower than default → sounds more deliberate and calmer.
-    // 0.92 is perceptually close to natural conversational pace without
-    // being noticeably slow.
     utt.rate  = 1.0
     utt.pitch = 1.0
     if (voice) utt.voice = voice
@@ -397,6 +401,13 @@ export function useVoiceOutput(lang = 'en-US'): UseVoiceOutputResult {
     utt.onend   = () => { setSpeaking(false); onEnd?.() }
     utt.onerror = () => { setSpeaking(false); onEnd?.() }
     window.speechSynthesis.speak(utt)
+    // Re-poke the queue 50 ms later — some Safari builds silently no-op
+    // the first speak() after a long idle period until you nudge it.
+    window.setTimeout(() => {
+      if (window.speechSynthesis.paused) {
+        try { window.speechSynthesis.resume() } catch {}
+      }
+    }, 50)
   }, [supported, lang, voice])
 
   const cancel = useCallback(() => {

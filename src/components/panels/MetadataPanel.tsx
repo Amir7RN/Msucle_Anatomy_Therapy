@@ -171,6 +171,7 @@ function VideoCard({
           src={ex.src}
           preload="auto"
           playsInline
+          muted                            /* always muted — AI coach handles audio */
           className="w-full block bg-black"
           onLoadedData={handleLoaded}
           onEnded={() => setPlaying(false)}

@@ -354,7 +354,9 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
               key={i}
               role={m.role}
               text={m.content}
-              onSpeak={voiceOut.supported && m.role === 'assistant'
+              // Per-bubble "play" only shown when voice mode is OFF.
+              // In voice mode the AI auto-speaks — no manual tap needed.
+              onSpeak={!voiceMode && voiceOut.supported && m.role === 'assistant'
                 ? () => voiceOut.speak(m.content)
                 : undefined}
               onTap={m.role === 'assistant' && voiceOut.speaking

@@ -255,8 +255,10 @@ function drawSkeleton(ctx: CanvasRenderingContext2D, lms: LandmarkSet, w: number
   // (e.g. 1920 px) but may display at 300 CSS px — a 6× scale-down.
   // 0.018 × 1920 = 34 canvas px ≈ 6 displayed px at 1× DPR.  Visible at all
   // device sizes including small phones.
-  const baseLW = Math.max(10, w * 0.018)
-  const baseR  = Math.max(12, w * 0.022)
+  // Thinner skeleton — wireframe look instead of marker pen.  Halved both
+  // the floor and the per-pixel scaling vs. the original values.
+  const baseLW = Math.max(2.5, w * 0.005)
+  const baseR  = Math.max(3.5, w * 0.007)
 
   // Subtle dark outline behind every line — improves readability on busy
   // backgrounds and gives the skeleton a "rendered" feel.

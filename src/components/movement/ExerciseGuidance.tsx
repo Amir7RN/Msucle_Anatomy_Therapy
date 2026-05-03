@@ -39,6 +39,7 @@ import {
   type StepCheck,
 } from '../../lib/movement/biofeedback'
 import { useVoiceInput, useVoiceOutput } from '../../hooks/useVoice'
+import { createRepCounter } from '../../lib/movement/repCounter'
 import { getStoredApiKey, setStoredApiKey } from '../../lib/triage/llm'
 
 // ── Smoothing buffer ──────────────────────────────────────────────────────────
@@ -66,6 +67,10 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, onClose 
   const [cameraReady, setCameraReady] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [snapshot, setSnapshot]       = useState<FormSnapshot | null>(null)
+  // Rep counting — every form-good→form-rest cycle counts as one.
+  const [repCount, setRepCount]       = useState(0)
+  const repTarget = 10
+  const repTrackerRef = useRef(createRepCounter(repTarget))
 
   // Live landmark ref — updated every camera frame, read by AiCoach's RAF loop
   const lmsRef = useRef<LandmarkSet | null>(null)
@@ -86,9 +91,21 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, onClose 
       ? { cueText: 'Good alignment — hold it.', good: true, details: snap.details }
       : snap
     setSnapshot(smoothed)
+    // Rep tracker — drive the state machine off the SMOOTHED form-good signal
+    // so a single noisy frame doesn't accidentally tally a half-rep.
+    const repState = repTrackerRef.current.update(smoothed.good)
+    if (repState.just_completed) {
+      setRepCount(repState.count)
+    }
   }, [def])
 
-  useEffect(() => { frameBuffer.current = []; setSnapshot(null); lmsRef.current = null }, [exerciseId])
+  useEffect(() => {
+    frameBuffer.current = []
+    setSnapshot(null)
+    lmsRef.current = null
+    repTrackerRef.current.reset()
+    setRepCount(0)
+  }, [exerciseId])
 
   if (!exerciseId) return null
 
@@ -166,6 +183,15 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, onClose 
             <div className="absolute top-1.5 left-1.5 text-[9px] font-semibold text-slate-400 bg-black/60 px-1.5 py-0.5 rounded">
               YOUR POSE
             </div>
+
+            {/* Rep counter — top-right of camera feed */}
+            {cameraReady && def && (
+              <div className="absolute top-1.5 right-1.5 flex items-center gap-1 rounded-md bg-black/75 px-2 py-1 backdrop-blur ring-1 ring-orange-500/40">
+                <span className="text-[9px] uppercase tracking-wider text-orange-300">Reps</span>
+                <span className="text-sm font-bold tabular-nums text-orange-200">{repCount}</span>
+                <span className="text-[10px] text-slate-400">/ {repTarget}</span>
+              </div>
+            )}
           </div>
 
           {/* Reference video — right half, auto-plays on mount, loops 10× */}
@@ -781,6 +807,7 @@ function ReferenceVideo({
         src={src}
         preload="auto"
         playsInline
+        muted                              /* always muted — AI coach handles audio */
         className="w-full h-full object-cover block bg-black"
         onEnded={handleEnded}
         onLoadedData={() => {
