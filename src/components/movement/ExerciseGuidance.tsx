@@ -96,33 +96,33 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, onClose 
     <div className="fixed inset-0 z-50 flex flex-col bg-black text-white">
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 bg-slate-900 border-b border-slate-700 flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <Camera size={16} className="text-cyan-400" />
-          <span className="text-sm font-semibold tracking-wide">{exerciseLabel}</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <Camera size={16} className="text-cyan-400 flex-shrink-0" />
+          <span className="text-sm font-semibold tracking-wide truncate">{exerciseLabel}</span>
           {def && (
-            <span className="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
+            <span className="hidden md:inline text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded flex-shrink-0">
               Live Form Check
             </span>
           )}
         </div>
+        {/* Exit button — larger and labelled on mobile so it's easy to tap */}
         <button
           onClick={() => {
-            // Cancel TTS synchronously BEFORE React unmounts AiCoach —
-            // relying on the cleanup effect alone is too slow (one render late).
             window.speechSynthesis?.cancel()
             onClose()
           }}
-          className="rounded-full p-1.5 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
+          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 bg-slate-700 hover:bg-red-700 text-slate-200 hover:text-white transition-colors flex-shrink-0 ml-2"
         >
-          <X size={18} />
+          <X size={16} />
+          <span className="text-xs font-semibold">Exit</span>
         </button>
       </header>
 
-      {/* Body */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      {/* Body — side-by-side on desktop, stacked on mobile */}
+      <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
 
-        {/* Left — camera */}
-        <div className="flex-1 relative bg-black min-w-0">
+        {/* Camera — fixed 45vh on mobile (top), flex-1 on desktop (left column) */}
+        <div className="relative bg-black flex-shrink-0 h-[45vh] md:h-auto md:flex-1 md:min-w-0">
           <CameraView
             active
             onLandmarks={handleLandmarks}
@@ -161,8 +161,8 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, onClose 
           )}
         </div>
 
-        {/* Right — AI coach + angles + video */}
-        <div className="w-80 flex flex-col bg-slate-900 border-l border-slate-700 flex-shrink-0 overflow-y-auto">
+        {/* Right — AI coach + angles + video. On mobile: full-width bottom section with scroll */}
+        <div className="w-full md:w-80 flex flex-col bg-slate-900 border-t border-slate-700 md:border-t-0 md:border-l flex-shrink-0 overflow-y-auto flex-1 md:flex-none">
 
           {/* AI Coach — replaces static "Setup" text */}
           {def

@@ -304,7 +304,7 @@ function ModelSwitchToggle() {
   const toggleMeshyModel = useAtlasStore((s) => s.toggleMeshyModel)
   const toggleMuscleDebug = useAtlasStore((s) => s.toggleMuscleDebug)
   return (
-    <div className="absolute bottom-3 right-3 z-10 flex gap-2">
+    <div className="absolute bottom-3 right-3 z-10 hidden md:flex gap-2">
       <button
         onClick={toggleMeshyModel}
         className="px-2 py-1 bg-slate-800/80 hover:bg-slate-800 text-slate-200 text-[11px] rounded border border-slate-600/60 shadow-sm"

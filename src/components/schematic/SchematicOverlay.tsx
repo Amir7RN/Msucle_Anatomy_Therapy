@@ -154,6 +154,56 @@ function SchematicOverlayInner({ className = '' }: { className?: string }) {
     return (DIAGNOSTIC_TO_MESH_IDS[muscle_id] ?? []).includes(hoveredId)
   }
 
+  // ── Mobile: compact bottom list (no SVG) when container is narrow ───────
+  const isMobile = size.w > 0 && size.w < 600
+
+  if (isMobile && markers.length > 0) {
+    return (
+      <div
+        ref={containerRef}
+        className={`pointer-events-none absolute inset-0 z-20 ${className}`}
+      >
+        {/* Bottom strip — horizontally scrollable pill list */}
+        <div className="pointer-events-auto absolute bottom-0 left-0 right-0 bg-black/75 backdrop-blur-sm pb-2 pt-2">
+          <div className="flex gap-2 overflow-x-auto px-3 scrollbar-none">
+            {markers.map((marker) => {
+              const hovered = isMuscleHovered(marker.muscle_id)
+              const accent  = marker.matchType === 'primary' ? ACCENT_PRI : ACCENT_REF
+              return (
+                <button
+                  key={marker.muscle_id}
+                  onMouseEnter={() => handleHover(marker.muscle_id)}
+                  onMouseLeave={() => handleHover(null)}
+                  onClick={() => handleClick(marker.muscle_id)}
+                  className={[
+                    'flex-shrink-0 flex items-center gap-2 rounded-lg border px-3 py-2',
+                    'bg-slate-900/95 text-left transition-all',
+                    hovered
+                      ? 'border-orange-300/80 shadow-lg shadow-orange-500/30'
+                      : 'border-orange-800/60',
+                  ].join(' ')}
+                >
+                  <div className="w-[3px] self-stretch rounded-full" style={{ backgroundColor: accent }} />
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-semibold text-slate-100 whitespace-nowrap">
+                      {marker.common_name}
+                    </div>
+                    <div className="text-[9px] uppercase tracking-wider text-slate-500">
+                      {marker.matchType} zone
+                    </div>
+                  </div>
+                  <span className="text-sm font-bold tabular-nums text-orange-300 ml-1">
+                    {Math.round(marker.probability * 100)}%
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div
