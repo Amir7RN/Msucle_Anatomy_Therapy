@@ -49,10 +49,15 @@ jobs:
       - name: Build for GitHub Pages
         # VITE_BASE_PATH tells vite.config.ts to prefix all asset URLs with
         # the repo sub-path so the app works at /Msucle_Anatomy_Therapy/
+        # VITE_ANTHROPIC_API_KEY is baked into the JS bundle at build time so
+        # visitors don't need to enter their own key.  Set it in:
+        #   GitHub repo → Settings → Secrets and variables → Actions → New secret
+        #   Name: VITE_ANTHROPIC_API_KEY   Value: sk-ant-...
         # NODE_OPTIONS gives the Node process extra heap for minifying large bundles.
         run: npm run build
         env:
           VITE_BASE_PATH: /Msucle_Anatomy_Therapy/
+          VITE_ANTHROPIC_API_KEY: ${{ secrets.VITE_ANTHROPIC_API_KEY }}
           NODE_OPTIONS: --max-old-space-size=4096
 
       - name: Configure GitHub Pages

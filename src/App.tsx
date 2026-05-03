@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { AppHeader }    from './components/layout/AppHeader'
 import { LeftSidebar }  from './components/layout/LeftSidebar'
 import { RightPanel }   from './components/layout/RightPanel'
@@ -6,7 +6,7 @@ import { ViewerCanvas } from './components/viewer/ViewerCanvas'
 import { MovementScreen } from './components/movement/MovementScreen'
 import { useAtlasStore } from './store/atlasStore'
 import type { CameraPresetKey } from './lib/cameraUtils'
-import { Activity } from 'lucide-react'
+import { Activity, MessageCircle, Box, Info, X } from 'lucide-react'
 
 /**
  * Root application component.
@@ -93,33 +93,120 @@ export default function App() {
     toggleDarkMode, toggleGhostMode, flyToPreset, setSelected,
   ])
 
+  // ── Mobile panel state ──────────────────────────────────────────────────────
+  // 'none' = canvas only, 'chat' = AI Diagnosis overlay, 'details' = muscle details
+  const [mobilePanel, setMobilePanel] = useState<'none' | 'chat' | 'details'>('none')
+
   return (
     <div className="flex flex-col w-full h-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100">
       {/* Top header */}
       <AppHeader />
 
-      {/* Main 3-column body */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Left sidebar */}
-        <LeftSidebar />
+      {/* Main body */}
+      <div className="flex flex-1 min-h-0 overflow-hidden relative">
 
-        {/* Centre — 3D canvas */}
+        {/* Left sidebar — always shown on desktop; shown as full overlay on mobile when mobilePanel='chat' */}
+        <div className={[
+          'flex-shrink-0 flex flex-col',
+          // Desktop: always visible as a side column
+          // Mobile: hidden by default; shown as absolute overlay when chat panel is open
+          mobilePanel === 'chat'
+            ? 'absolute inset-0 z-40 md:relative md:inset-auto md:z-auto'
+            : 'hidden md:flex',
+        ].join(' ')}>
+          {/* Mobile close button (only shown inside the overlay) */}
+          <div className="flex md:hidden items-center justify-between px-3 py-2 bg-slate-800 border-b border-slate-700 flex-shrink-0">
+            <span className="text-xs font-semibold text-cyan-400">AI Diagnosis</span>
+            <button onClick={() => setMobilePanel('none')} className="text-slate-400 hover:text-white">
+              <X size={18} />
+            </button>
+          </div>
+          <LeftSidebar />
+        </div>
+
+        {/* Centre — 3D canvas (always in DOM, always behind overlays) */}
         <main className="flex-1 min-w-0 relative">
           <ViewerCanvas />
           <DiagnosticModeToggle />
-          <MovementLauncher />
+          {/* Movement launcher — hidden on mobile, accessible via bottom bar */}
+          <div className="hidden md:block">
+            <MovementLauncher />
+          </div>
         </main>
 
-        {/* Right panel */}
-        <RightPanel />
+        {/* Right panel — always shown on desktop; shown as full overlay on mobile when mobilePanel='details' */}
+        <div className={[
+          'flex-shrink-0 flex flex-col',
+          mobilePanel === 'details'
+            ? 'absolute inset-0 z-40 md:relative md:inset-auto md:z-auto'
+            : 'hidden md:flex',
+        ].join(' ')}>
+          {/* Mobile close button */}
+          <div className="flex md:hidden items-center justify-between px-3 py-2 bg-slate-900 border-b border-slate-700 flex-shrink-0">
+            <span className="text-xs font-semibold text-slate-300">Structure Details</span>
+            <button onClick={() => setMobilePanel('none')} className="text-slate-400 hover:text-white">
+              <X size={18} />
+            </button>
+          </div>
+          <RightPanel />
+        </div>
       </div>
 
-      {/* Status bar */}
-      <StatusBar />
+      {/* Status bar — desktop only (too small for mobile) */}
+      <div className="hidden md:block">
+        <StatusBar />
+      </div>
+
+      {/* ── Mobile bottom navigation bar ─────────────────────────────────────── */}
+      <nav className="flex md:hidden items-stretch border-t border-slate-700 bg-slate-900 flex-shrink-0">
+        <MobileNavTab
+          icon={<MessageCircle size={20} />}
+          label="AI Chat"
+          active={mobilePanel === 'chat'}
+          onClick={() => setMobilePanel(mobilePanel === 'chat' ? 'none' : 'chat')}
+        />
+        <MobileNavTab
+          icon={<Box size={20} />}
+          label="3D Model"
+          active={mobilePanel === 'none'}
+          onClick={() => setMobilePanel('none')}
+        />
+        <MobileNavTab
+          icon={<Activity size={20} />}
+          label="Movement"
+          active={false}
+          onClick={() => { setMobilePanel('none'); useAtlasStore.getState().toggleMovement() }}
+        />
+        <MobileNavTab
+          icon={<Info size={20} />}
+          label="Details"
+          active={mobilePanel === 'details'}
+          onClick={() => setMobilePanel(mobilePanel === 'details' ? 'none' : 'details')}
+        />
+      </nav>
 
       {/* Phone-camera Movement Assessment */}
       <MovementScreenMount />
     </div>
+  )
+}
+
+// ── Mobile nav tab ────────────────────────────────────────────────────────────
+function MobileNavTab({
+  icon, label, active, onClick,
+}: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition-colors ${
+        active
+          ? 'text-cyan-400 bg-slate-800'
+          : 'text-slate-400 hover:text-slate-200'
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
   )
 }
 
@@ -132,7 +219,7 @@ function MovementLauncher() {
     <button
       onClick={toggleMovement}
       title="Run a Movement Assessment"
-      className="absolute right-4 top-14 z-20 flex items-center gap-1.5 rounded-md bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-100 shadow-lg ring-1 ring-cyan-500/40 hover:bg-slate-700"
+      className="absolute right-4 top-4 z-20 flex items-center gap-1.5 rounded-md bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-100 shadow-lg ring-1 ring-cyan-500/40 hover:bg-slate-700"
     >
       <Activity size={14} />
       {movementOpen ? 'Movement open' : 'Movement Screen'}

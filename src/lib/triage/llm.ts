@@ -61,8 +61,21 @@ export interface TriageTurnResult {
 
 const KEY_STORAGE = 'muscleAtlas.triage.apiKey'
 
+/**
+ * Returns the active API key using this priority order:
+ *   1. Key saved by the user in localStorage (their own personal key)
+ *   2. VITE_ANTHROPIC_API_KEY baked into the build at deploy time
+ *      (set as a GitHub Actions secret → everyone who visits the site uses it)
+ *   3. null → the UI shows the key-entry prompt
+ */
 export function getStoredApiKey(): string | null {
-  try { return localStorage.getItem(KEY_STORAGE) } catch { return null }
+  try {
+    const stored = localStorage.getItem(KEY_STORAGE)
+    if (stored) return stored
+  } catch { /* ignore */ }
+  // Fall back to the build-time env variable (set via GitHub Actions secret)
+  const envKey = import.meta.env.VITE_ANTHROPIC_API_KEY as string | undefined
+  return envKey && envKey.startsWith('sk-') ? envKey : null
 }
 export function setStoredApiKey(key: string): void {
   try { localStorage.setItem(KEY_STORAGE, key) } catch { /* ignore */ }
@@ -131,7 +144,7 @@ export async function chatTriage(
     },
     body: JSON.stringify({
       model:      MODEL_ID,
-      max_tokens: 1024,
+      max_tokens: 180,   // HUMANOID TONE: forces 1-2 sentence replies (≈120-160 tokens typical)
       system,
       tools:      [PRESENT_DIFFERENTIAL_TOOL],
       messages,

@@ -29,15 +29,15 @@ export function ActionButtons() {
   const toggleGhostMode = useAtlasStore((s) => s.toggleGhostMode)
 
   return (
-    <div className="flex items-center gap-1.5 flex-wrap">
+    <div className="flex items-center gap-1 md:gap-1.5 flex-wrap">
       <Button
         variant="secondary"
         size="sm"
         icon={<RotateCcw size={13} />}
         onClick={resetView}
-        title="Reset camera and clear all visibility overrides"
+        title="Reset camera"
       >
-        Reset
+        <span className="hidden md:inline">Reset</span>
       </Button>
 
       <Button
@@ -47,7 +47,7 @@ export function ActionButtons() {
         onClick={showAll}
         title="Show all hidden structures"
       >
-        Show All
+        <span className="hidden md:inline">Show All</span>
       </Button>
 
       <Button
@@ -56,9 +56,9 @@ export function ActionButtons() {
         icon={<EyeOff size={13} />}
         onClick={hideSelected}
         disabled={!selectedId}
-        title="Hide the currently selected structure"
+        title="Hide selected"
       >
-        Hide
+        <span className="hidden md:inline">Hide</span>
       </Button>
 
       <Button
@@ -68,13 +68,13 @@ export function ActionButtons() {
         onClick={isolateMode ? exitIsolate : isolateSelected}
         disabled={!selectedId && !isolateMode}
         active={isolateMode}
-        title={isolateMode ? 'Exit isolate mode' : 'Isolate selected structure'}
+        title={isolateMode ? 'Exit isolate mode' : 'Isolate selected'}
       >
-        {isolateMode ? 'Exit Isolate' : 'Isolate'}
+        <span className="hidden md:inline">{isolateMode ? 'Exit Isolate' : 'Isolate'}</span>
       </Button>
 
       {/* Divider */}
-      <div className="w-px h-5 bg-slate-200 dark:bg-slate-600 mx-0.5" />
+      <div className="hidden md:block w-px h-5 bg-slate-200 dark:bg-slate-600 mx-0.5" />
 
       <Button
         variant={ghostMode ? 'primary' : 'ghost'}
@@ -82,9 +82,9 @@ export function ActionButtons() {
         icon={<Ghost size={13} />}
         onClick={toggleGhostMode}
         active={ghostMode}
-        title="Ghost mode — make surrounding structures semi-transparent"
+        title="Ghost mode"
       >
-        Ghost
+        <span className="hidden md:inline">Ghost</span>
       </Button>
 
       <Button
