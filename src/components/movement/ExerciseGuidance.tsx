@@ -118,51 +118,70 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, onClose 
         </button>
       </header>
 
-      {/* Body — side-by-side on desktop, stacked on mobile */}
-      <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
+      {/* Body: top row (camera + reference video) | bottom scrollable (AI coach) */}
+      <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
 
-        {/* Camera — fixed 45vh on mobile (top), flex-1 on desktop (left column) */}
-        <div className="relative bg-black flex-shrink-0 h-[45vh] md:h-auto md:flex-1 md:min-w-0">
-          <CameraView
-            active
-            onLandmarks={handleLandmarks}
-            onReady={() => setCameraReady(true)}
-            onError={(msg) => setCameraError(msg)}
-          />
+        {/* ── TOP ROW: camera (left) + reference video auto-playing (right) ── */}
+        <div className="flex flex-row flex-shrink-0 h-[42vh] md:h-[45vh] border-b border-slate-700">
 
-          {!cameraReady && !cameraError && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-slate-300 text-sm">
-              <div className="text-center space-y-2">
-                <Camera size={32} className="mx-auto text-cyan-400 animate-pulse" />
-                <p>Starting camera…</p>
+          {/* Camera — left half */}
+          <div className="relative bg-black flex-1 min-w-0 border-r border-slate-700">
+            <CameraView
+              active
+              onLandmarks={handleLandmarks}
+              onReady={() => setCameraReady(true)}
+              onError={(msg) => setCameraError(msg)}
+            />
+
+            {!cameraReady && !cameraError && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-slate-300 text-sm">
+                <div className="text-center space-y-1">
+                  <Camera size={24} className="mx-auto text-cyan-400 animate-pulse" />
+                  <p className="text-xs">Starting camera…</p>
+                </div>
               </div>
-            </div>
-          )}
-          {cameraError && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/90 p-6">
-              <div className="text-center space-y-3 max-w-xs">
-                <AlertCircle size={32} className="mx-auto text-red-400" />
-                <p className="text-sm text-red-300">{cameraError}</p>
-                <p className="text-xs text-slate-400">Allow camera access and reload.</p>
+            )}
+            {cameraError && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/90 p-3">
+                <div className="text-center space-y-2">
+                  <AlertCircle size={24} className="mx-auto text-red-400" />
+                  <p className="text-xs text-red-300">{cameraError}</p>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Live form banner */}
-          {cameraReady && snapshot && (
-            <div className={[
-              'absolute bottom-0 left-0 right-0 px-4 py-3 text-center text-sm font-semibold',
-              snapshot.good ? 'bg-emerald-700/80 text-white' : 'bg-orange-600/85 text-white',
-            ].join(' ')}>
-              {snapshot.good
-                ? <span className="flex items-center justify-center gap-2"><CheckCircle size={14} /> Good alignment — hold it.</span>
-                : snapshot.cueText}
+            {/* Live form banner */}
+            {cameraReady && snapshot && (
+              <div className={[
+                'absolute bottom-0 left-0 right-0 px-2 py-1.5 text-center text-xs font-semibold',
+                snapshot.good ? 'bg-emerald-700/80 text-white' : 'bg-orange-600/85 text-white',
+              ].join(' ')}>
+                {snapshot.good
+                  ? <span className="flex items-center justify-center gap-1"><CheckCircle size={11} /> Good!</span>
+                  : snapshot.cueText}
+              </div>
+            )}
+
+            {/* "Your pose" label */}
+            <div className="absolute top-1.5 left-1.5 text-[9px] font-semibold text-slate-400 bg-black/60 px-1.5 py-0.5 rounded">
+              YOUR POSE
             </div>
-          )}
+          </div>
+
+          {/* Reference video — right half, auto-plays on mount, loops 10× */}
+          <div className="flex-1 min-w-0 relative">
+            <ReferenceVideo src={videoSrc} label={exerciseLabel} autoPlay loops={10} />
+            <div className="absolute top-1.5 left-1.5 text-[9px] font-semibold text-slate-400 bg-black/60 px-1.5 py-0.5 rounded">
+              REFERENCE
+            </div>
+          </div>
         </div>
 
-        {/* Right — AI coach + angles + video. On mobile: full-width bottom section with scroll */}
-        <div className="w-full md:w-80 flex flex-col bg-slate-900 border-t border-slate-700 md:border-t-0 md:border-l flex-shrink-0 overflow-y-auto flex-1 md:flex-none">
+        {/* ── BOTTOM: AI coach + live angles, scrollable ── */}
+        <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
+
+        {/* AI coach + angles — scrollable */}
+        <div className="w-full md:w-80 flex flex-col bg-slate-900 md:border-l border-slate-700 flex-shrink-0 overflow-y-auto flex-1 md:flex-none">
 
           {/* AI Coach — replaces static "Setup" text */}
           {def
@@ -200,13 +219,9 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, onClose 
             </div>
           )}
 
-          {/* Reference video */}
-          <div className="p-3 flex-1">
-            <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-2">Reference</div>
-            <ReferenceVideo src={videoSrc} label={exerciseLabel} />
-          </div>
         </div>
-      </div>
+        </div>{/* end bottom row */}
+      </div>{/* end outer flex-col body */}
     </div>
   )
 }
@@ -717,30 +732,57 @@ Rules:
 //  Reference video player
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ReferenceVideo({ src, label }: { src: string; label: string }) {
-  const videoRef = useRef<HTMLVideoElement>(null)
+function ReferenceVideo({
+  src, label,
+  autoPlay = false,
+  loops = 0,
+}: { src: string; label: string; autoPlay?: boolean; loops?: number }) {
+  const videoRef   = useRef<HTMLVideoElement>(null)
+  const loopRef    = useRef(0)
   const [playing, setPlaying] = useState(false)
+  const [loopCount, setLoopCount] = useState(0)
+
+  // Auto-play on mount if requested
+  useEffect(() => {
+    if (autoPlay && videoRef.current) {
+      videoRef.current.play().then(() => setPlaying(true)).catch(() => {})
+    }
+  }, [autoPlay])
+
+  function handleEnded() {
+    loopRef.current += 1
+    setLoopCount(loopRef.current)
+    if (loops === 0 || loopRef.current < loops) {
+      // Loop again
+      const v = videoRef.current
+      if (v) { v.currentTime = 0; v.play().catch(() => {}) }
+    } else {
+      setPlaying(false)
+    }
+  }
 
   function toggle() {
     const v = videoRef.current
     if (!v) return
-    if (v.paused) { v.play(); setPlaying(true) }
+    if (v.paused) { loopRef.current = 0; setLoopCount(0); v.play().then(() => setPlaying(true)).catch(() => {}) }
     else          { v.pause(); setPlaying(false) }
   }
+
+  const maxLoops = loops > 0 ? loops : null
+  const loopsLeft = maxLoops ? Math.max(0, maxLoops - loopCount) : null
 
   return (
     <div
       onClick={toggle}
-      className="relative cursor-pointer rounded-lg overflow-hidden border border-slate-700 hover:border-slate-500 transition-colors"
+      className="relative cursor-pointer h-full overflow-hidden bg-black"
     >
       <video
         ref={videoRef}
         src={src}
         preload="auto"
         playsInline
-        loop
-        className="w-full block bg-black"
-        onEnded={() => setPlaying(false)}
+        className="w-full h-full object-cover block bg-black"
+        onEnded={handleEnded}
         onLoadedData={() => {
           if (videoRef.current && videoRef.current.currentTime === 0)
             videoRef.current.currentTime = 0.05
@@ -753,8 +795,14 @@ function ReferenceVideo({ src, label }: { src: string; label: string }) {
           </div>
         </div>
       )}
+      {/* Loop counter badge */}
+      {playing && maxLoops && (
+        <div className="absolute top-1.5 right-1.5 text-[9px] font-bold text-white bg-black/60 px-1.5 py-0.5 rounded">
+          {loopsLeft}× left
+        </div>
+      )}
       <div className="absolute bottom-0 left-0 right-0 px-2 py-1.5 bg-gradient-to-t from-black/80 to-transparent">
-        <p className="text-[11px] font-medium text-white leading-tight">{label}</p>
+        <p className="text-[10px] font-medium text-white/80 leading-tight truncate">{label}</p>
       </div>
     </div>
   )

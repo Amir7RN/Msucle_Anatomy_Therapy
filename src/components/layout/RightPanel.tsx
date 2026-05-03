@@ -3,7 +3,7 @@ import { MetadataPanel } from '../panels/MetadataPanel'
 
 export function RightPanel() {
   return (
-    <aside className="w-full md:w-72 flex flex-col border-l border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-shrink-0 overflow-hidden">
+    <aside className="w-full md:w-72 h-full flex flex-col border-l border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-shrink-0 overflow-hidden">
       {/* Panel title — hidden on mobile (App.tsx renders its own header with a close button) */}
       <div className="hidden md:block px-4 py-2.5 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
         <h2 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">

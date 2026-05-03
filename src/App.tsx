@@ -241,14 +241,17 @@ function DiagnosticModeToggle() {
   return (
     <button
       onClick={toggleDiagnosticMode}
-      className={`absolute left-4 top-4 z-10 rounded-md px-3 py-1.5 text-xs font-semibold shadow-lg transition-colors ${
+      className={[
+        // Desktop: top-left  |  Mobile: bottom-left above bottom nav
+        'absolute z-10 rounded-md px-3 py-1.5 text-xs font-semibold shadow-lg transition-colors',
+        'left-3 bottom-3 md:left-4 md:top-4 md:bottom-auto',
         diagnosticMode
           ? 'bg-orange-500 text-white hover:bg-orange-400'
-          : 'bg-slate-800 text-slate-100 hover:bg-slate-700'
-      }`}
+          : 'bg-slate-800 text-slate-100 hover:bg-slate-700',
+      ].join(' ')}
       title="Toggle Area-to-Muscle diagnostic mode"
     >
-      {diagnosticMode ? 'Diagnostic: ON — click body to analyse' : 'Diagnostic Mode'}
+      {diagnosticMode ? '⬤ Diagnostic ON' : 'Diagnostic Mode'}
     </button>
   )
 }

@@ -44,8 +44,7 @@ function MiniSearch() {
 export function LeftSidebar() {
   return (
     <aside
-      className="flex flex-col border-r border-slate-700 bg-slate-900 flex-shrink-0 overflow-hidden"
-      style={{ width: 300 }}
+      className="flex flex-col border-r border-slate-700 bg-slate-900 flex-shrink-0 overflow-hidden w-full md:w-[300px]"
     >
       {/* ── AI Diagnosis — 80 % ─────────────────────────────────────────── */}
       {/* Always open, inline, no close button. */}
@@ -57,9 +56,9 @@ export function LeftSidebar() {
         />
       </div>
 
-      {/* ── Structures — 20 % ───────────────────────────────────────────── */}
+      {/* ── Structures — 20 % — desktop only (hidden on mobile) ────────── */}
       <div
-        className="flex flex-col border-t border-slate-700 flex-shrink-0"
+        className="hidden md:flex flex-col border-t border-slate-700 flex-shrink-0"
         style={{ flex: 1, minHeight: 0 }}
       >
         {/* Header row */}

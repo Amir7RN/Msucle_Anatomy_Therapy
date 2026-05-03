@@ -50,6 +50,7 @@ export function ActionButtons() {
         <span className="hidden md:inline">Show All</span>
       </Button>
 
+      {/* Hide — desktop only */}
       <Button
         variant="secondary"
         size="sm"
@@ -57,8 +58,9 @@ export function ActionButtons() {
         onClick={hideSelected}
         disabled={!selectedId}
         title="Hide selected"
+        className="hidden md:flex"
       >
-        <span className="hidden md:inline">Hide</span>
+        Hide
       </Button>
 
       <Button
@@ -70,12 +72,13 @@ export function ActionButtons() {
         active={isolateMode}
         title={isolateMode ? 'Exit isolate mode' : 'Isolate selected'}
       >
-        <span className="hidden md:inline">{isolateMode ? 'Exit Isolate' : 'Isolate'}</span>
+        <span className="hidden md:inline">{isolateMode ? 'Exit' : 'Isolate'}</span>
       </Button>
 
-      {/* Divider */}
+      {/* Divider — desktop only */}
       <div className="hidden md:block w-px h-5 bg-slate-200 dark:bg-slate-600 mx-0.5" />
 
+      {/* Ghost — desktop only */}
       <Button
         variant={ghostMode ? 'primary' : 'ghost'}
         size="sm"
@@ -83,8 +86,9 @@ export function ActionButtons() {
         onClick={toggleGhostMode}
         active={ghostMode}
         title="Ghost mode"
+        className="hidden md:flex"
       >
-        <span className="hidden md:inline">Ghost</span>
+        Ghost
       </Button>
 
       <Button
