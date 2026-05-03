@@ -69,8 +69,7 @@ export function MovementScreen({ open, onClose }: Props) {
   const poseStableRef = useRef<number>(0)
   const [poseQuality, setPoseQuality] = useState<{ visible: number; total: number }>({ visible: 0, total: 0 })
 
-  // Camera digital zoom (CSS transform).  1.0 = native FOV; lower = wider.
-  const [cameraZoom, setCameraZoom] = useState(1.0)
+  // (zoom state removed — camera uses object-fit:contain natively)
 
   const tts = useVoiceOutput()
   // Stable-identity ref to TTS so timer effects don't re-run every render.
@@ -266,16 +265,14 @@ export function MovementScreen({ open, onClose }: Props) {
 
         {phase !== 'setup' && phase !== 'results' && (
           <>
-            {/* Camera with digital zoom (CSS scale) */}
+            {/* Camera — object-fit:contain preserves full sensor FOV without cropping */}
             <div className="relative h-full w-full">
-              <div className="h-full w-full" style={{ transform: `scale(${cameraZoom})`, transformOrigin: 'center center' }}>
-                <CameraView
-                  active={active}
-                  onLandmarks={handleLandmarks}
-                  onReady={() => setCameraReady(true)}
-                  onError={(m) => { setCameraError(m); setActive(false); setPhase('setup') }}
-                />
-              </div>
+              <CameraView
+                active={active}
+                onLandmarks={handleLandmarks}
+                onReady={() => setCameraReady(true)}
+                onError={(m) => { setCameraError(m); setActive(false); setPhase('setup') }}
+              />
               {!cameraReady && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/70">
                   <div className="text-sm text-slate-300">Initialising pose model…</div>
@@ -284,7 +281,6 @@ export function MovementScreen({ open, onClose }: Props) {
               {phase === 'calibrate' && cameraReady && (
                 <CalibrationOverlay quality={poseQuality} stableFrames={poseStableRef.current} threshold={POSE_STABLE_FRAMES} />
               )}
-              <ZoomSlider value={cameraZoom} onChange={setCameraZoom} />
               <ProgressDots total={MOVEMENTS.length} done={moveIdx} />
             </div>
 
