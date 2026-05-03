@@ -96,15 +96,22 @@ export function SchematicMarkers() {
       const cacheKey = `${t.muscle_id}::${t.sideMeshIds[0] ?? ''}`
       let meshes = meshCacheRef.current.get(cacheKey)
 
-      if (!meshes) {
-        meshes = []
+      // KEY BUG FIX: when the GLTF scene hasn't finished loading on first
+      // frames, traverse returns 0 meshes.  We MUST NOT cache that empty
+      // result — otherwise the schematic stays empty forever.  Re-traverse
+      // every frame until we find at least one mesh, then cache.
+      if (!meshes || meshes.length === 0) {
+        const found: THREE.Mesh[] = []
         const wanted = new Set(t.sideMeshIds)
         scene.traverse((obj) => {
           if (!(obj instanceof THREE.Mesh)) return
           const sid = obj.userData?.structureId as string | undefined
-          if (sid && wanted.has(sid)) meshes!.push(obj)
+          if (sid && wanted.has(sid)) found.push(obj)
         })
-        meshCacheRef.current.set(cacheKey, meshes)
+        meshes = found
+        if (found.length > 0) {
+          meshCacheRef.current.set(cacheKey, found)
+        }
       }
 
       if (meshes.length === 0) continue

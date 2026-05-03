@@ -229,7 +229,15 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
     const turningOn = !voiceMode
     setVoiceMode(turningOn)
     if (turningOn) {
+      // ── Mobile TTS unlock ──────────────────────────────────────────────
+      // iOS / Android Safari require speechSynthesis.speak() to be invoked
+      // inside a user-gesture handler at least once before subsequent calls
+      // can play.  Speak a brief greeting (which doubles as user feedback)
+      // RIGHT NOW while we're still in the click handler.  Without this,
+      // every later AI reply on mobile would be silent until the user
+      // manually taps "play".
       voiceOut.cancel()
+      voiceOut.speak("Voice mode on. Go ahead — I'm listening.")
       voiceIn.start()
     } else {
       voiceIn.stop()
@@ -283,10 +291,12 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
     : voiceIn.listening ? 'listening'
     : 'idle'
 
-  // Inline mode: fill the sidebar slot; fixed-overlay mode: float over the canvas
+  // Inline mode: fill the sidebar slot; fixed-overlay mode: float over the canvas.
+  // Mobile breakpoint: take nearly the full screen so the chat area is usable
+  // (fixes the "chat box is small" complaint).
   const wrapperCls = inline
     ? 'flex flex-col flex-1 min-h-0 bg-slate-900 text-slate-100'
-    : 'fixed right-4 top-20 bottom-6 z-30 flex w-[380px] flex-col rounded-lg border border-slate-700 bg-slate-900/95 text-slate-100 shadow-2xl backdrop-blur'
+    : 'fixed inset-x-2 top-16 bottom-2 z-30 flex flex-col rounded-lg border border-slate-700 bg-slate-900/95 text-slate-100 shadow-2xl backdrop-blur sm:inset-auto sm:right-4 sm:top-20 sm:bottom-6 sm:w-[380px]'
 
   return (
     <aside className={wrapperCls}>
@@ -375,11 +385,21 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
         </div>
       )}
 
-      {/* Input bar */}
+      {/* Input bar — auto-grows up to 6 lines, auto-scrolls to keep latest text visible */}
       {apiKey && (
-        <div className="border-t border-slate-700 p-2">
+        <div className="border-t border-slate-700 p-2 flex-shrink-0">
           <div className="flex items-end gap-2">
             <textarea
+              ref={(el) => {
+                if (!el) return
+                // Auto-grow: reset height, then set to scrollHeight (capped).
+                el.style.height = 'auto'
+                el.style.height = Math.min(el.scrollHeight, 160) + 'px'
+                // Auto-scroll to bottom so the latest recognised words stay
+                // visible as the user speaks (fixes the "locked to first
+                // sentence" complaint while voice is recognising).
+                el.scrollTop = el.scrollHeight
+              }}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
@@ -387,7 +407,8 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
               }}
               placeholder={voiceMode ? 'Listening… or type here.' : 'Describe your pain — type or tap the mic.'}
               rows={2}
-              className="flex-1 resize-none rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-100 placeholder:text-slate-600 focus:border-orange-500 focus:outline-none"
+              className="flex-1 resize-none rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-100 placeholder:text-slate-600 focus:border-orange-500 focus:outline-none overflow-y-auto"
+              style={{ maxHeight: '160px' }}
             />
             <div className="flex flex-col gap-1">
               <button

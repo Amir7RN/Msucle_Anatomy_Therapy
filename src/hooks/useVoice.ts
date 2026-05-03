@@ -67,7 +67,12 @@ export function useVoiceActivity(opts: UseVoiceActivityOptions): void {
         return
       }
       if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return }
-      ctx = new AudioContext()
+      ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+      // iOS / mobile Safari starts the AudioContext in 'suspended' state.
+      // Resume it now that we're inside (or just after) a user-gesture chain.
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch((e) => console.warn('[vad] AudioContext resume:', e))
+      }
       analyser = ctx.createAnalyser()
       analyser.fftSize = 1024
       const src = ctx.createMediaStreamSource(stream)
@@ -359,14 +364,21 @@ export function useVoiceOutput(lang = 'en-US'): UseVoiceOutputResult {
   const [speaking, setSpeaking] = useState(false)
   const [voice,    setVoice]    = useState<SpeechSynthesisVoice | null>(null)
 
-  // Voices load asynchronously — listen for the voiceschanged event.
+  // Voices load asynchronously.  iOS Safari and some Android builds DON'T
+  // reliably fire the voiceschanged event, so we ALSO poll every 400ms for
+  // the first 4 seconds — by that point the system voice list is stable.
   useEffect(() => {
     if (!supported) return
     const refresh = () => setVoice(pickPreferredVoice(lang))
     refresh()
     window.speechSynthesis.addEventListener('voiceschanged', refresh)
+    const intervals: number[] = []
+    for (let i = 1; i <= 10; i++) {
+      intervals.push(window.setTimeout(refresh, i * 400))
+    }
     return () => {
       window.speechSynthesis.removeEventListener('voiceschanged', refresh)
+      intervals.forEach((id) => window.clearTimeout(id))
     }
   }, [supported, lang])
 
