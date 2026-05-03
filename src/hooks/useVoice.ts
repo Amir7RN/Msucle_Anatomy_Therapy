@@ -32,8 +32,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 //  for ~50 ms; real human speech sustains energy for 200+ ms.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const VOLUME_THRESHOLD = 0.08        // RMS in 0..1 — calibrated to typical mic
-const VOLUME_HOLD_MS   = 220         // sustain length to count as "user speaking"
+const VOLUME_THRESHOLD = 0.06        // RMS in 0..1 — slightly more sensitive
+const VOLUME_HOLD_MS   = 100         // 100ms sustain — fast barge-in response
 
 export interface UseVoiceActivityOptions {
   /** When true, the analyser runs and fires onActive when sustained volume crosses the threshold. */
@@ -303,39 +303,30 @@ export function useVoiceInput(opts: UseVoiceInputOptions = {}): UseVoiceInputRes
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Voice priority list — matched against SpeechSynthesisVoice.name with
- * regex.  First match wins.
+ * Voice priority — first match wins.
  *
- * Tier 1: Neural / online voices (cloud-backed, dramatically more human-sounding)
- * Tier 2: High-quality built-in OS voices (Apple "Enhanced", Windows "Natural")
- * Tier 3: Standard Google / Apple / Microsoft voices
- * Tier 4: Generic fallback
+ * Strategy: pick the KNOWN-GOOD voices for each platform by exact name.
+ * Avoid pattern-matching "natural/enhanced" in the fallback because on some
+ * iOS versions those pick a different accent that sounds more robotic.
  *
- * Adding "Online" or "Natural" in the name typically means the browser
- * streams audio from a cloud TTS engine — much better quality but requires
- * an active internet connection.
+ * iOS:     Samantha (the standard English Siri voice — warm and clear)
+ * Android: Google US English
+ * Windows/Edge: Microsoft Aria Natural (neural, very human-sounding)
+ * macOS:  Samantha / Karen / Daniel
  */
 const VOICE_PRIORITY: RegExp[] = [
-  // Windows / Edge neural voices (best available on Windows)
-  /Microsoft.*Aria.*Natural/i,
-  /Microsoft.*Aria.*Online/i,
-  /Microsoft.*Jenny.*Natural/i,
-  /Microsoft.*Jenny.*Online/i,
-  /Microsoft.*Sonia.*Online/i,
-  /Microsoft.*Natasha.*Online/i,
-  /Microsoft.*Ryan.*Online/i,
-  // Chrome / Android Google voices
+  // Windows Edge neural (best quality on PC)
+  /Microsoft Aria.*Online/i,
+  /Microsoft Jenny.*Online/i,
+  /Microsoft Sonia.*Online/i,
+  // Chrome / Android
   /^Google US English$/i,
   /^Google UK English Female$/i,
-  /^Google UK English Male$/i,
-  // Apple enhanced / premium voices (iOS/macOS — sound excellent)
-  /Samantha.*Enhanced/i,
-  /Karen.*Enhanced/i,
-  /Daniel.*Enhanced/i,
-  /^Samantha$/i,             // Apple standard (still good)
-  /^Karen$/i,                // Apple AU English
-  /^Daniel$/i,               // Apple UK English
-  /^Moira$/i,                // Apple IE English
+  // Apple (iOS / macOS) — Samantha is the gold standard here
+  /^Samantha$/i,
+  /^Karen$/i,
+  /^Daniel$/i,
+  /^Moira$/i,
 ]
 
 function pickPreferredVoice(lang: string): SpeechSynthesisVoice | null {
@@ -346,11 +337,10 @@ function pickPreferredVoice(lang: string): SpeechSynthesisVoice | null {
     const match = voices.find((v) => re.test(v.name))
     if (match) return match
   }
-  // Fallbacks: any neural/premium/enhanced voice first, then language match, then anything.
+  // Fallback: any en-US voice, then first English, then first available
   return (
-    voices.find((v) => /natural|neural|premium|enhanced|online/i.test(v.name)) ??
     voices.find((v) => /en[-_]US/i.test(v.lang)) ??
-    voices.find((v) => v.lang?.toLowerCase().startsWith(lang.toLowerCase())) ??
+    voices.find((v) => v.lang?.toLowerCase().startsWith('en')) ??
     voices[0] ??
     null
   )
@@ -388,9 +378,8 @@ export function useVoiceOutput(lang = 'en-US'): UseVoiceOutputResult {
     // Slightly slower than default → sounds more deliberate and calmer.
     // 0.92 is perceptually close to natural conversational pace without
     // being noticeably slow.
-    utt.rate  = 0.92
-    // Very slightly lower pitch → warmer, less "text-to-speech" feel.
-    utt.pitch = 0.95
+    utt.rate  = 1.0
+    utt.pitch = 1.0
     if (voice) utt.voice = voice
     utt.onstart = () => setSpeaking(true)
     utt.onend   = () => { setSpeaking(false); onEnd?.() }

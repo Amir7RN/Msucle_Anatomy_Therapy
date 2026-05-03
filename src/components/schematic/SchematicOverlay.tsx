@@ -157,7 +157,32 @@ function SchematicOverlayInner({ className = '' }: { className?: string }) {
   // ── Mobile: compact bottom list (no SVG) when container is narrow ───────
   const isMobile = size.w > 0 && size.w < 600
 
-  if (isMobile && markers.length > 0) {
+  // Fallback pill data: use contributions directly when 3D markers aren't
+  // available yet (e.g. mesh lookup hasn't resolved or the model is Meshy).
+  const pillData = markers.length > 0
+    ? markers.map((m) => ({
+        id:       m.muscle_id,
+        name:     m.common_name,
+        pct:      Math.round(m.probability * 100),
+        type:     m.matchType as 'primary' | 'referred',
+        onHover:  (v: boolean) => handleHover(v ? m.muscle_id : null),
+        onClick:  () => handleClick(m.muscle_id),
+        hovered:  isMuscleHovered(m.muscle_id),
+      }))
+    : diagnosticResult?.contributions
+        ?.filter((c) => c.probability >= 0.1)
+        .slice(0, 8)
+        .map((c) => ({
+          id:      c.muscle_id,
+          name:    c.common_name,
+          pct:     Math.round(c.probability * 100),
+          type:    c.matchType as 'primary' | 'referred',
+          onHover: (_v: boolean) => {},
+          onClick: () => {},
+          hovered: false,
+        })) ?? []
+
+  if (isMobile && pillData.length > 0) {
     return (
       <div
         ref={containerRef}
@@ -166,19 +191,19 @@ function SchematicOverlayInner({ className = '' }: { className?: string }) {
         {/* Bottom strip — horizontally scrollable pill list */}
         <div className="pointer-events-auto absolute bottom-0 left-0 right-0 bg-black/75 backdrop-blur-sm pb-2 pt-2">
           <div className="flex gap-2 overflow-x-auto px-3 scrollbar-none">
-            {markers.map((marker) => {
-              const hovered = isMuscleHovered(marker.muscle_id)
-              const accent  = marker.matchType === 'primary' ? ACCENT_PRI : ACCENT_REF
+            {pillData.map((pill) => {
+              const accent = pill.type === 'primary' ? ACCENT_PRI : ACCENT_REF
               return (
                 <button
-                  key={marker.muscle_id}
-                  onMouseEnter={() => handleHover(marker.muscle_id)}
-                  onMouseLeave={() => handleHover(null)}
-                  onClick={() => handleClick(marker.muscle_id)}
+                  key={pill.id}
+                  onMouseEnter={() => pill.onHover(true)}
+                  onMouseLeave={() => pill.onHover(false)}
+                  onTouchStart={() => pill.onHover(true)}
+                  onClick={() => pill.onClick()}
                   className={[
                     'flex-shrink-0 flex items-center gap-2 rounded-lg border px-3 py-2',
                     'bg-slate-900/95 text-left transition-all',
-                    hovered
+                    pill.hovered
                       ? 'border-orange-300/80 shadow-lg shadow-orange-500/30'
                       : 'border-orange-800/60',
                   ].join(' ')}
@@ -186,14 +211,14 @@ function SchematicOverlayInner({ className = '' }: { className?: string }) {
                   <div className="w-[3px] self-stretch rounded-full" style={{ backgroundColor: accent }} />
                   <div className="min-w-0">
                     <div className="text-[11px] font-semibold text-slate-100 whitespace-nowrap">
-                      {marker.common_name}
+                      {pill.name}
                     </div>
                     <div className="text-[9px] uppercase tracking-wider text-slate-500">
-                      {marker.matchType} zone
+                      {pill.type} zone
                     </div>
                   </div>
                   <span className="text-sm font-bold tabular-nums text-orange-300 ml-1">
-                    {Math.round(marker.probability * 100)}%
+                    {pill.pct}%
                   </span>
                 </button>
               )

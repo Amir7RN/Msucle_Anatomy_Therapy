@@ -144,7 +144,7 @@ export async function chatTriage(
     },
     body: JSON.stringify({
       model:      MODEL_ID,
-      max_tokens: 180,   // HUMANOID TONE: forces 1-2 sentence replies (≈120-160 tokens typical)
+      max_tokens: 100,   // Hard cap — forces 1 sentence replies in voice mode
       system,
       tools:      [PRESENT_DIFFERENTIAL_TOOL],
       messages,

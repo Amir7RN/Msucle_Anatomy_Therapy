@@ -1182,6 +1182,12 @@ export const EXERCISE_PROCEDURES: Record<string, ExerciseProcedure> = {
 //  Frame evaluator
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ±7° tolerance window applied around every ideal range.
+// This prevents the coach from toggling "bad form" on every minor pose wobble.
+// The cue still fires, but only when the user is genuinely out of range,
+// not just at the edge of the target zone.
+const FORM_TOLERANCE_DEG = 7
+
 export function evaluateExercise(lms: LandmarkSet, def: BiofeedbackDef): FormSnapshot {
   const details: FormSnapshot['details'] = []
   let firstBadCue = ''
@@ -1191,11 +1197,12 @@ export function evaluateExercise(lms: LandmarkSet, def: BiofeedbackDef): FormSna
     const v = check.measure(lms)
     if (v === null) { allGood = false; continue }
     const [lo, hi] = check.ideal
-    if (v < lo) {
+    // Apply tolerance: only flag as bad when clearly outside the range
+    if (v < lo - FORM_TOLERANCE_DEG) {
       details.push({ label: check.label, deg: v, status: 'low' })
       if (!firstBadCue && check.belowCue) firstBadCue = check.belowCue
       allGood = false
-    } else if (v > hi) {
+    } else if (v > hi + FORM_TOLERANCE_DEG) {
       details.push({ label: check.label, deg: v, status: 'high' })
       if (!firstBadCue && check.aboveCue) firstBadCue = check.aboveCue
       allGood = false
