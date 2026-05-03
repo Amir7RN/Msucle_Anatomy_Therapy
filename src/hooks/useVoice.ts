@@ -241,7 +241,15 @@ export function useVoiceInput(opts: UseVoiceInputOptions = {}): UseVoiceInputRes
 
     rec.onend = () => {
       setListening(false)
-      clearSilenceTimer()
+      // CRITICAL FIX: if the silence timer is still pending when the recogniser
+      // closes (browser auto-ended the session), fire the callback immediately
+      // rather than discarding it.  Without this the LLM is never called after
+      // the user pauses and the recogniser times out on its own.
+      if (silenceTimerRef.current !== null) {
+        clearSilenceTimer()
+        const text = finalRef.current.trim()
+        if (text && onSilenceRef.current) onSilenceRef.current(text)
+      }
     }
 
     recRef.current = rec
@@ -296,20 +304,38 @@ export function useVoiceInput(opts: UseVoiceInputOptions = {}): UseVoiceInputRes
 
 /**
  * Voice priority list — matched against SpeechSynthesisVoice.name with
- * regex.  First match wins.  We prefer named "natural" / cloud voices over
- * stock OS voices because they sound dramatically less robotic.
+ * regex.  First match wins.
+ *
+ * Tier 1: Neural / online voices (cloud-backed, dramatically more human-sounding)
+ * Tier 2: High-quality built-in OS voices (Apple "Enhanced", Windows "Natural")
+ * Tier 3: Standard Google / Apple / Microsoft voices
+ * Tier 4: Generic fallback
+ *
+ * Adding "Online" or "Natural" in the name typically means the browser
+ * streams audio from a cloud TTS engine — much better quality but requires
+ * an active internet connection.
  */
 const VOICE_PRIORITY: RegExp[] = [
+  // Windows / Edge neural voices (best available on Windows)
+  /Microsoft.*Aria.*Natural/i,
+  /Microsoft.*Aria.*Online/i,
+  /Microsoft.*Jenny.*Natural/i,
+  /Microsoft.*Jenny.*Online/i,
+  /Microsoft.*Sonia.*Online/i,
+  /Microsoft.*Natasha.*Online/i,
+  /Microsoft.*Ryan.*Online/i,
+  // Chrome / Android Google voices
   /^Google US English$/i,
   /^Google UK English Female$/i,
   /^Google UK English Male$/i,
-  /^Samantha$/i,             // Apple high-quality
-  /Microsoft.*Aria.*Online/i,
-  /Microsoft.*Jenny.*Online/i,
-  /Microsoft.*Guy.*Online/i,
-  /^Karen$/i,                // Apple, AU English (natural)
-  /^Daniel$/i,               // Apple, UK English (natural)
-  /^Moira$/i,                // Apple, IE English
+  // Apple enhanced / premium voices (iOS/macOS — sound excellent)
+  /Samantha.*Enhanced/i,
+  /Karen.*Enhanced/i,
+  /Daniel.*Enhanced/i,
+  /^Samantha$/i,             // Apple standard (still good)
+  /^Karen$/i,                // Apple AU English
+  /^Daniel$/i,               // Apple UK English
+  /^Moira$/i,                // Apple IE English
 ]
 
 function pickPreferredVoice(lang: string): SpeechSynthesisVoice | null {
@@ -320,9 +346,10 @@ function pickPreferredVoice(lang: string): SpeechSynthesisVoice | null {
     const match = voices.find((v) => re.test(v.name))
     if (match) return match
   }
-  // Fallbacks: any "natural" voice, then any matching language, then anything.
+  // Fallbacks: any neural/premium/enhanced voice first, then language match, then anything.
   return (
-    voices.find((v) => /natural|premium|enhanced/i.test(v.name)) ??
+    voices.find((v) => /natural|neural|premium|enhanced|online/i.test(v.name)) ??
+    voices.find((v) => /en[-_]US/i.test(v.lang)) ??
     voices.find((v) => v.lang?.toLowerCase().startsWith(lang.toLowerCase())) ??
     voices[0] ??
     null
@@ -358,8 +385,12 @@ export function useVoiceOutput(lang = 'en-US'): UseVoiceOutputResult {
     window.speechSynthesis.cancel()
     const utt = new SpeechSynthesisUtterance(text)
     utt.lang  = lang
-    utt.rate  = 1.0
-    utt.pitch = 1.0
+    // Slightly slower than default → sounds more deliberate and calmer.
+    // 0.92 is perceptually close to natural conversational pace without
+    // being noticeably slow.
+    utt.rate  = 0.92
+    // Very slightly lower pitch → warmer, less "text-to-speech" feel.
+    utt.pitch = 0.95
     if (voice) utt.voice = voice
     utt.onstart = () => setSpeaking(true)
     utt.onend   = () => { setSpeaking(false); onEnd?.() }

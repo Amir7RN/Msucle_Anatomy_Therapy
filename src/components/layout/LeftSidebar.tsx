@@ -44,11 +44,11 @@ function MiniSearch() {
 export function LeftSidebar() {
   return (
     <aside
-      className="flex flex-col border-r border-slate-700 bg-slate-900 flex-shrink-0 overflow-hidden w-full md:w-[300px]"
+      className="flex flex-col border-r border-slate-700 bg-slate-900 flex-shrink-0 overflow-hidden w-full md:w-[300px] h-full"
     >
       {/* ── AI Diagnosis — 80 % ─────────────────────────────────────────── */}
       {/* Always open, inline, no close button. */}
-      <div className="flex flex-col min-h-0" style={{ flex: 4 }}>
+      <div className="flex flex-col min-h-0" style={{ flex: '1 1 0', minHeight: 0, overflow: 'hidden' }}>
         <TriageChat
           open
           onClose={() => {/* panel is always open — no-op */}}
@@ -59,7 +59,7 @@ export function LeftSidebar() {
       {/* ── Structures — 20 % — desktop only (hidden on mobile) ────────── */}
       <div
         className="hidden md:flex flex-col border-t border-slate-700 flex-shrink-0"
-        style={{ flex: 1, minHeight: 0 }}
+        style={{ flex: '0 0 250px' }}
       >
         {/* Header row */}
         <div className="flex items-center justify-between px-3 py-1.5 flex-shrink-0 border-b border-slate-700/60">

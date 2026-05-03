@@ -73,11 +73,39 @@ const JOINT_SIZES: Record<number, number> = {
   [LM.L_ELBOW]:    1.2, [LM.R_ELBOW]:    1.2,
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Exponential Moving Average (EMA) landmark smoother
+//
+//  Reduces per-frame jitter while keeping the skeleton responsive to real
+//  movement.  ALPHA controls the trade-off:
+//    • Higher ALPHA (→1.0) = faster response, more jitter
+//    • Lower  ALPHA (→0.0) = smoother, more lag on fast moves
+//
+//  0.35 is a good default for physio-exercise speed — it smooths out 1-frame
+//  detection noise without making the skeleton feel "floaty."
+// ─────────────────────────────────────────────────────────────────────────────
+const EMA_ALPHA = 0.35
+
+function smoothLandmarks(current: LandmarkSet, prev: LandmarkSet | null): LandmarkSet {
+  if (!prev || prev.length === 0) return current
+  return current.map((lm, i): LandmarkSet[number] => {
+    const p = prev[i]
+    if (!lm || !p) return lm
+    return {
+      x:          EMA_ALPHA * lm.x + (1 - EMA_ALPHA) * p.x,
+      y:          EMA_ALPHA * lm.y + (1 - EMA_ALPHA) * p.y,
+      z:          EMA_ALPHA * (lm.z ?? 0) + (1 - EMA_ALPHA) * (p.z ?? 0),
+      visibility: lm.visibility,
+    }
+  })
+}
+
 export function CameraView({ active, onLandmarks, onReady, onError }: Props) {
-  const videoRef  = useRef<HTMLVideoElement | null>(null)
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const rafRef    = useRef<number | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
+  const videoRef    = useRef<HTMLVideoElement | null>(null)
+  const canvasRef   = useRef<HTMLCanvasElement | null>(null)
+  const rafRef      = useRef<number | null>(null)
+  const streamRef   = useRef<MediaStream | null>(null)
+  const smoothedRef = useRef<LandmarkSet | null>(null)   // EMA state
 
   useEffect(() => {
     if (!active) return
@@ -159,13 +187,15 @@ export function CameraView({ active, onLandmarks, onReady, onError }: Props) {
             c.height = v.videoHeight
           }
           try {
-            const lms = detectVideoFrame(detector, v, performance.now())
+            const raw = detectVideoFrame(detector, v, performance.now())
             const ctx = c.getContext('2d')!
             ctx.clearRect(0, 0, c.width, c.height)
-            if (lms) {
-              // Draw with RAW coordinates — the CSS scaleX(-1) on the canvas
-              // handles the visual flip so the skeleton matches the video.
-              // No manual 1-x inversion needed (that was the double-flip bug).
+            if (raw) {
+              // Apply EMA smoothing to reduce jitter while preserving responsiveness
+              const lms = smoothLandmarks(raw, smoothedRef.current)
+              smoothedRef.current = lms
+              // Draw with RAW (smoothed) coordinates — the CSS scaleX(-1) on the
+              // canvas handles the visual flip so the skeleton matches the video.
               drawSkeleton(ctx, lms, c.width, c.height)
               onLandmarks(lms)
             }
@@ -186,6 +216,7 @@ export function CameraView({ active, onLandmarks, onReady, onError }: Props) {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       streamRef.current?.getTracks().forEach((t) => t.stop())
       streamRef.current = null
+      smoothedRef.current = null   // reset smoother so next session starts fresh
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active])
@@ -220,8 +251,12 @@ export function CameraView({ active, onLandmarks, onReady, onError }: Props) {
  */
 function drawSkeleton(ctx: CanvasRenderingContext2D, lms: LandmarkSet, w: number, h: number) {
   const px = (p: { x: number; y: number }) => [p.x * w, p.y * h] as const
-  const baseLW = Math.max(3, w * 0.005)
-  const baseR  = Math.max(4, w * 0.006)
+  // Use large multipliers because the canvas is at NATIVE video resolution
+  // (e.g. 1920 px) but may display at 300 CSS px — a 6× scale-down.
+  // 0.018 × 1920 = 34 canvas px ≈ 6 displayed px at 1× DPR.  Visible at all
+  // device sizes including small phones.
+  const baseLW = Math.max(10, w * 0.018)
+  const baseR  = Math.max(12, w * 0.022)
 
   // Subtle dark outline behind every line — improves readability on busy
   // backgrounds and gives the skeleton a "rendered" feel.

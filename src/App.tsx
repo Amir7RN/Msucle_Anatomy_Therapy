@@ -97,6 +97,13 @@ export default function App() {
   // 'none' = canvas only, 'chat' = AI Diagnosis overlay, 'details' = muscle details
   const [mobilePanel, setMobilePanel] = useState<'none' | 'chat' | 'details'>('none')
 
+  // Stop TTS when the chat panel is closed on mobile
+  useEffect(() => {
+    if (mobilePanel !== 'chat') {
+      if (typeof window !== 'undefined') window.speechSynthesis?.cancel()
+    }
+  }, [mobilePanel])
+
   return (
     <div className="flex flex-col w-full h-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100">
       {/* Top header */}
@@ -244,7 +251,7 @@ function DiagnosticModeToggle() {
       className={[
         // Desktop: top-left  |  Mobile: bottom-left above bottom nav
         'absolute z-10 rounded-md px-3 py-1.5 text-xs font-semibold shadow-lg transition-colors',
-        'left-3 bottom-3 md:left-4 md:top-4 md:bottom-auto',
+        'left-3 top-3 md:left-4 md:top-4',
         diagnosticMode
           ? 'bg-orange-500 text-white hover:bg-orange-400'
           : 'bg-slate-800 text-slate-100 hover:bg-slate-700',

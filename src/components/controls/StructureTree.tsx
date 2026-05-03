@@ -81,7 +81,7 @@ function RegionGroup({
   region:     string
   structures: StructureMetadata[]
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(true)
   const label = REGION_LABELS[region] ?? region
 
   return (

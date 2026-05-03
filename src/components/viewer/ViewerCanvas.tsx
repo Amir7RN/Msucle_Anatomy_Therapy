@@ -96,7 +96,7 @@ function ScreenshotButton({ glRef }: { glRef: React.MutableRefObject<THREE.WebGL
     <button
       onClick={handleScreenshot}
       title="Export screenshot (PNG)"
-      className="hidden md:flex absolute top-3 right-3 z-10 items-center gap-1.5 px-2 py-1 bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-slate-100 text-xs rounded border border-slate-600/60 transition-colors shadow-sm"
+      className="flex absolute top-3 right-3 z-10 items-center gap-1.5 px-2 py-1 bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-slate-100 text-xs rounded border border-slate-600/60 transition-colors shadow-sm"
     >
       <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
