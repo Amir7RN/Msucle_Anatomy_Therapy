@@ -31,7 +31,11 @@ import type { LandmarkSet } from './landmarks'
 const MEDIAPIPE_VERSION = '0.10.35'
 
 const WASM_BASE  = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`
-const MODEL_URL  = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task'
+// Heavy model = best accuracy (~26 MB, ~12-18 fps on GPU vs 30 fps for lite).
+// Required for ROM measurements where small angle errors compound — the lite
+// model's keypoints drift several degrees per joint which is unacceptable for
+// "your shoulder abduction is 142° vs 180° normal" precision claims.
+const MODEL_URL  = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task'
 
 let _detector: PoseLandmarker | null = null
 let _initPromise: Promise<PoseLandmarker> | null = null

@@ -2,6 +2,35 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { MousePointerClick, MapPin, Zap, StickyNote, Activity, Play, Mic, Square, Volume2, ChevronDown, ChevronRight, Camera } from 'lucide-react'
 import { ExerciseGuidance } from '../movement/ExerciseGuidance'
+import { AssessmentView } from '../assessment/AssessmentView'
+
+/**
+ * Resolve the diagnostic-flavoured muscle_id (e.g. 'deltoid_anterior')
+ * for the current selection.  Mesh IDs in the GLB look like
+ * 'MUSC_DELTOID_ANTERIOR_R'; the assessment catalog is keyed by the
+ * lowercased painDiagnostic.json muscle_id, so we prefer the explicit
+ * diagnosticSubMuscleId set by the AI triage / blueprint flow.  When
+ * that's null we fall back to deriving the diagnostic key from the
+ * mesh ID (strip MUSC_ prefix and _L/_R suffix).
+ */
+function subMuscleIdForAssessment(
+  selectedMeshId: string | null,
+  diagnosticSubMuscleId: string | null,
+): string | null {
+  if (diagnosticSubMuscleId) return diagnosticSubMuscleId
+  if (!selectedMeshId)        return null
+  return selectedMeshId
+    .replace(/^MUSC_/, '')
+    .replace(/_(L|R)$/i, '')
+    .toLowerCase()
+}
+
+/** Subscribed wrapper — re-renders when EITHER selection or diagnostic sub-muscle changes. */
+function AssessmentMount({ muscleName, selectedId }: { muscleName: string | null; selectedId: string | null }) {
+  const diagnosticSubMuscleId = useAtlasStore((s) => s.diagnosticSubMuscleId)
+  const muscleId = subMuscleIdForAssessment(selectedId, diagnosticSubMuscleId)
+  return <AssessmentView muscleId={muscleId} muscleName={muscleName} />
+}
 import { useAtlasStore } from '../../store/atlasStore'
 import { Badge, systemBadgeColor, layerBadgeColor } from '../ui/Badge'
 import { Button } from '../ui/Button'
@@ -673,7 +702,10 @@ export function MetadataPanel() {
       </div>
 
       {/* Scrollable detail rows */}
-      <div className="flex-1 overflow-y-auto px-4 pb-4">
+      <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-3">
+        {/* Progress Assessment — between muscle name and exercises */}
+        <AssessmentMount muscleName={meta?.displayName ?? null} selectedId={selectedId} />
+
         {selectedId && <ExerciseVideos muscleId={selectedId} />}
 
         <MetaRow

@@ -91,11 +91,22 @@ function smoothLandmarks(current: LandmarkSet, prev: LandmarkSet | null): Landma
   return current.map((lm, i): LandmarkSet[number] => {
     const p = prev[i]
     if (!lm || !p) return lm
+    // Visibility is also smoothed — but with a SLOWER decay than position.
+    // MediaPipe's per-frame visibility is noisy: a wrist held overhead can
+    // flicker between 0.6 and 0.05 in adjacent frames even when the actual
+    // hand position is stable.  Smoothing visibility means a 1-frame dip
+    // from 0.6 → 0.05 becomes 0.6 → 0.45 → 0.3 → 0.2 (over ~4 frames),
+    // which keeps the measurement engaged through the dip.  If the
+    // landmark really is lost (visibility stays 0), the smoothed value
+    // decays past the threshold within ~150ms.
+    const VIS_ALPHA = 0.20   // slower than position EMA so dips fade gradually
+    const smoothedVis =
+      VIS_ALPHA * (lm.visibility ?? 0) + (1 - VIS_ALPHA) * (p.visibility ?? 0)
     return {
       x:          EMA_ALPHA * lm.x + (1 - EMA_ALPHA) * p.x,
       y:          EMA_ALPHA * lm.y + (1 - EMA_ALPHA) * p.y,
       z:          EMA_ALPHA * (lm.z ?? 0) + (1 - EMA_ALPHA) * (p.z ?? 0),
-      visibility: lm.visibility,
+      visibility: smoothedVis,
     }
   })
 }
