@@ -43,6 +43,10 @@ export interface DifferentialPayload {
   red_flags: string[]
   worsens:   string[]
   relieves:  string[]
+  /** Top-1 targeted muscle the AI nailed down through questioning. */
+  primary_muscle_id?: string
+  /** Optional parent group label (e.g. "Hamstrings", "Deltoid"). */
+  primary_group?:     string
 }
 
 /**
@@ -144,7 +148,7 @@ export async function chatTriage(
     },
     body: JSON.stringify({
       model:      MODEL_ID,
-      max_tokens: 100,   // Hard cap — forces 1 sentence replies in voice mode
+      max_tokens: 220,   // Enough for short replies + the structured tool call payload
       system,
       tools:      [PRESENT_DIFFERENTIAL_TOOL],
       messages,
@@ -173,6 +177,8 @@ export async function chatTriage(
         red_flags: Array.isArray(input.red_flags) ? input.red_flags.filter((s) => typeof s === 'string') : [],
         worsens:   Array.isArray(input.worsens)   ? input.worsens.filter((s) => typeof s === 'string')   : [],
         relieves:  Array.isArray(input.relieves)  ? input.relieves.filter((s) => typeof s === 'string')  : [],
+        primary_muscle_id: typeof input.primary_muscle_id === 'string' ? input.primary_muscle_id : undefined,
+        primary_group:     typeof input.primary_group     === 'string' ? input.primary_group     : undefined,
       }
     }
   }

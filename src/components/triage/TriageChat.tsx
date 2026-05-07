@@ -179,13 +179,27 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
 
       if (result.differential) {
         setDifferential(result.differential)
-        const contribs = calculateMuscleContribution(result.differential.zones, catalogue as DiagnosticMuscle[])
-        setContribs(contribs)
-        // Push to schematic overlay on the 3D model — patient-right side by default
+        const allContribs = calculateMuscleContribution(result.differential.zones, catalogue as DiagnosticMuscle[])
+
+        // ── Voice-mode "targeted muscle" mode ─────────────────────────────
+        //  When the AI nails down a single primary_muscle_id, use it to
+        //  surface ONE answer in the schematic instead of a distribution.
+        //  We push that muscle alone (probability 1.0) so the leader-line
+        //  card highlights the targeted answer.  Clicking the model's other
+        //  muscles directly still works for exploration.
+        const targeted = result.differential.primary_muscle_id
+        const targetedContrib = targeted
+          ? allContribs.find((c) => c.muscle_id === targeted)
+          : undefined
+        const finalContribs = targetedContrib
+          ? [{ ...targetedContrib, probability: 1.0 }]
+          : allContribs
+        setContribs(finalContribs)
+
         setDiagnostic({
           clickedZones:  result.differential.zones,
           clickPoint:    [-0.01, 0, 0],
-          contributions: contribs,
+          contributions: finalContribs,
         })
       }
 
@@ -229,15 +243,20 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
     const turningOn = !voiceMode
     setVoiceMode(turningOn)
     if (turningOn) {
-      // ── Mobile TTS unlock ──────────────────────────────────────────────
-      // iOS / Android Safari require speechSynthesis.speak() to be invoked
-      // inside a user-gesture handler at least once before subsequent calls
-      // can play.  Speak a brief greeting (which doubles as user feedback)
-      // RIGHT NOW while we're still in the click handler.  Without this,
-      // every later AI reply on mobile would be silent until the user
-      // manually taps "play".
+      // ── Truly silent unlock ───────────────────────────────────────────
+      //  iOS Safari requires speechSynthesis.speak() inside a user-gesture
+      //  to "unlock" TTS for the session.  Earlier we used a volume-0
+      //  greeting, but iOS ignores volume:0 in some builds and the AI's
+      //  own voice was being transcribed by the mic as "voice mode on".
+      //  Now we speak an EMPTY utterance and immediately cancel — the
+      //  unlock fires in the engine without any audio reaching the speaker.
       voiceOut.cancel()
-      voiceOut.speak("Voice mode on. Go ahead — I'm listening.")
+      try {
+        const primer = new SpeechSynthesisUtterance('')
+        primer.volume = 0
+        window.speechSynthesis.speak(primer)
+        window.speechSynthesis.cancel()
+      } catch { /* unlock attempt — non-fatal */ }
       voiceIn.start()
     } else {
       voiceIn.stop()

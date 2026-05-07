@@ -28,7 +28,7 @@ import type { DiagnosticMuscle } from '../diagnostic'
 export const PRESENT_DIFFERENTIAL_TOOL = {
   name: 'present_differential',
   description:
-    'Hand off the extracted body zones to the diagnostic engine and present a ranked list of likely muscle sources to the user. Call this only when you have enough information from the user.',
+    'Hand off the extracted body zones AND your top-1 targeted muscle (or muscle group) to the engine. Call ONLY after you have asked enough clarifying questions to be confident about a single primary suspect.',
   input_schema: {
     type: 'object',
     properties: {
@@ -36,18 +36,28 @@ export const PRESENT_DIFFERENTIAL_TOOL = {
         type: 'array',
         items: { type: 'string' },
         description:
-          'BODY_ZONES keys (e.g. "neck_r", "shoulder_post_l", "lower_back") that match where the user feels pain. Use the EXACT keys from the BODY_ZONES vocabulary in the system prompt — never invent new keys.',
+          'BODY_ZONES keys (e.g. "neck_r", "shoulder_post_l", "lower_back") that match where the user feels pain. Use EXACT keys from the BODY_ZONES vocabulary — never invent new keys.',
+      },
+      primary_muscle_id: {
+        type: 'string',
+        description:
+          'The SINGLE muscle_id (from painDiagnostic.json — e.g. "deltoid_anterior", "trapezius_upper", "biceps_femoris") that you believe is MOST likely the source after questioning. This is the targeted answer the user wants. If you can only narrow it down to a group (e.g. all 3 hamstrings), pick the most likely individual within that group.',
+      },
+      primary_group: {
+        type: 'string',
+        description:
+          'OPTIONAL — when the targeted muscle belongs to a known parent group, name it ("Hamstrings", "Deltoid", "Quadriceps", "Rotator Cuff", "Trapezius", "Glutes", "Calf", "Hip Flexors"). Helps the UI show "Hamstrings → Biceps Femoris".',
       },
       reasoning: {
         type: 'string',
         description:
-          'Plain-English summary (2-4 sentences) of what the user described, why these zones were chosen, and any caveats.',
+          'Plain-English summary (1-3 sentences) explaining why this single muscle is the most likely culprit based on what the user described.',
       },
       red_flags: {
         type: 'array',
         items: { type: 'string' },
         description:
-          'Symptoms that warrant immediate medical attention rather than self-care (e.g. "numbness with bowel/bladder changes", "sudden weakness", "chest pain radiating to jaw"). Empty array if none.',
+          'Symptoms that warrant immediate medical attention. Empty array if none.',
       },
       worsens: {
         type: 'array',
@@ -60,7 +70,7 @@ export const PRESENT_DIFFERENTIAL_TOOL = {
         description: 'Activities or positions the user said relieve the pain.',
       },
     },
-    required: ['zones', 'reasoning'],
+    required: ['zones', 'primary_muscle_id', 'reasoning'],
   },
 } as const
 
@@ -111,18 +121,26 @@ function condenseMuscle(m: DiagnosticMuscle): string {
 
 export function buildSystemPrompt(catalogue: DiagnosticMuscle[]): string {
   const muscleList = catalogue.map(condenseMuscle).join('\n')
-  return `You are MuscleAtlas Triage, a fast musculoskeletal pain assistant.
+  return `You are MuscleAtlas Triage, a fast musculoskeletal pain assistant whose goal is to identify the SINGLE most-likely muscle behind the user's pain.
 
 CRITICAL RULES — follow these exactly:
 1. ONE SENTENCE per reply. Never more. This is read aloud — brevity is mandatory.
 2. No lists, no bullets, no headers. Plain spoken sentence only.
-3. Call present_differential as quickly as possible — after AT MOST one clarifying question. If the user gives ANY location (shoulder, back, knee, etc.) that's enough — just ask left or right if not stated, then call the tool immediately.
-4. Do NOT keep asking follow-up questions. One clarifying question maximum, then call the tool.
-5. After the tool call, say ONE short sentence like "Check the model — it's showing your most likely muscle sources." That's it.
+3. Ask 2–4 SHORT clarifying questions to nail down the single primary muscle BEFORE calling the tool. Useful angles to disambiguate:
+     • side (left / right / both),
+     • does it RADIATE? (down the arm, up to the head, into the leg),
+     • what activity TRIGGERS it (sitting, lifting, turning the head, sleeping on it),
+     • any tingling / numbness (suggests nerve, not pure muscle),
+     • how long has it been there.
+   These narrow a "shoulder pain" from "all 3 deltoids + rotator cuff" down to a single targeted muscle (e.g. "deltoid_anterior").
+4. When you have enough info, call present_differential with:
+     • zones[]   — the BODY_ZONES keys for the painful area
+     • primary_muscle_id — your TOP-1 targeted answer (e.g. "deltoid_anterior", "biceps_femoris", "trapezius_upper")
+     • primary_group     — the parent group when applicable ("Deltoid", "Hamstrings", "Quadriceps", "Rotator Cuff", "Trapezius", "Glutes", "Hip Flexors", "Calf")
+     • reasoning — 1–3 sentences explaining why THIS muscle wins over its peers.
+5. After the tool call, say ONE short sentence like "Looks like your right deltoid anterior — it's highlighted on the model." Always name the targeted muscle in that sentence.
 
-Tone: casual, warm, fast. Like a knowledgeable friend, not a textbook.
-
-Your ONLY job: map the user's pain location to muscles and call present_differential.
+Tone: casual, warm, fast. Like a knowledgeable friend, not a textbook. Use contractions.
 
 Red flags requiring IMMEDIATE care (say "Please see a doctor now" and stop):
 - Chest pain + shortness of breath, numbness + bowel/bladder changes, sudden severe headache, major trauma.

@@ -428,7 +428,23 @@ export function findZonesAtPoint(point: THREE.Vector3): string[] {
     if (d2 < bestDist) { bestDist = d2; bestKey = key }
   }
 
-  return inside.length > 0 ? inside : (bestKey ? [bestKey] : [])
+  const raw = inside.length > 0 ? inside : (bestKey ? [bestKey] : [])
+  // ── L/R symmetry: clicks on opposite sides should return the SAME muscle
+  //  differential.  We achieve this by always including the mirror zone for
+  //  any sided hit.  e.g. clicking shoulder_r returns both shoulder_r and
+  //  shoulder_l, so calculateMuscleContribution finds the same set of
+  //  bilateral muscles regardless of which side the user clicked.
+  return mirrorSidedZones(raw)
+}
+
+/** Add the mirror counterpart for any zone ending in _r or _l. */
+function mirrorSidedZones(zones: string[]): string[] {
+  const out = new Set<string>(zones)
+  for (const z of zones) {
+    if (z.endsWith('_r'))      out.add(z.slice(0, -2) + '_l')
+    else if (z.endsWith('_l')) out.add(z.slice(0, -2) + '_r')
+  }
+  return [...out]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
