@@ -7,12 +7,25 @@ import { MovementScreen } from './components/movement/MovementScreen'
 import { useAtlasStore } from './store/atlasStore'
 import type { CameraPresetKey } from './lib/cameraUtils'
 import { Activity, MessageCircle, Box, Info, X } from 'lucide-react'
+import { LandingPage } from './components/landing/LandingPage'
 
 /**
  * Root application component.
  * Layout: header (full-width) + three-column body (sidebar | canvas | panel).
  */
 export default function App() {
+  const [showAtlas] = useState(() => new URLSearchParams(window.location.search).has('atlas'))
+  const appUrl = `${import.meta.env.BASE_URL}?atlas=1`
+  const diagnosticUrl = `${import.meta.env.BASE_URL}?atlas=1&diagnostic=1`
+
+  if (!showAtlas) {
+    return <LandingPage atlasUrl={appUrl} diagnosticUrl={diagnosticUrl} />
+  }
+
+  return <AtlasApp />
+}
+
+function AtlasApp() {
   const darkMode = useAtlasStore((s) => s.darkMode)
 
   // Sync dark-mode class on <html>
@@ -21,6 +34,15 @@ export default function App() {
     if (darkMode) root.classList.add('dark')
     else root.classList.remove('dark')
   }, [darkMode])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.has('diagnostic')) {
+      const state = useAtlasStore.getState()
+      if (!state.diagnosticMode) state.toggleDiagnosticMode()
+      state.setTriageOpen(true)
+    }
+  }, [])
 
   // ── URL hash sync for selected muscle ──────────────────────────────────────
   const selectedId  = useAtlasStore((s) => s.selectedId)
