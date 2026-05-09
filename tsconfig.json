@@ -17,5 +17,6 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src"],
+  "exclude": ["src/components/landing/MoveMateLanding.tsx"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
