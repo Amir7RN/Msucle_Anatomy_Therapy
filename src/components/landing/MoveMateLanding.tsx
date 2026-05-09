@@ -16,6 +16,28 @@ const reveal = {
 const diagnosisVideoUrl = new URL('../../../Videos/Shoulder-Deltoid/Diagnosis.mp4', import.meta.url).href
 const aiCoachVideoUrl = new URL('../../../Videos/Shoulder-Deltoid/AICouch.mp4', import.meta.url).href
 
+
+const landingAnimationCss = `
+  @keyframes landing-chat-in {
+    0%, 8% { opacity: 0; transform: translateY(14px) scale(0.98); }
+    14%, 100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  @keyframes landing-source-reveal {
+    0%, 72% { opacity: 0; transform: translateY(16px) scale(0.97); filter: blur(4px); }
+    84%, 100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+  }
+
+  @keyframes landing-cue-loop {
+    0%, 44% { opacity: 0.55; transform: translateY(10px); }
+    56%, 100% { opacity: 1; transform: translateY(0); }
+  }
+
+  .landing-chat-message { opacity: 0; animation: landing-chat-in 7.2s ease-out infinite both; }
+  .landing-source-highlight { animation: landing-source-reveal 7.2s ease-out infinite both; }
+  .landing-cue { animation: landing-cue-loop 4.2s ease-in-out infinite alternate both; }
+`
+
 const triageMessages = [
   { role: 'user', text: 'I have a pain on my shoulder' },
   { role: 'ai', text: 'Is it the front, back, or top of your shoulder?' },
@@ -261,6 +283,8 @@ function MissionVisual({ compact = false }: { compact?: boolean }) {
   )
 }
 
+function LandingAnimationStyles() {
+  return <style dangerouslySetInnerHTML={{ __html: landingAnimationCss }} />
 function StylizedSkeleton() {
   return (
     <svg viewBox="0 0 360 360" className="landing-skeleton absolute inset-0 h-full w-full" aria-hidden="true">
