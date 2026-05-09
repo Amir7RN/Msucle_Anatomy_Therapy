@@ -1,0 +1,263 @@
+import type React from 'react'
+import { ArrowRight, Bot, ChevronRight, CircleDot, Lock, MousePointer2, Sparkles, Zap } from 'lucide-react'
+import { motion } from 'framer-motion'
+
+type LandingPageProps = {
+  atlasUrl: string
+  diagnosticUrl: string
+}
+
+const reveal = {
+  initial: { opacity: 0, y: 28 },
+  whileInView: { opacity: 1, y: 0 },
+  viewport: { once: true, amount: 0.22 },
+}
+
+const diagnosisVideoUrl = new URL('../../../Videos/Shoulder-Deltoid/Diagnosis.mp4', import.meta.url).href
+const aiCoachVideoUrl = new URL('../../../Videos/Shoulder-Deltoid/AICouch.mp4', import.meta.url).href
+
+const triageMessages = [
+  { role: 'user', text: 'I have a pain on my shoulder' },
+  { role: 'ai', text: 'Is it the front, back, or top of your shoulder?' },
+  { role: 'user', text: 'Right side and the front' },
+  { role: 'ai', text: 'Does the pain stay near the shoulder or travel down the arm?' },
+  { role: 'user', text: 'It stays there. A couple days.' },
+  { role: 'ai', text: 'Likely source identified: Deltoid.' },
+]
+
+export function LandingPage({ atlasUrl, diagnosticUrl }: LandingPageProps) {
+  return (
+    <main className="h-full min-h-screen overflow-y-auto bg-[#05070d] text-white selection:bg-cyan-300 selection:text-slate-950">
+      <div className="pointer-events-none fixed inset-0 overflow-hidden">
+        <div className="absolute left-1/2 top-[-14rem] h-[42rem] w-[42rem] -translate-x-1/2 rounded-full bg-cyan-500/16 blur-[130px]" />
+        <div className="absolute bottom-0 right-[-12rem] h-[34rem] w-[34rem] rounded-full bg-orange-500/12 blur-[120px]" />
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.026)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.026)_1px,transparent_1px)] bg-[length:80px_80px]" />
+      </div>
+
+      <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#05070d]/75 backdrop-blur-2xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 sm:px-8">
+          <a href="#top" className="group flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-300/10 ring-1 ring-cyan-300/30 transition group-hover:bg-cyan-300/20 group-hover:shadow-[0_0_28px_rgba(34,211,238,0.35)]">
+              <Zap className="h-5 w-5 text-cyan-200" />
+            </span>
+            <span>
+              <span className="block text-sm font-semibold tracking-wide">MoveMate AI</span>
+              <span className="block text-xs text-slate-400">Body insight + form coaching</span>
+            </span>
+          </a>
+          <div className="hidden items-center gap-6 text-sm text-slate-300 md:flex">
+            <a className="hover:text-white" href="#triage">Triage</a>
+            <a className="hover:text-white" href="#diagnosis">Diagnosis</a>
+            <a className="hover:text-white" href="#coach">Coach</a>
+            <a className="hover:text-white" href="#mission">Mission</a>
+          </div>
+          <a href={diagnosticUrl} className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-sm font-semibold text-cyan-100 shadow-[0_0_24px_rgba(34,211,238,0.12)] transition hover:border-cyan-200/70 hover:bg-cyan-300/20 hover:shadow-[0_0_36px_rgba(34,211,238,0.35)]">
+            Open App
+          </a>
+        </div>
+      </nav>
+
+      <section id="top" className="relative mx-auto grid max-w-7xl items-center gap-12 px-5 pb-24 pt-20 sm:px-8 lg:grid-cols-[0.92fr_1.08fr] lg:pt-28">
+        <motion.div {...reveal} transition={{ duration: 0.7 }}>
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-sm text-slate-300 shadow-2xl backdrop-blur-2xl">
+            <Sparkles className="h-4 w-4 text-cyan-200" />
+            Official MoveMate feature showcase
+          </div>
+          <h1 className="max-w-4xl text-5xl font-semibold tracking-[-0.06em] text-white sm:text-7xl lg:text-8xl">
+            Find what hurts. Move better. Stay in flow.
+          </h1>
+          <p className="mt-7 max-w-2xl text-lg leading-8 text-slate-300 sm:text-xl">
+            Meet MoveMate AI—a calm body companion that turns your notes, taps, and reps into clear muscle insights and form feedback.
+          </p>
+          <div className="mt-10 flex flex-col gap-4 sm:flex-row">
+            <a href={diagnosticUrl} className="group inline-flex min-w-48 items-center justify-center gap-2 rounded-full bg-cyan-200 px-7 py-4 font-semibold text-slate-950 shadow-[0_0_44px_rgba(103,232,249,0.34)] transition hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_0_70px_rgba(103,232,249,0.55)]">
+              Start Diagnostic <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
+            </a>
+            <a href={atlasUrl} className="group inline-flex min-w-48 items-center justify-center gap-2 rounded-full border border-white/15 bg-white/[0.06] px-7 py-4 font-semibold text-white backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-orange-300/60 hover:bg-orange-300/10 hover:shadow-[0_0_50px_rgba(251,146,60,0.28)]">
+              Explore Anatomy <ChevronRight className="h-4 w-4 transition group-hover:translate-x-1" />
+            </a>
+          </div>
+        </motion.div>
+        <motion.div {...reveal} transition={{ duration: 0.75, delay: 0.1 }}>
+          <MissionVisual compact />
+        </motion.div>
+      </section>
+
+      <ShowcasePanel
+        id="triage"
+        eyebrow="Panel 1 · AI Triage"
+        title="A real conversation flow that identifies the next best focus."
+        description="Messages appear one by one, the background softens, and the leading source highlights only after the conversation has enough context."
+      >
+        <TriagePanel />
+      </ShowcasePanel>
+
+      <ShowcasePanel
+        id="diagnosis"
+        eyebrow="Panel 2 · Precision Diagnosis"
+        title="Tap the body to see likely contributors snap into focus."
+        description="This panel uses the provided Diagnosis video as the source visual, then layers a cursor, blueprint timing, and an isolate state on top."
+        reverse
+      >
+        <DiagnosisPanel />
+      </ShowcasePanel>
+
+      <ShowcasePanel
+        id="coach"
+        eyebrow="Panel 3 · AI Coach"
+        title="Reference, camera, cue, repeat."
+        description="The provided coach video fills the full panel. The user side is privacy-forward: blurred feed, form-focused skeleton overlay, and a real-time cue."
+      >
+        <CoachPanel />
+      </ShowcasePanel>
+
+      <section id="mission" className="relative mx-auto max-w-7xl px-5 py-24 sm:px-8 lg:py-32">
+        <motion.div {...reveal} transition={{ duration: 0.7 }} className="grid items-center gap-10 rounded-[2rem] border border-white/12 bg-white/[0.055] p-5 shadow-[0_30px_120px_rgba(0,0,0,0.48)] backdrop-blur-3xl lg:grid-cols-[1.05fr_0.95fr] lg:p-8">
+          <MissionVisual />
+          <div className="px-2 py-6 lg:px-6">
+            <p className="text-sm font-semibold uppercase tracking-[0.32em] text-cyan-200/80">Panel 4 · The Core Mission</p>
+            <h2 className="mt-5 text-4xl font-semibold tracking-[-0.04em] sm:text-6xl">Find what hurts. Move better. Stay in flow.</h2>
+            <p className="mt-6 text-lg leading-8 text-slate-300">Meet MoveMate AI—a calm body companion that turns your notes, taps, and reps into clear muscle insights and form feedback.</p>
+            <div className="mt-8 flex flex-col gap-4 sm:flex-row">
+              <a href={diagnosticUrl} className="rounded-full bg-cyan-200 px-7 py-4 text-center font-semibold text-slate-950 transition hover:bg-white hover:shadow-[0_0_60px_rgba(103,232,249,0.45)]">Start Diagnostic</a>
+              <a href={atlasUrl} className="rounded-full border border-white/15 bg-white/[0.06] px-7 py-4 text-center font-semibold transition hover:border-orange-300/60 hover:bg-orange-300/10 hover:shadow-[0_0_44px_rgba(251,146,60,0.22)]">Explore Anatomy</a>
+            </div>
+          </div>
+        </motion.div>
+      </section>
+    </main>
+  )
+}
+
+function ShowcasePanel({ id, eyebrow, title, description, reverse = false, children }: { id: string; eyebrow: string; title: string; description: string; reverse?: boolean; children: React.ReactNode }) {
+  return (
+    <section id={id} className="relative mx-auto max-w-7xl px-5 py-20 sm:px-8 lg:py-28">
+      <div className={`grid items-center gap-10 ${reverse ? 'lg:grid-cols-[1.15fr_0.85fr]' : 'lg:grid-cols-[0.85fr_1.15fr]'}`}>
+        <motion.div {...reveal} transition={{ duration: 0.65 }} className={reverse ? 'lg:order-2' : ''}>
+          <p className="text-sm font-semibold uppercase tracking-[0.32em] text-orange-200/80">{eyebrow}</p>
+          <h2 className="mt-5 text-4xl font-semibold tracking-[-0.04em] sm:text-6xl">{title}</h2>
+          <p className="mt-6 text-lg leading-8 text-slate-300">{description}</p>
+        </motion.div>
+        <motion.div {...reveal} transition={{ duration: 0.7, delay: 0.08 }} className={reverse ? 'lg:order-1' : ''}>{children}</motion.div>
+      </div>
+    </section>
+  )
+}
+
+function TriagePanel() {
+  return (
+    <div className="rounded-[2rem] border border-white/12 bg-slate-950/70 p-4 shadow-[0_30px_120px_rgba(0,0,0,0.48)] backdrop-blur-3xl">
+      <div className="relative min-h-[620px] overflow-hidden rounded-[1.35rem] border border-white/12 bg-[#080d1d]">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_42%_38%,rgba(34,211,238,0.16),transparent_32%),linear-gradient(90deg,rgba(15,23,42,0.96),rgba(15,23,42,0.74))]" />
+        <div className="absolute inset-y-0 left-0 w-full max-w-[440px] border-r border-white/10 bg-[#0c1225]/96 shadow-2xl backdrop-blur-2xl">
+          <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+            <span className="flex items-center gap-2 font-semibold"><Bot className="h-4 w-4 text-orange-300" /> AI Diagnosis</span>
+            <span className="rounded-full bg-white/10 px-3 py-1 text-xs text-slate-300">Voice mode OFF</span>
+          </div>
+          <div className="space-y-4 p-5 pt-8">
+            {triageMessages.map((message, index) => (
+              <div key={`${message.role}-${message.text}`} className={`landing-chat-message flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`} style={{ animationDelay: `${index * 1.05}s` }}>
+                <span className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-5 shadow-xl ${message.role === 'user' ? 'bg-orange-500 text-white' : 'bg-slate-700/90 text-slate-100'}`}>{message.text}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="absolute inset-y-0 left-[440px] right-0 hidden md:block">
+          <video src={diagnosisVideoUrl} className="h-full w-full object-cover opacity-35 blur-[2px]" autoPlay muted loop playsInline />
+          <div className="absolute inset-0 bg-slate-950/55" />
+          <div className="landing-source-highlight absolute left-[16%] top-[38%] rounded-2xl border border-orange-300/50 bg-black/65 p-5 shadow-[0_0_42px_rgba(251,146,60,0.34)] backdrop-blur-xl">
+            <p className="text-xs uppercase tracking-[0.28em] text-orange-200/80">Leading source</p>
+            <div className="mt-2 flex items-center gap-6 text-xl font-semibold"><span>Deltoid</span><span className="text-orange-200">Primary</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DiagnosisPanel() {
+  return (
+    <div className="rounded-[2rem] border border-white/12 bg-slate-950/70 p-4 shadow-[0_30px_120px_rgba(0,0,0,0.48)] backdrop-blur-3xl">
+      <div className="relative aspect-[16/10] min-h-[520px] overflow-hidden rounded-[1.35rem] border border-white/12 bg-black">
+        <video src={diagnosisVideoUrl} className="absolute inset-0 h-full w-full object-cover" autoPlay muted loop playsInline />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-black/15" />
+        <div className="absolute left-5 top-5 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold shadow-xl">● Diagnostic ON</div>
+        <MousePointer2 className="landing-cursor absolute left-[52%] top-[34%] h-9 w-9 text-white drop-shadow-[0_0_18px_rgba(255,255,255,0.9)]" />
+        <span className="landing-pain-dot absolute left-[51.8%] top-[40%] h-6 w-6 rounded-full border-4 border-orange-200 bg-orange-500 shadow-[0_0_38px_rgba(251,146,60,0.95)]" />
+        <div className="landing-blueprint absolute right-[6%] top-[34%] hidden w-[34%] space-y-4 md:block">
+          {['Primary Contributor', 'Secondary Contributor', 'Supporting Contributor'].map((label, index) => (
+            <div key={label} className="rounded-xl border border-orange-400/60 bg-black/72 p-4 shadow-[0_0_30px_rgba(251,146,60,0.20)] backdrop-blur-xl">
+              <div className="flex items-center justify-between text-lg font-semibold"><span>{label}</span><span className="text-orange-200">{[85, 12, 3][index]}%</span></div>
+              <p className="mt-2 text-xs uppercase tracking-widest text-slate-400"><CircleDot className="mr-1 inline h-3 w-3 text-orange-400" /> Ranked by tap location</p>
+            </div>
+          ))}
+        </div>
+        <div className="landing-isolate-state absolute bottom-5 left-5 right-5 rounded-2xl border border-cyan-200/30 bg-slate-950/76 p-4 shadow-[0_0_34px_rgba(34,211,238,0.16)] backdrop-blur-xl md:left-auto md:w-[360px]">
+          <p className="text-xs uppercase tracking-[0.25em] text-cyan-200/80">Isolate state</p>
+          <div className="mt-2 flex items-center justify-between"><span className="font-semibold">Primary Contributor</span><span className="rounded-full bg-cyan-200 px-3 py-1 text-xs font-semibold text-slate-950">Focused</span></div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CoachPanel() {
+  return (
+    <div className="rounded-[2rem] border border-white/12 bg-slate-950/70 p-4 shadow-[0_30px_120px_rgba(0,0,0,0.48)] backdrop-blur-3xl">
+      <div className="relative aspect-[16/10] min-h-[520px] overflow-hidden rounded-[1.35rem] border border-white/12 bg-black">
+        <video src={aiCoachVideoUrl} className="absolute inset-0 h-full w-full object-cover" autoPlay muted loop playsInline />
+        <div className="absolute inset-0 grid grid-cols-2">
+          <div className="relative overflow-hidden border-r border-cyan-200/30 bg-slate-950/10 backdrop-blur-[2px]">
+            <div className="absolute inset-0 bg-slate-950/28" />
+            <StylizedSkeleton />
+            <div className="absolute left-4 top-4 rounded-md bg-cyan-300/15 px-3 py-1 text-xs font-semibold text-cyan-100 backdrop-blur">User camera · privacy layer</div>
+            <div className="landing-cue absolute bottom-5 left-5 right-5 rounded-2xl border border-cyan-200/35 bg-slate-950/78 p-4 backdrop-blur-xl">
+              <p className="text-xs uppercase tracking-[0.25em] text-cyan-200/80">Real-time cue</p>
+              <p className="mt-2 text-2xl font-semibold">Lower your arm</p>
+            </div>
+          </div>
+          <div className="relative bg-gradient-to-l from-black/25 to-transparent">
+            <div className="absolute right-4 top-4 rounded-md bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur">Reference model</div>
+          </div>
+        </div>
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/80 to-transparent" />
+        <div className="absolute bottom-5 right-5 rounded-2xl border border-white/12 bg-black/58 p-4 backdrop-blur-xl">
+          <div className="flex items-center gap-3 text-sm font-semibold"><Lock className="h-4 w-4 text-emerald-300" /> Skeleton is the visual focus</div>
+          <p className="mt-2 text-xs text-slate-400">Background stays soft while form remains detectable.</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MissionVisual({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className={`relative overflow-hidden rounded-[1.5rem] border border-white/12 bg-black shadow-[0_28px_110px_rgba(0,0,0,0.48)] ${compact ? 'aspect-[16/12]' : 'aspect-[16/10]'}`}>
+      <video src={diagnosisVideoUrl} className="absolute inset-0 h-full w-full object-cover opacity-78" autoPlay muted loop playsInline />
+      <div className="absolute inset-0 bg-gradient-to-t from-[#05070d]/75 via-transparent to-[#05070d]/10" />
+      <div className="absolute left-5 top-5 rounded-full border border-cyan-200/30 bg-cyan-200/10 px-4 py-2 text-sm font-semibold text-cyan-100 backdrop-blur-xl">MoveMate AI</div>
+      <div className="absolute bottom-5 left-5 right-5 rounded-2xl border border-white/12 bg-slate-950/62 p-5 backdrop-blur-xl">
+        <p className="text-xs uppercase tracking-[0.25em] text-orange-200/80">Calm resolution</p>
+        <p className="mt-2 text-xl font-semibold">Notes → taps → reps → clear feedback</p>
+      </div>
+    </div>
+  )
+}
+
+function StylizedSkeleton() {
+  return (
+    <svg viewBox="0 0 360 360" className="landing-skeleton absolute inset-0 h-full w-full" aria-hidden="true">
+      <g strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="164" cy="72" r="22" fill="rgba(15,23,42,0.62)" stroke="rgba(125,211,252,0.95)" strokeWidth="3" />
+        <path d="M164 98 L176 165 L170 252" stroke="#fb923c" strokeWidth="8" />
+        <path d="M174 118 L92 120 L46 112" stroke="#93f6ff" strokeWidth="7" />
+        <path d="M176 120 L260 112 L318 74" stroke="#f472b6" strokeWidth="7" />
+        <path d="M170 252 L130 320" stroke="#fb923c" strokeWidth="7" />
+        <path d="M170 252 L216 320" stroke="#fb923c" strokeWidth="7" />
+        {[164, 176, 92, 46, 260, 318, 130, 216].map((x, i) => (
+          <circle key={`${x}-${i}`} cx={x} cy={[72,120,120,112,112,74,320,320][i]} r="7" fill={i > 3 ? '#f472b6' : '#67e8f9'} stroke="#020617" strokeWidth="2" />
+        ))}
+      </g>
+    </svg>
+  )
+}

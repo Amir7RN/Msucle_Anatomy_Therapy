@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { fileURLToPath, URL } from 'node:url'
 
 // VITE_BASE_PATH is set by the GitHub Actions workflow when building for
 // GitHub Pages (e.g. '/Msucle_Anatomy_Therapy/').
@@ -10,6 +11,11 @@ const base = process.env.VITE_BASE_PATH ?? '/'
 export default defineConfig({
   base,
   plugins: [react()],
+  resolve: {
+    alias: {
+      'framer-motion': fileURLToPath(new URL('./src/lib/framer-motion.tsx', import.meta.url)),
+    },
+  },
   server: {
     port: 3000,
     open: true,
