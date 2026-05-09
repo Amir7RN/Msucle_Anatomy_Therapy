@@ -78,6 +78,22 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, onClose 
   // Frame smoothing
   const frameBuffer = useRef<FormSnapshot[]>([])
 
+  // ── Live performance metrics ──────────────────────────────────────────
+  // Rolling 3-second buffer of {wasGood, perJointStatus}.  Drives the
+  // PerformanceTracker headline % and per-joint accuracy bars without any
+  // per-exercise tuning — every metric is derived from snapshot data the
+  // biofeedback engine already produces.
+  const PERF_WINDOW = 90   // ~3 s at 30 fps
+  const perfHistoryRef = useRef<FormSnapshot[]>([])
+  const [formScore, setFormScore]     = useState(0)
+  const [jointAccuracy, setJointAccuracy] = useState<Array<{ label: string; pct: number; current: number; status: 'good' | 'low' | 'high' }>>([])
+  // Per-rep history: each completed rep's % good frames during the rep window.
+  const currentRepStatsRef = useRef({ good: 0, total: 0 })
+  const [repScores, setRepScores]     = useState<number[]>([])
+  // Best continuous "good form" streak in the session (seconds).
+  const currentStreakRef = useRef(0)
+  const [bestHoldSec, setBestHoldSec] = useState(0)
+
   const handleLandmarks = useCallback((lms: LandmarkSet) => {
     // Always update lmsRef so AiCoach step-machine can read it
     lmsRef.current = lms
@@ -91,17 +107,74 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, onClose 
       ? { cueText: 'Good alignment — hold it.', good: true, details: snap.details }
       : snap
     setSnapshot(smoothed)
+
+    // ── Performance metrics ─────────────────────────────────────────────
+    perfHistoryRef.current.push(smoothed)
+    if (perfHistoryRef.current.length > PERF_WINDOW) perfHistoryRef.current.shift()
+
+    // Headline form score: % of frames in the window with good=true
+    const goodN = perfHistoryRef.current.filter((s) => s.good).length
+    const score = Math.round((goodN / perfHistoryRef.current.length) * 100)
+    setFormScore(score)
+
+    // Per-joint accuracy: for each detail label, % of frames where that
+    // joint's status was 'good' over the same window.
+    const labelSet = new Set<string>()
+    for (const s of perfHistoryRef.current) for (const d of s.details) labelSet.add(d.label)
+    const perJoint: typeof jointAccuracy = []
+    for (const label of labelSet) {
+      let total = 0, good = 0
+      for (const s of perfHistoryRef.current) {
+        const d = s.details.find((dd) => dd.label === label)
+        if (!d) continue
+        total += 1
+        if (d.status === 'good') good += 1
+      }
+      const cur = smoothed.details.find((d) => d.label === label)
+      perJoint.push({
+        label,
+        pct:     total > 0 ? Math.round((good / total) * 100) : 0,
+        current: cur?.deg ?? 0,
+        status:  cur?.status ?? 'low',
+      })
+    }
+    setJointAccuracy(perJoint)
+
+    // Best continuous good-form streak (seconds), assuming 30 fps.
+    if (smoothed.good) {
+      currentStreakRef.current += 1
+      const sec = currentStreakRef.current / 30
+      setBestHoldSec((prev) => sec > prev ? Math.round(sec * 10) / 10 : prev)
+    } else {
+      currentStreakRef.current = 0
+    }
+
+    // Per-rep tally
+    currentRepStatsRef.current.total += 1
+    if (smoothed.good) currentRepStatsRef.current.good += 1
+
     // Rep tracker — drive the state machine off the SMOOTHED form-good signal
     // so a single noisy frame doesn't accidentally tally a half-rep.
     const repState = repTrackerRef.current.update(smoothed.good)
     if (repState.just_completed) {
       setRepCount(repState.count)
+      const stats = currentRepStatsRef.current
+      const pct = stats.total > 0 ? Math.round((stats.good / stats.total) * 100) : 0
+      setRepScores((prev) => [...prev.slice(-9), pct])
+      currentRepStatsRef.current = { good: 0, total: 0 }
     }
   }, [def])
 
   useEffect(() => {
     frameBuffer.current = []
+    perfHistoryRef.current = []
+    currentRepStatsRef.current = { good: 0, total: 0 }
+    currentStreakRef.current = 0
     setSnapshot(null)
+    setFormScore(0)
+    setJointAccuracy([])
+    setRepScores([])
+    setBestHoldSec(0)
     lmsRef.current = null
     repTrackerRef.current.reset()
     setRepCount(0)
@@ -138,8 +211,11 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, onClose 
       {/* Body: top row (camera + reference video) | bottom scrollable (AI coach) */}
       <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
 
-        {/* ── TOP ROW: camera (left) + reference video auto-playing (right) ── */}
-        <div className="flex flex-row flex-shrink-0 h-[42vh] md:h-[45vh] border-b border-slate-700">
+        {/* ── TOP ROW: camera (left) + reference video auto-playing (right) ──
+            Taller than before (was 45vh) so the actual analysis surface gets
+            most of the screen.  The bottom row holds the PerformanceTracker
+            and AI Coach, which previously left a large black gap. */}
+        <div className="flex flex-row flex-shrink-0 h-[55vh] md:h-[58vh] border-b border-slate-700">
 
           {/* Camera — left half */}
           <div className="relative bg-black flex-1 min-w-0 border-r border-slate-700">
@@ -203,10 +279,26 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, onClose 
           </div>
         </div>
 
-        {/* ── BOTTOM: AI coach + live angles, scrollable ── */}
+        {/* ── BOTTOM ROW ───────────────────────────────────────────────
+            Left:  PerformanceTracker (Form Score · Joint Accuracy · Reps)
+            Right: AI Coach panel (chat + step state + voice)
+            Previously the left half was empty/black — now it shows live
+            quantitative feedback derived from the angle data we already
+            compute every frame.                                         */}
         <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
 
-        {/* AI coach + angles — scrollable */}
+        {/* Performance tracker — fills the previously-empty area */}
+        <PerformanceTracker
+          formScore={formScore}
+          jointAccuracy={jointAccuracy}
+          repScores={repScores}
+          bestHoldSec={bestHoldSec}
+          repCount={repCount}
+          repTarget={repTarget}
+          hasDef={!!def}
+        />
+
+        {/* AI coach — right rail */}
         <div className="w-full md:w-80 flex flex-col bg-slate-900 md:border-l border-slate-700 flex-shrink-0 overflow-y-auto flex-1 md:flex-none">
 
           {/* AI Coach — replaces static "Setup" text */}
@@ -221,29 +313,6 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, onClose 
               </div>
             )
           }
-
-          {/* Live angle readouts */}
-          {def && snapshot && snapshot.details.length > 0 && (
-            <div className="p-3 border-b border-slate-700">
-              <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-2">Live Angles</div>
-              <div className="space-y-2">
-                {snapshot.details.map((d) => (
-                  <div key={d.label} className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-slate-300 truncate flex-1">{d.label}</span>
-                    <span className={[
-                      'text-xs tabular-nums font-mono px-1.5 py-0.5 rounded',
-                      d.status === 'good' ? 'bg-emerald-800 text-emerald-200' : 'bg-orange-800 text-orange-200',
-                    ].join(' ')}>
-                      {Math.round(d.deg)}°
-                    </span>
-                    <span className="text-[10px] text-slate-500 w-8 text-right">
-                      {d.status === 'good' ? '✓' : d.status === 'low' ? '↑' : '↓'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
         </div>
         </div>{/* end bottom row */}
@@ -749,6 +818,180 @@ Rules:
         >
           <Send size={12} />
         </button>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Performance Tracker — three-card horizontal strip filling the previously-
+//  empty bottom-left area.  All metrics are derived from the FormSnapshot
+//  data the biofeedback engine already produces, so it works for every
+//  exercise without per-exercise wiring.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface PerformanceTrackerProps {
+  formScore:     number     // 0-100, % of last 3 s where form was good
+  jointAccuracy: Array<{ label: string; pct: number; current: number; status: 'good' | 'low' | 'high' }>
+  repScores:     number[]   // last 10 reps, each 0-100
+  bestHoldSec:   number     // longest continuous good-form streak this session
+  repCount:      number
+  repTarget:     number
+  hasDef:        boolean    // false → exercise has no biofeedback rules; show placeholder
+}
+
+function PerformanceTracker({
+  formScore, jointAccuracy, repScores, bestHoldSec, repCount, repTarget, hasDef,
+}: PerformanceTrackerProps) {
+  if (!hasDef) {
+    // No angle rules for this exercise — show a placeholder so the area
+    // isn't blank.
+    return (
+      <div className="flex flex-1 items-center justify-center bg-slate-900/40 p-6 text-center">
+        <div className="text-xs text-slate-500 leading-relaxed max-w-sm">
+          Live performance metrics aren't available for this exercise yet.
+          Match your motion to the reference clip on the right; the AI coach
+          will give you cues as you go.
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex-1 min-w-0 grid grid-cols-1 md:grid-cols-3 gap-3 overflow-y-auto bg-slate-950/70 p-3">
+      {/* ── CARD 1: Form Score (headline metric) ───────────────────── */}
+      <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-4 flex flex-col items-center justify-center">
+        <div className="text-[10px] uppercase tracking-wider text-cyan-300 font-semibold">Form Score</div>
+        <FormScoreGauge score={formScore} />
+        <div className="text-[10px] text-slate-400 mt-1.5 text-center leading-tight">
+          {formScore >= 80 ? 'Excellent — keep this groove.'
+           : formScore >= 60 ? 'Solid — small corrections to make.'
+           : formScore >= 30 ? 'Adjust your alignment.'
+           :                   'Match the reference clip.'}
+        </div>
+        <div className="mt-3 flex items-center gap-2 text-[10px] text-slate-300">
+          <span className="rounded bg-slate-800 px-2 py-0.5">
+            <span className="text-orange-300 font-bold tabular-nums">{repCount}</span>
+            <span className="text-slate-500"> / {repTarget} reps</span>
+          </span>
+          <span className="rounded bg-slate-800 px-2 py-0.5">
+            best hold <span className="text-emerald-300 font-bold tabular-nums">{bestHoldSec.toFixed(1)} s</span>
+          </span>
+        </div>
+      </div>
+
+      {/* ── CARD 2: Per-joint accuracy bars ────────────────────────── */}
+      <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-4">
+        <div className="text-[10px] uppercase tracking-wider text-cyan-300 font-semibold mb-3">Joint Accuracy (last 3 s)</div>
+        {jointAccuracy.length === 0 ? (
+          <div className="text-[11px] text-slate-500 italic">Move into position to start measuring…</div>
+        ) : (
+          <div className="space-y-2.5">
+            {jointAccuracy.map((j) => (
+              <div key={j.label}>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className="text-[11px] text-slate-200 truncate flex-1">{j.label}</span>
+                  <span className={[
+                    'text-[10px] font-mono tabular-nums px-1.5 py-0.5 rounded',
+                    j.status === 'good' ? 'bg-emerald-900/60 text-emerald-200' : 'bg-orange-900/60 text-orange-200',
+                  ].join(' ')}>
+                    {Math.round(j.current)}°
+                  </span>
+                  <span className={[
+                    'text-[10px] font-bold tabular-nums w-9 text-right',
+                    j.pct >= 75 ? 'text-emerald-300' : j.pct >= 40 ? 'text-amber-300' : 'text-red-300',
+                  ].join(' ')}>
+                    {j.pct}%
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-200"
+                    style={{
+                      width: `${j.pct}%`,
+                      backgroundColor: j.pct >= 75 ? '#34d399' : j.pct >= 40 ? '#fbbf24' : '#f87171',
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── CARD 3: Per-rep history ────────────────────────────────── */}
+      <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-4 flex flex-col">
+        <div className="text-[10px] uppercase tracking-wider text-cyan-300 font-semibold mb-3">Rep History</div>
+        {repScores.length === 0 ? (
+          <div className="text-[11px] text-slate-500 italic flex-1">
+            Complete a rep to start tracking your scores.
+          </div>
+        ) : (
+          <>
+            <div className="flex items-end gap-1 h-20 mb-2">
+              {Array.from({ length: 10 }).map((_, i) => {
+                const score = repScores[i]
+                const height = score != null ? Math.max(6, score) : 6
+                const colour =
+                  score == null      ? '#1e293b'
+                  : score >= 75      ? '#34d399'
+                  : score >= 50      ? '#fbbf24'
+                  :                    '#f87171'
+                return (
+                  <div key={i} className="flex flex-col items-center justify-end flex-1 h-full">
+                    <span className="text-[8px] text-slate-500 mb-0.5 tabular-nums">
+                      {score != null ? score : ''}
+                    </span>
+                    <div
+                      className="w-full rounded-sm transition-all duration-200"
+                      style={{ height: `${height}%`, backgroundColor: colour }}
+                      title={score != null ? `Rep ${i + 1}: ${score}%` : `Rep ${i + 1} pending`}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+            <div className="text-[10px] text-slate-400 leading-tight">
+              Average:{' '}
+              <span className="text-cyan-300 font-bold tabular-nums">
+                {Math.round(repScores.reduce((a, b) => a + b, 0) / repScores.length)}%
+              </span>
+              {' · '}Best:{' '}
+              <span className="text-emerald-300 font-bold tabular-nums">
+                {Math.max(...repScores)}%
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** Circular gauge for the headline Form Score (0..100). */
+function FormScoreGauge({ score }: { score: number }) {
+  const SIZE = 110, STROKE = 10
+  const r = (SIZE - STROKE) / 2
+  const C = 2 * Math.PI * r
+  const ratio = Math.max(0, Math.min(1, score / 100))
+  const offset = C - C * ratio
+  const colour = score >= 80 ? '#34d399' : score >= 60 ? '#fbbf24' : score >= 30 ? '#fb923c' : '#f87171'
+  return (
+    <div className="relative flex h-[110px] w-[110px] items-center justify-center mt-2">
+      <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} className="-rotate-90">
+        <circle cx={SIZE / 2} cy={SIZE / 2} r={r} stroke="#1e293b" strokeWidth={STROKE} fill="none" />
+        <circle
+          cx={SIZE / 2} cy={SIZE / 2} r={r}
+          stroke={colour} strokeWidth={STROKE} fill="none"
+          strokeLinecap="round"
+          strokeDasharray={C}
+          strokeDashoffset={offset}
+          style={{ transition: 'stroke-dashoffset 200ms linear, stroke 300ms linear' }}
+        />
+      </svg>
+      <div className="absolute flex flex-col items-center">
+        <span className="text-2xl font-bold tabular-nums" style={{ color: colour }}>{score}</span>
+        <span className="text-[9px] uppercase text-slate-500 tracking-wider">% in band</span>
       </div>
     </div>
   )
