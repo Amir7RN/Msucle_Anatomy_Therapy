@@ -235,6 +235,21 @@ function CoachPanel() {
 function MissionVisual({ compact = false }: { compact?: boolean }) {
   return (
     <div className={`relative overflow-hidden rounded-[1.5rem] border border-white/12 bg-black shadow-[0_28px_110px_rgba(0,0,0,0.48)] ${compact ? 'aspect-[16/12]' : 'aspect-[16/10]'}`}>
+      <div className="grid h-full grid-cols-2">
+        <div className="relative overflow-hidden border-r border-white/10">
+          <video src={diagnosisVideoUrl} className="absolute inset-0 h-full w-full object-cover" autoPlay muted loop playsInline />
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent to-black/24" />
+        </div>
+        <div className="relative overflow-hidden">
+          <video src={aiCoachVideoUrl} className="absolute inset-0 h-full w-full object-cover" autoPlay muted loop playsInline />
+          <div className="absolute inset-0 bg-gradient-to-l from-transparent to-black/24" />
+        </div>
+      </div>
+      <div className="absolute inset-0 bg-gradient-to-t from-[#05070d]/78 via-transparent to-[#05070d]/12" />
+      <div className="absolute left-5 top-5 rounded-full border border-cyan-200/30 bg-cyan-200/10 px-4 py-2 text-sm font-semibold text-cyan-100 backdrop-blur-xl">MoveMate AI</div>
+      <div className="landing-cue absolute bottom-5 left-5 right-5 rounded-2xl border border-white/12 bg-slate-950/68 p-5 backdrop-blur-xl">
+        <p className="text-xs uppercase tracking-[0.25em] text-orange-200/80">Live movement loop</p>
+        <p className="mt-2 text-xl font-semibold">Find the source, then coach the next rep.</p>
       <video src={diagnosisVideoUrl} className="absolute inset-0 h-full w-full object-cover opacity-82" autoPlay muted loop playsInline />
       <div className="absolute inset-0 bg-gradient-to-t from-[#05070d]/75 via-transparent to-[#05070d]/10" />
       <div className="absolute left-5 top-5 rounded-full border border-cyan-200/30 bg-cyan-200/10 px-4 py-2 text-sm font-semibold text-cyan-100 backdrop-blur-xl">MoveMate AI</div>
@@ -311,6 +326,7 @@ function LandingAnimationStyles() {
       }
 
       .landing-chat-message { opacity: 0; animation: landing-chat-in 7.2s ease-out infinite both; }
+      .landing-source-highlight { animation: landing-source-reveal 7.2s ease-out infinite both; }
       .landing-cursor { animation: landing-cursor-click 5.5s ease-in-out infinite both; }
       .landing-pain-dot { animation: landing-pulse-dot 5.5s ease-out infinite both; }
       .landing-skeleton { animation: landing-skeleton-rep 2.6s ease-in-out infinite; transform-origin: center; }
