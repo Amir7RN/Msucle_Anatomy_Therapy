@@ -1,5 +1,5 @@
 import type React from 'react'
-import { ArrowRight, Bot, ChevronRight, Sparkles, Zap } from 'lucide-react'
+import { ArrowRight, Bot, ChevronRight, CircleDot, Lock, MousePointer2, Sparkles, Zap } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 type LandingPageProps = {
@@ -204,6 +204,22 @@ function DiagnosisPanel() {
     <div className="rounded-[2rem] border border-white/12 bg-slate-950/70 p-4 shadow-[0_30px_120px_rgba(0,0,0,0.48)] backdrop-blur-3xl">
       <div className="relative aspect-[16/10] min-h-[520px] overflow-hidden rounded-[1.35rem] border border-white/12 bg-black">
         <video src={diagnosisVideoUrl} className="absolute inset-0 h-full w-full object-cover" autoPlay muted loop playsInline />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-black/15" />
+        <div className="absolute left-5 top-5 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold shadow-xl">● Diagnostic ON</div>
+        <MousePointer2 className="landing-cursor absolute left-[52%] top-[34%] h-9 w-9 text-white drop-shadow-[0_0_18px_rgba(255,255,255,0.9)]" />
+        <span className="landing-pain-dot absolute left-[51.8%] top-[40%] h-6 w-6 rounded-full border-4 border-orange-200 bg-orange-500 shadow-[0_0_38px_rgba(251,146,60,0.95)]" />
+        <div className="landing-blueprint absolute right-[6%] top-[34%] hidden w-[34%] space-y-4 md:block">
+          {['Primary Contributor', 'Secondary Contributor', 'Supporting Contributor'].map((label, index) => (
+            <div key={label} className="rounded-xl border border-orange-400/60 bg-black/72 p-4 shadow-[0_0_30px_rgba(251,146,60,0.20)] backdrop-blur-xl">
+              <div className="flex items-center justify-between text-lg font-semibold"><span>{label}</span><span className="text-orange-200">{[85, 12, 3][index]}%</span></div>
+              <p className="mt-2 text-xs uppercase tracking-widest text-slate-400"><CircleDot className="mr-1 inline h-3 w-3 text-orange-400" /> Ranked by tap location</p>
+            </div>
+          ))}
+        </div>
+        <div className="landing-isolate-state absolute bottom-5 left-5 right-5 rounded-2xl border border-cyan-200/30 bg-slate-950/76 p-4 shadow-[0_0_34px_rgba(34,211,238,0.16)] backdrop-blur-xl md:left-auto md:w-[360px]">
+          <p className="text-xs uppercase tracking-[0.25em] text-cyan-200/80">Isolate state</p>
+          <div className="mt-2 flex items-center justify-between"><span className="font-semibold">Primary Contributor</span><span className="rounded-full bg-cyan-200 px-3 py-1 text-xs font-semibold text-slate-950">Focused</span></div>
+        </div>
       </div>
     </div>
   )
@@ -214,6 +230,25 @@ function CoachPanel() {
     <div className="rounded-[2rem] border border-white/12 bg-slate-950/70 p-4 shadow-[0_30px_120px_rgba(0,0,0,0.48)] backdrop-blur-3xl">
       <div className="relative aspect-[16/10] min-h-[520px] overflow-hidden rounded-[1.35rem] border border-white/12 bg-black">
         <video src={aiCoachVideoUrl} className="absolute inset-0 h-full w-full object-cover" autoPlay muted loop playsInline />
+        <div className="absolute inset-0 grid grid-cols-2">
+          <div className="relative overflow-hidden border-r border-cyan-200/30 bg-slate-950/10 backdrop-blur-[2px]">
+            <div className="absolute inset-0 bg-slate-950/28" />
+            <StylizedSkeleton />
+            <div className="absolute left-4 top-4 rounded-md bg-cyan-300/15 px-3 py-1 text-xs font-semibold text-cyan-100 backdrop-blur">User camera · privacy layer</div>
+            <div className="landing-cue absolute bottom-5 left-5 right-5 rounded-2xl border border-cyan-200/35 bg-slate-950/78 p-4 backdrop-blur-xl">
+              <p className="text-xs uppercase tracking-[0.25em] text-cyan-200/80">Real-time cue</p>
+              <p className="mt-2 text-2xl font-semibold">Lower your arm</p>
+            </div>
+          </div>
+          <div className="relative bg-gradient-to-l from-black/25 to-transparent">
+            <div className="absolute right-4 top-4 rounded-md bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur">Reference model</div>
+          </div>
+        </div>
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/80 to-transparent" />
+        <div className="absolute bottom-5 right-5 rounded-2xl border border-white/12 bg-black/58 p-4 backdrop-blur-xl">
+          <div className="flex items-center gap-3 text-sm font-semibold"><Lock className="h-4 w-4 text-emerald-300" /> Skeleton is the visual focus</div>
+          <p className="mt-2 text-xs text-slate-400">Background stays soft while form remains detectable.</p>
+        </div>
       </div>
     </div>
   )
@@ -237,6 +272,12 @@ function MissionVisual({ compact = false }: { compact?: boolean }) {
       <div className="landing-cue absolute bottom-5 left-5 right-5 rounded-2xl border border-white/12 bg-slate-950/68 p-5 backdrop-blur-xl">
         <p className="text-xs uppercase tracking-[0.25em] text-orange-200/80">Live movement loop</p>
         <p className="mt-2 text-xl font-semibold">Find the source, then coach the next rep.</p>
+      <video src={diagnosisVideoUrl} className="absolute inset-0 h-full w-full object-cover opacity-82" autoPlay muted loop playsInline />
+      <div className="absolute inset-0 bg-gradient-to-t from-[#05070d]/75 via-transparent to-[#05070d]/10" />
+      <div className="absolute left-5 top-5 rounded-full border border-cyan-200/30 bg-cyan-200/10 px-4 py-2 text-sm font-semibold text-cyan-100 backdrop-blur-xl">MoveMate AI</div>
+      <div className="absolute bottom-5 left-5 right-5 rounded-2xl border border-white/12 bg-slate-950/62 p-5 backdrop-blur-xl">
+        <p className="text-xs uppercase tracking-[0.25em] text-orange-200/80">Calm resolution</p>
+        <p className="mt-2 text-xl font-semibold">Notes → taps → reps → clear feedback</p>
       </div>
     </div>
   )
@@ -244,4 +285,79 @@ function MissionVisual({ compact = false }: { compact?: boolean }) {
 
 function LandingAnimationStyles() {
   return <style dangerouslySetInnerHTML={{ __html: landingAnimationCss }} />
+function StylizedSkeleton() {
+  return (
+    <svg viewBox="0 0 360 360" className="landing-skeleton absolute inset-0 h-full w-full" aria-hidden="true">
+      <g strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="164" cy="72" r="22" fill="rgba(15,23,42,0.62)" stroke="rgba(125,211,252,0.95)" strokeWidth="3" />
+        <path d="M164 98 L176 165 L170 252" stroke="#fb923c" strokeWidth="8" />
+        <path d="M174 118 L92 120 L46 112" stroke="#93f6ff" strokeWidth="7" />
+        <path d="M176 120 L260 112 L318 74" stroke="#f472b6" strokeWidth="7" />
+        <path d="M170 252 L130 320" stroke="#fb923c" strokeWidth="7" />
+        <path d="M170 252 L216 320" stroke="#fb923c" strokeWidth="7" />
+        {[164, 176, 92, 46, 260, 318, 130, 216].map((x, i) => (
+          <circle key={`${x}-${i}`} cx={x} cy={[72,120,120,112,112,74,320,320][i]} r="7" fill={i > 3 ? '#f472b6' : '#67e8f9'} stroke="#020617" strokeWidth="2" />
+        ))}
+      </g>
+    </svg>
+  )
+}
+
+
+function LandingAnimationStyles() {
+  return (
+    <style>{`
+      @keyframes landing-chat-in {
+        0%, 8% { opacity: 0; transform: translateY(14px) scale(0.98); }
+        14%, 100% { opacity: 1; transform: translateY(0) scale(1); }
+      }
+
+      @keyframes landing-cursor-click {
+        0%, 30% { transform: translate(-54px, -34px); opacity: 0; }
+        45%, 58% { transform: translate(0, 0); opacity: 1; }
+        64%, 100% { transform: translate(0, 0) scale(0.92); opacity: 1; }
+      }
+
+      @keyframes landing-pulse-dot {
+        0%, 52% { opacity: 0; transform: scale(0.6); }
+        64% { opacity: 1; transform: scale(1.2); }
+        100% { opacity: 1; transform: scale(1); }
+      }
+
+      @keyframes landing-skeleton-rep {
+        0%, 100% { transform: translateY(0) rotate(-1deg); }
+        50% { transform: translateY(-5px) rotate(2deg); }
+      }
+
+      @keyframes landing-source-reveal {
+        0%, 72% { opacity: 0; transform: translateY(16px) scale(0.97); filter: blur(4px); }
+        84%, 100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+      }
+
+      @keyframes landing-blueprint-snap {
+        0%, 58% { opacity: 0; transform: translateX(22px) scale(0.98); filter: blur(5px); }
+        70%, 100% { opacity: 1; transform: translateX(0) scale(1); filter: blur(0); }
+      }
+
+      @keyframes landing-isolate-reveal {
+        0%, 76% { opacity: 0; transform: translateY(16px); }
+        88%, 100% { opacity: 1; transform: translateY(0); }
+      }
+
+      @keyframes landing-cue-loop {
+        0%, 44% { opacity: 0.55; transform: translateY(10px); }
+        56%, 100% { opacity: 1; transform: translateY(0); }
+      }
+
+      .landing-chat-message { opacity: 0; animation: landing-chat-in 7.2s ease-out infinite both; }
+      .landing-source-highlight { animation: landing-source-reveal 7.2s ease-out infinite both; }
+      .landing-cursor { animation: landing-cursor-click 5.5s ease-in-out infinite both; }
+      .landing-pain-dot { animation: landing-pulse-dot 5.5s ease-out infinite both; }
+      .landing-skeleton { animation: landing-skeleton-rep 2.6s ease-in-out infinite; transform-origin: center; }
+      .landing-source-highlight { animation: landing-source-reveal 7.2s ease-out infinite both; }
+      .landing-blueprint { animation: landing-blueprint-snap 5.5s ease-out infinite both; }
+      .landing-isolate-state { animation: landing-isolate-reveal 5.5s ease-out infinite both; }
+      .landing-cue { animation: landing-cue-loop 4.2s ease-in-out infinite alternate both; }
+    `}</style>
+  )
 }
