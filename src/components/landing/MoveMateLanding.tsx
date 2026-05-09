@@ -25,9 +25,10 @@ const triageMessages = [
   { role: 'ai', text: 'Likely source identified: Deltoid.' },
 ]
 
-export function LandingPage({ atlasUrl, diagnosticUrl }: LandingPageProps) {
+export function MoveMateLanding({ atlasUrl, diagnosticUrl }: LandingPageProps) {
   return (
     <main className="h-full min-h-screen overflow-y-auto bg-[#05070d] text-white selection:bg-cyan-300 selection:text-slate-950">
+      <LandingAnimationStyles />
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute left-1/2 top-[-14rem] h-[42rem] w-[42rem] -translate-x-1/2 rounded-full bg-cyan-500/16 blur-[130px]" />
         <div className="absolute bottom-0 right-[-12rem] h-[34rem] w-[34rem] rounded-full bg-orange-500/12 blur-[120px]" />
@@ -260,5 +261,63 @@ function StylizedSkeleton() {
         ))}
       </g>
     </svg>
+  )
+}
+
+
+function LandingAnimationStyles() {
+  return (
+    <style>{`
+      @keyframes landing-chat-in {
+        0%, 8% { opacity: 0; transform: translateY(14px) scale(0.98); }
+        14%, 100% { opacity: 1; transform: translateY(0) scale(1); }
+      }
+
+      @keyframes landing-cursor-click {
+        0%, 30% { transform: translate(-54px, -34px); opacity: 0; }
+        45%, 58% { transform: translate(0, 0); opacity: 1; }
+        64%, 100% { transform: translate(0, 0) scale(0.92); opacity: 1; }
+      }
+
+      @keyframes landing-pulse-dot {
+        0%, 52% { opacity: 0; transform: scale(0.6); }
+        64% { opacity: 1; transform: scale(1.2); }
+        100% { opacity: 1; transform: scale(1); }
+      }
+
+      @keyframes landing-skeleton-rep {
+        0%, 100% { transform: translateY(0) rotate(-1deg); }
+        50% { transform: translateY(-5px) rotate(2deg); }
+      }
+
+      @keyframes landing-source-reveal {
+        0%, 72% { opacity: 0; transform: translateY(16px) scale(0.97); filter: blur(4px); }
+        84%, 100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+      }
+
+      @keyframes landing-blueprint-snap {
+        0%, 58% { opacity: 0; transform: translateX(22px) scale(0.98); filter: blur(5px); }
+        70%, 100% { opacity: 1; transform: translateX(0) scale(1); filter: blur(0); }
+      }
+
+      @keyframes landing-isolate-reveal {
+        0%, 76% { opacity: 0; transform: translateY(16px); }
+        88%, 100% { opacity: 1; transform: translateY(0); }
+      }
+
+      @keyframes landing-cue-loop {
+        0%, 44% { opacity: 0.55; transform: translateY(10px); }
+        56%, 100% { opacity: 1; transform: translateY(0); }
+      }
+
+      .landing-chat-message { opacity: 0; animation: landing-chat-in 7.2s ease-out infinite both; }
+      .landing-cursor { animation: landing-cursor-click 5.5s ease-in-out infinite both; }
+      .landing-pain-dot { animation: landing-pulse-dot 5.5s ease-out infinite both; }
+      .landing-skeleton { animation: landing-skeleton-rep 2.6s ease-in-out infinite; transform-origin: center; }
+      .landing-source-highlight { animation: landing-source-reveal 7.2s ease-out infinite both; }
+      .landing-blueprint { animation: landing-blueprint-snap 5.5s ease-out infinite both; }
+      .landing-isolate-state { animation: landing-isolate-reveal 5.5s ease-out infinite both; }
+      .landing-cue { animation: landing-cue-loop 4.2s ease-in-out infinite alternate both; }
+    `}</style>
   )
 }
