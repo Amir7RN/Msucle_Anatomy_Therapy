@@ -18,6 +18,28 @@ type MoveMateHomeProps = {
 
 const diagnosisVideoUrl = new URL('../Videos/Shoulder-Deltoid/Diagnosis.mp4', import.meta.url).href
 const aiCoachVideoUrl = new URL('../Videos/Shoulder-Deltoid/AICouch.mp4', import.meta.url).href
+const chatBotImageBefore = new URL('../Videos/Shoulder-Deltoid/ChatBotImage_Example1.png', import.meta.url).href
+const chatBotImageAfter = new URL('../Videos/Shoulder-Deltoid/ChatBotImage_Example2.png', import.meta.url).href
+
+/* Triggers a panel's animation only once it's scrolled into view, and signals
+   when it leaves so the panel can pause/reset. */
+function useInView<T extends HTMLElement>(threshold = 0.25) {
+  const ref = useRef<T>(null)
+  const [inView, setInView] = useState(false)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => setInView(entry.isIntersecting),
+      { threshold },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [threshold])
+
+  return [ref, inView] as const
+}
 
 export function MoveMateHome({ atlasUrl, diagnosticUrl }: MoveMateHomeProps) {
   return (
@@ -36,7 +58,7 @@ export function MoveMateHome({ atlasUrl, diagnosticUrl }: MoveMateHomeProps) {
             </span>
             <span>
               <span className="block text-sm font-semibold tracking-wide">MoveMate AI</span>
-              <span className="block text-xs text-slate-400">Your pocket body coach</span>
+              <span className="block text-xs text-slate-400">Move smarter. Feel better.</span>
             </span>
           </a>
           <a
@@ -55,12 +77,12 @@ export function MoveMateHome({ atlasUrl, diagnosticUrl }: MoveMateHomeProps) {
           For everyone with a body — desk workers, lifters, runners, weekend warriors
         </div>
         <h1 className="mx-auto max-w-4xl text-5xl font-semibold tracking-[-0.05em] sm:text-7xl lg:text-8xl">
-          Pain shouldn't be a{' '}
+          Sore spots shouldn't be a{' '}
           <span className="bg-gradient-to-r from-orange-300 to-cyan-200 bg-clip-text text-transparent">mystery</span>.
         </h1>
         <p className="mx-auto mt-7 max-w-2xl text-lg leading-8 text-slate-300 sm:text-xl">
-          MoveMate AI is the body coach in your pocket. Find what hurts, talk to an AI, then train with live form
-          feedback no gym membership can match.
+          Talk to the AI or pinpoint the muscle behind the hurt. Then move through suggested exercises with your AI
+          coach — and feel better.
         </p>
         <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
           <a
@@ -79,10 +101,10 @@ export function MoveMateHome({ atlasUrl, diagnosticUrl }: MoveMateHomeProps) {
         <p className="mt-6 text-sm text-slate-500">No signup. No download. Works in your browser.</p>
       </section>
 
-      {/* Feature 1 — Visual Diagnosis */}
-      <section id="diagnose" className="relative z-10 mx-auto max-w-6xl px-5 py-16 sm:px-8 lg:py-24">
+      {/* Feature 1 — Pinpoint the muscle */}
+      <section id="pinpoint" className="relative z-10 mx-auto max-w-6xl px-5 py-16 sm:px-8 lg:py-24">
         <PanelHeader
-          eyebrow="Visual Diagnosis"
+          eyebrow="Pinpoint the Muscle"
           icon={<ScanSearch className="h-3.5 w-3.5" />}
           title="Tap the spot. Find the source."
           subtitle="Watch how MoveMate turns a hand on a sore shoulder into a clear answer."
@@ -90,10 +112,10 @@ export function MoveMateHome({ atlasUrl, diagnosticUrl }: MoveMateHomeProps) {
         <DiagnosisStoryPanel />
       </section>
 
-      {/* Feature 2 — AI Chat */}
+      {/* Feature 2 — Just Ask */}
       <section id="chat" className="relative z-10 mx-auto max-w-6xl px-5 py-16 sm:px-8 lg:py-24">
         <PanelHeader
-          eyebrow="Conversational Diagnosis"
+          eyebrow="Just Ask MoveMate"
           icon={<MessageSquare className="h-3.5 w-3.5" />}
           title="Or just talk to it."
           subtitle="Type or speak. MoveMate asks the right questions until the source is clear."
@@ -101,13 +123,13 @@ export function MoveMateHome({ atlasUrl, diagnosticUrl }: MoveMateHomeProps) {
         <AIChatPanel />
       </section>
 
-      {/* Feature 3 — AI Coach */}
+      {/* Feature 3 — AI Form Coach */}
       <section id="coach" className="relative z-10 mx-auto max-w-6xl px-5 py-16 sm:px-8 lg:py-24">
         <PanelHeader
           eyebrow="AI Form Coach"
           icon={<Camera className="h-3.5 w-3.5" />}
           title="A coach that watches every rep."
-          subtitle="Pose estimation, joint angles, and live cues — your trainer in two megapixels."
+          subtitle="Pose tracking, joint angles, and live cues — your trainer in two megapixels."
         />
         <AICoachPanel />
       </section>
@@ -119,8 +141,8 @@ export function MoveMateHome({ atlasUrl, diagnosticUrl }: MoveMateHomeProps) {
             Your body deserves better than YouTube tutorials.
           </h2>
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-slate-300">
-            Nine out of ten of us will deal with serious muscle pain this year. MoveMate AI is the smarter way to figure
-            it out — and the cheapest coach you'll ever have.
+            The first interactive muscle-target body model for everyday soreness relief. Find what hurts, then move
+            through suggested exercises with your AI coach by your side.
           </p>
           <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <a
@@ -134,7 +156,8 @@ export function MoveMateHome({ atlasUrl, diagnosticUrl }: MoveMateHomeProps) {
       </section>
 
       <footer className="relative z-10 border-t border-white/10 py-8 text-center text-xs text-slate-500">
-        MoveMate AI — built for every body.
+        MoveMate AI — built for every body. Suggestive, general-purpose movement guidance. Not a substitute for
+        professional advice.
       </footer>
     </main>
   )
@@ -168,33 +191,76 @@ function PanelHeader({
 /* ───────────────── Feature 1: Diagnosis video w/ timed notes ───────────────── */
 
 const diagnosisNotes = [
-  { from: 0, to: 4, label: 'Step 1', text: 'Tap the spot that hurts.' },
-  { from: 4, to: 7.5, label: 'Step 2', text: 'See likely muscle contributors light up.' },
-  { from: 7.5, to: 11, label: 'Step 3', text: 'Isolate one — view its pain pattern.' },
-  { from: 11, to: 14, label: 'Step 4', text: 'Try another. Confirm the real source.' },
-  { from: 14, to: 999, label: 'Step 5', text: 'Done. Get exercises tuned to your muscle.' },
+  { label: 'Step 1', text: 'Tap the spot that feels sore.', dwellMs: 2000 },
+  { label: 'Step 2', text: 'See the likely muscle contributors light up.', dwellMs: 3000 },
+  { label: 'Step 3', text: 'Isolate one — view its tension pattern.', dwellMs: 4000 },
+  { label: 'Step 4', text: 'Try another. Confirm the real source.', dwellMs: 9000 },
+  { label: 'Step 5', text: 'Done. Get suggested exercises tuned to your muscle.', dwellMs: 8000 },
 ]
 
 function DiagnosisStoryPanel() {
+  const [containerRef, inView] = useInView<HTMLDivElement>(0.3)
   const videoRef = useRef<HTMLVideoElement>(null)
-  const [time, setTime] = useState(0)
+  const lastTimeRef = useRef(0)
+  const [activeIdx, setActiveIdx] = useState(0)
 
+  // Wall-clock step timer — only runs while panel is in view. Dwell per step:
+  // 2s, 3s, 4s, 9s, 8s.
+  useEffect(() => {
+    if (!inView) return
+    const t = window.setTimeout(() => {
+      setActiveIdx((i) => (i + 1) % diagnosisNotes.length)
+    }, diagnosisNotes[activeIdx].dwellMs)
+    return () => window.clearTimeout(t)
+  }, [activeIdx, inView])
+
+  // Reset state and (re)start the video each time the panel scrolls into
+  // view; pause it cleanly when it leaves.
   useEffect(() => {
     const v = videoRef.current
     if (!v) return
-    const update = () => setTime(v.currentTime)
-    v.addEventListener('timeupdate', update)
-    return () => v.removeEventListener('timeupdate', update)
+    if (inView) {
+      setActiveIdx(0)
+      lastTimeRef.current = 0
+      try {
+        v.currentTime = 0
+      } catch {}
+      v.play().catch(() => {})
+    } else {
+      v.pause()
+    }
+  }, [inView])
+
+  // Reset the step + descriptive note back to Step 1 every time the video
+  // loops (i.e. currentTime jumps backwards). Keeps text in sync with the
+  // motion across replays.
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v) return
+    const onTimeUpdate = () => {
+      if (v.currentTime + 0.4 < lastTimeRef.current) {
+        setActiveIdx(0)
+      }
+      lastTimeRef.current = v.currentTime
+    }
+    const onSeeked = () => {
+      if (v.currentTime < 0.4) setActiveIdx(0)
+    }
+    v.addEventListener('timeupdate', onTimeUpdate)
+    v.addEventListener('seeked', onSeeked)
+    return () => {
+      v.removeEventListener('timeupdate', onTimeUpdate)
+      v.removeEventListener('seeked', onSeeked)
+    }
   }, [])
 
-  const activeIdx = Math.max(
-    0,
-    diagnosisNotes.findIndex((n) => time >= n.from && time < n.to),
-  )
   const active = diagnosisNotes[activeIdx]
 
   return (
-    <div className="relative rounded-[2rem] border border-white/12 bg-slate-950/70 p-3 shadow-[0_30px_120px_rgba(0,0,0,0.55)] backdrop-blur-3xl">
+    <div
+      ref={containerRef}
+      className="relative rounded-[2rem] border border-white/12 bg-slate-950/70 p-3 shadow-[0_30px_120px_rgba(0,0,0,0.55)] backdrop-blur-3xl"
+    >
       <div className="flex items-center gap-1.5 px-3 py-2">
         <span className="h-2.5 w-2.5 rounded-full bg-red-400/70" />
         <span className="h-2.5 w-2.5 rounded-full bg-yellow-400/70" />
@@ -209,28 +275,32 @@ function DiagnosisStoryPanel() {
           muted
           loop
           playsInline
+          onLoadedMetadata={(e) => {
+            e.currentTarget.playbackRate = 0.65
+          }}
         />
 
-        {/* Step pip indicator */}
-        <div className="absolute right-4 top-4 flex gap-1.5">
-          {diagnosisNotes.map((_, i) => (
-            <span
-              key={i}
-              className={`h-1.5 w-7 rounded-full transition-colors ${
-                i === activeIdx ? 'bg-cyan-200' : 'bg-white/20'
-              }`}
-            />
-          ))}
-        </div>
-
-        {/* Animated note */}
+        {/* Step note — centered over the 3D model area (left ~38% of frame,
+            since the in-video right side is occupied by the app's details panel). */}
         <div
           key={activeIdx}
-          className="mm-fade-up absolute bottom-4 left-4 right-4 sm:left-6 sm:right-auto sm:max-w-md"
+          className="mm-fade-up pointer-events-none absolute left-[38%] top-4 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 sm:top-6"
         >
-          <div className="rounded-2xl border border-cyan-200/30 bg-slate-950/85 px-5 py-4 shadow-[0_10px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl">
-            <div className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-200/90">{active.label}</div>
-            <div className="mt-1.5 text-base font-medium leading-snug text-white sm:text-lg">{active.text}</div>
+          <div className="rounded-2xl border border-cyan-200/30 bg-slate-950/85 px-5 py-4 text-center shadow-[0_10px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+            <div className="flex items-center justify-center gap-1.5">
+              {diagnosisNotes.map((_, i) => (
+                <span
+                  key={i}
+                  className={`h-1.5 rounded-full transition-all ${
+                    i === activeIdx ? 'w-7 bg-cyan-200' : 'w-5 bg-white/20'
+                  }`}
+                />
+              ))}
+            </div>
+            <div className="mt-2.5 text-[11px] font-semibold uppercase tracking-[0.28em] text-cyan-200/90">
+              {active.label}
+            </div>
+            <div className="mt-1 text-base font-medium leading-snug text-white sm:text-lg">{active.text}</div>
           </div>
         </div>
       </div>
@@ -238,17 +308,17 @@ function DiagnosisStoryPanel() {
   )
 }
 
-/* ───────────────── Feature 2: Animated AI chat + result ───────────────── */
+/* ───────────────── Feature 2: Animated AI chat + image result ───────────────── */
 
 const chatScript: { sender: 'user' | 'ai'; text: string }[] = [
   { sender: 'user', text: 'I have a pain on my shoulder' },
   { sender: 'ai', text: 'Is it the front, back, or top of your shoulder, and is it on your left or right side?' },
   { sender: 'user', text: 'right side and the front' },
-  { sender: 'ai', text: 'Does the pain shoot down your arm, or stay mostly in the shoulder joint itself?' },
+  { sender: 'ai', text: 'Does it shoot down your arm, or stay mostly in the shoulder itself?' },
   { sender: 'user', text: 'mostly in the shoulder' },
-  { sender: 'ai', text: 'When does it hurt most — lifting your arm, pushing something away, or after sleeping on it?' },
+  { sender: 'ai', text: 'When does it feel worst — lifting your arm, pushing something away, or after sleeping on it?' },
   { sender: 'user', text: 'mostly when I lift my arm' },
-  { sender: 'ai', text: 'How long has this been going on — days, weeks, or longer?' },
+  { sender: 'ai', text: 'How long has it been going on — days, weeks, or longer?' },
   { sender: 'user', text: 'couple of days' },
   { sender: 'ai', text: "Based on what you've described, here's my best read of likely sources." },
 ]
@@ -303,7 +373,7 @@ function AIChatPanel() {
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
           <div className="flex items-center gap-2">
             <Bot className="h-4 w-4 text-orange-300" />
-            <span className="font-semibold">AI Diagnosis</span>
+            <span className="font-semibold">MoveMate AI</span>
           </div>
           <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-400">
             <Mic className="h-3.5 w-3.5" />
@@ -329,67 +399,27 @@ function AIChatPanel() {
         </div>
       </div>
 
-      {/* Result side — mimic the in-app result panel */}
+      {/* Result side — cross-fade between two provided images.
+          Before chat ends: Example1 (clean 3D model, no label).
+          After chat ends:  Example2 (same view with the in-image
+          "Deltoid (Anterior) 100%" label box revealed). */}
       <div className="relative h-[600px] overflow-hidden rounded-[2rem] border border-white/12 bg-[#05070d] shadow-[0_30px_120px_rgba(0,0,0,0.55)] backdrop-blur-3xl">
-        {/* Subtle grid floor */}
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[length:48px_48px]" />
-        {/* Anatomy backdrop from diagnosis video */}
-        <video
-          src={diagnosisVideoUrl}
-          className="absolute inset-0 h-full w-full object-contain opacity-90"
-          autoPlay
-          muted
-          loop
-          playsInline
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#05070d]/85" />
-
-        {/* Top chrome */}
-        <div className="absolute left-4 top-4 rounded-xl border border-white/10 bg-slate-950/70 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur">
-          Diagnostic Mode
-        </div>
-        <div className="absolute right-4 top-4 rounded-xl border border-white/10 bg-slate-950/70 px-3 py-1.5 text-xs text-slate-200 backdrop-blur">
-          Movement Screen
-        </div>
-
-        {/* Bottom-left status badge */}
-        <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-md border border-emerald-300/30 bg-emerald-300/10 px-3 py-1.5 text-[11px] text-emerald-200 backdrop-blur">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-300 mm-pulse-soft" />
-          BodyParts3D real anatomy loaded (52 muscles)
-        </div>
-
-        {/* Result label box (animated in once chat completes) */}
-        <div
-          className={`pointer-events-none absolute left-6 top-1/2 -translate-y-1/2 transition-all duration-700 ${
-            showResult ? 'translate-x-0 opacity-100' : '-translate-x-4 opacity-0'
+        <img
+          src={chatBotImageBefore}
+          alt="3D anatomy model — diagnostic mode"
+          draggable={false}
+          className={`absolute inset-0 h-full w-full select-none object-contain transition-opacity duration-700 ease-out ${
+            showResult ? 'opacity-0' : 'opacity-100'
           }`}
-        >
-          <div className="relative">
-            <div className="rounded-2xl border-2 border-orange-300/70 bg-black/75 px-5 py-4 shadow-[0_0_44px_rgba(251,146,60,0.4)] backdrop-blur-xl">
-              <div className="flex items-baseline gap-5">
-                <span className="text-base font-semibold text-white sm:text-lg">Deltoid (Anterior)</span>
-                <span className="text-base font-bold text-orange-300 sm:text-lg">100%</span>
-              </div>
-              <div className="mt-1.5 flex items-center gap-2 text-[10px] uppercase tracking-[0.24em] text-orange-200/80">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-orange-300" />
-                Primary zone
-              </div>
-            </div>
-            {/* Leader line + dot */}
-            <div className="absolute left-full top-1/2 hidden h-px w-20 -translate-y-1/2 bg-orange-300/70 sm:block" />
-            <div className="absolute left-[calc(100%+5rem)] top-1/2 hidden h-3 w-3 -translate-y-1/2 rounded-full bg-orange-300 shadow-[0_0_16px_rgba(251,146,60,0.7)] sm:block" />
-          </div>
-        </div>
-
-        {/* Helper caption */}
-        <div
-          className={`pointer-events-none absolute bottom-4 right-4 max-w-xs rounded-xl border border-white/10 bg-slate-950/80 px-4 py-3 text-xs text-slate-300 backdrop-blur transition duration-500 ${
+        />
+        <img
+          src={chatBotImageAfter}
+          alt="MoveMate result — Deltoid (Anterior) 100%, primary zone"
+          draggable={false}
+          className={`absolute inset-0 h-full w-full select-none object-contain transition-opacity duration-700 ease-out ${
             showResult ? 'opacity-100' : 'opacity-0'
           }`}
-        >
-          <span className="font-semibold text-cyan-200">Likely sources — shown on model.</span>
-          <span className="mt-1 block text-slate-400">Click any label to lock in the muscle and see exercises.</span>
-        </div>
+        />
       </div>
     </div>
   )
@@ -457,10 +487,10 @@ function AICoachPanel() {
           <Metric label="Reps" value="4 / 8" hue="cyan" />
         </div>
 
-        {/* Live cue */}
-        <div className="pointer-events-none absolute bottom-4 left-4 right-4 sm:left-6 sm:right-auto sm:max-w-md">
-          <div className="rounded-2xl border border-orange-200/30 bg-slate-950/85 px-5 py-4 shadow-[0_10px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl">
-            <div className="text-xs font-semibold uppercase tracking-[0.28em] text-orange-200/90">Live cue</div>
+        {/* Live cue — bottom center */}
+        <div className="pointer-events-none absolute bottom-4 left-1/2 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 sm:bottom-6">
+          <div className="rounded-2xl border border-orange-200/30 bg-slate-950/85 px-5 py-4 text-center shadow-[0_10px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-orange-200/90">Live cue</div>
             <div className="mt-1.5 text-base font-medium leading-snug text-white sm:text-lg">
               Slow the descent — control the eccentric.
             </div>
