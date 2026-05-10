@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" role="img" aria-label="Zevahealth AI">
+  <title>Zevahealth AI</title>
+  <!-- Stylized Z: top stroke, curving diagonal, bottom stroke. -->
+  <path d="M11 12 H29 C18 16 14 22 11 28 H29"
+        stroke="#a5f3fc"
+        stroke-width="3"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+  <!-- Pulse / focal-point dot on the curve. -->
+  <circle cx="14.5" cy="22" r="2" fill="#fb923c"/>
+</svg>

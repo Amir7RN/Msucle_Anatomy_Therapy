@@ -8,10 +8,9 @@ import {
   Mic,
   ScanSearch,
   Sparkles,
-  Zap,
 } from 'lucide-react'
 
-type MoveMateHomeProps = {
+type ZevahealthHomeProps = {
   atlasUrl: string
   diagnosticUrl: string
 }
@@ -20,6 +19,26 @@ const diagnosisVideoUrl = new URL('../Videos/Shoulder-Deltoid/Diagnosis.mp4', im
 const aiCoachVideoUrl = new URL('../Videos/Shoulder-Deltoid/AICouch.mp4', import.meta.url).href
 const chatBotImageBefore = new URL('../Videos/Shoulder-Deltoid/ChatBotImage_Example1.png', import.meta.url).href
 const chatBotImageAfter = new URL('../Videos/Shoulder-Deltoid/ChatBotImage_Example2.png', import.meta.url).href
+
+/* ─────────────────────────── Brand mark ───────────────────────────
+   Stylized "Z" formed by a top stroke, a curving diagonal, and a
+   bottom stroke — with a small orange pulse dot on the curve to
+   suggest the "tracked focal point" concept that runs through the
+   product (pose tracking, primary zone, etc.). */
+function ZevaLogo({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+      <path
+        d="M11 12 H29 C18 16 14 22 11 28 H29"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="14.5" cy="22" r="2" fill="#fb923c" />
+    </svg>
+  )
+}
 
 /* Triggers a panel's animation only once it's scrolled into view, and signals
    when it leaves so the panel can pause/reset. */
@@ -41,7 +60,7 @@ function useInView<T extends HTMLElement>(threshold = 0.25) {
   return [ref, inView] as const
 }
 
-export function MoveMateHome({ atlasUrl, diagnosticUrl }: MoveMateHomeProps) {
+export function ZevahealthHome({ atlasUrl, diagnosticUrl }: ZevahealthHomeProps) {
   return (
     <main className="h-full min-h-screen overflow-y-auto bg-[#05070d] text-white">
       {/* Background ambience */}
@@ -53,11 +72,11 @@ export function MoveMateHome({ atlasUrl, diagnosticUrl }: MoveMateHomeProps) {
       <nav className="sticky top-0 z-30 border-b border-white/10 bg-[#05070d]/75 backdrop-blur-2xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 sm:px-8">
           <a href="#top" className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-300/10 ring-1 ring-cyan-300/30">
-              <Zap className="h-5 w-5 text-cyan-200" />
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-300/10 ring-1 ring-cyan-300/30 text-cyan-200">
+              <ZevaLogo className="h-6 w-6" />
             </span>
             <span>
-              <span className="block text-sm font-semibold tracking-wide">MoveMate AI</span>
+              <span className="block text-sm font-semibold tracking-wide">Zevahealth AI</span>
               <span className="block text-xs text-slate-400">Move smarter. Feel better.</span>
             </span>
           </a>
@@ -107,7 +126,7 @@ export function MoveMateHome({ atlasUrl, diagnosticUrl }: MoveMateHomeProps) {
           eyebrow="Pinpoint the Muscle"
           icon={<ScanSearch className="h-3.5 w-3.5" />}
           title="Tap the spot. Find the source."
-          subtitle="Watch how MoveMate turns a hand on a sore shoulder into a clear answer."
+          subtitle="Watch how Zevahealth turns a hand on a sore shoulder into a clear answer."
         />
         <DiagnosisStoryPanel />
       </section>
@@ -115,10 +134,10 @@ export function MoveMateHome({ atlasUrl, diagnosticUrl }: MoveMateHomeProps) {
       {/* Feature 2 — Just Ask */}
       <section id="chat" className="relative z-10 mx-auto max-w-6xl px-5 py-16 sm:px-8 lg:py-24">
         <PanelHeader
-          eyebrow="Just Ask MoveMate"
+          eyebrow="Just Ask Zevahealth"
           icon={<MessageSquare className="h-3.5 w-3.5" />}
           title="Or just talk to it."
-          subtitle="Type or speak. MoveMate asks the right questions until the source is clear."
+          subtitle="Type or speak. Zevahealth asks the right questions until the source is clear."
         />
         <AIChatPanel />
       </section>
@@ -149,14 +168,14 @@ export function MoveMateHome({ atlasUrl, diagnosticUrl }: MoveMateHomeProps) {
               href={diagnosticUrl}
               className="inline-flex min-w-56 items-center justify-center gap-2 rounded-full bg-cyan-200 px-8 py-4 text-base font-semibold text-slate-950 shadow-[0_10px_40px_rgba(165,243,252,0.25)] transition hover:bg-white"
             >
-              Open MoveMate AI <ArrowRight className="h-4 w-4" />
+              Open Zevahealth AI <ArrowRight className="h-4 w-4" />
             </a>
           </div>
         </div>
       </section>
 
       <footer className="relative z-10 border-t border-white/10 py-8 text-center text-xs text-slate-500">
-        MoveMate AI — built for every body. Suggestive, general-purpose movement guidance. Not a substitute for
+        Zevahealth AI — built for every body. Suggestive, general-purpose movement guidance. Not a substitute for
         professional advice.
       </footer>
     </main>
@@ -204,8 +223,7 @@ function DiagnosisStoryPanel() {
   const lastTimeRef = useRef(0)
   const [activeIdx, setActiveIdx] = useState(0)
 
-  // Wall-clock step timer — only runs while panel is in view. Dwell per step:
-  // 2s, 3s, 4s, 9s, 8s.
+  // Wall-clock step timer — only runs while panel is in view.
   useEffect(() => {
     if (!inView) return
     const t = window.setTimeout(() => {
@@ -214,8 +232,8 @@ function DiagnosisStoryPanel() {
     return () => window.clearTimeout(t)
   }, [activeIdx, inView])
 
-  // Reset state and (re)start the video each time the panel scrolls into
-  // view; pause it cleanly when it leaves.
+  // Reset state and (re)start the video each time the panel scrolls into view;
+  // pause it cleanly when it leaves.
   useEffect(() => {
     const v = videoRef.current
     if (!v) return
@@ -231,9 +249,7 @@ function DiagnosisStoryPanel() {
     }
   }, [inView])
 
-  // Reset the step + descriptive note back to Step 1 every time the video
-  // loops (i.e. currentTime jumps backwards). Keeps text in sync with the
-  // motion across replays.
+  // Reset back to Step 1 every time the video loops (currentTime jumps back).
   useEffect(() => {
     const v = videoRef.current
     if (!v) return
@@ -280,8 +296,6 @@ function DiagnosisStoryPanel() {
           }}
         />
 
-        {/* Step note — centered on mobile, offset over the 3D-model area
-            on desktop (since the in-video right side is the app's side rail). */}
         <div
           key={activeIdx}
           className="mm-fade-up pointer-events-none absolute left-1/2 top-2 w-[calc(100%-1rem)] max-w-[14rem] -translate-x-1/2 sm:top-4 sm:max-w-md lg:left-[38%] lg:top-6"
@@ -332,7 +346,6 @@ function AIChatPanel() {
   const [showResult, setShowResult] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Reset to the start of the conversation each time the panel scrolls in.
   useEffect(() => {
     if (inView) {
       setCount(0)
@@ -341,7 +354,6 @@ function AIChatPanel() {
     }
   }, [inView])
 
-  // Drive the chat playback — only while panel is visible.
   useEffect(() => {
     if (!inView) return
     if (count >= chatScript.length) {
@@ -361,7 +373,6 @@ function AIChatPanel() {
     return () => clearTimeout(t)
   }, [count, inView])
 
-  // Loop the demo while still in view.
   useEffect(() => {
     if (!showResult || !inView) return
     const t = setTimeout(() => {
@@ -371,7 +382,6 @@ function AIChatPanel() {
     return () => clearTimeout(t)
   }, [showResult, inView])
 
-  // Auto-scroll chat to newest message
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
@@ -380,13 +390,11 @@ function AIChatPanel() {
 
   return (
     <div ref={containerRef} className="grid gap-6 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
-      {/* Chat side */}
       <div className="flex h-[460px] flex-col rounded-[2rem] border border-white/12 bg-slate-950/70 shadow-[0_30px_120px_rgba(0,0,0,0.55)] backdrop-blur-3xl sm:h-[520px] lg:h-[600px]">
-        {/* Header */}
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
           <div className="flex items-center gap-2">
             <Bot className="h-4 w-4 text-orange-300" />
-            <span className="font-semibold">MoveMate AI</span>
+            <span className="font-semibold">Zevahealth AI</span>
           </div>
           <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-400">
             <Mic className="h-3.5 w-3.5" />
@@ -394,7 +402,6 @@ function AIChatPanel() {
           </div>
         </div>
 
-        {/* Messages */}
         <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-5 py-5">
           {chatScript.slice(0, count).map((m, i) => (
             <ChatBubble key={i} sender={m.sender} text={m.text} />
@@ -402,7 +409,6 @@ function AIChatPanel() {
           {typing && <TypingBubble />}
         </div>
 
-        {/* Input bar */}
         <div className="border-t border-white/10 p-4">
           <div className="flex items-center gap-3 rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-400">
             <MessageSquare className="h-4 w-4 text-slate-500" />
@@ -412,10 +418,6 @@ function AIChatPanel() {
         </div>
       </div>
 
-      {/* Result side — cross-fade between two provided images.
-          Before chat ends: Example1 (clean 3D model, no label).
-          After chat ends:  Example2 (same view with the in-image
-          "Deltoid (Anterior) 100%" label box revealed). */}
       <div className="relative aspect-[3/2] overflow-hidden rounded-[2rem] border border-white/12 bg-[#05070d] shadow-[0_30px_120px_rgba(0,0,0,0.55)] backdrop-blur-3xl lg:aspect-auto lg:h-[600px]">
         <img
           src={chatBotImageBefore}
@@ -427,7 +429,7 @@ function AIChatPanel() {
         />
         <img
           src={chatBotImageAfter}
-          alt="MoveMate result — Deltoid (Anterior) 100%, primary zone"
+          alt="Zevahealth result — Deltoid (Anterior) 100%, primary zone"
           draggable={false}
           className={`absolute inset-0 h-full w-full select-none object-contain transition-opacity duration-700 ease-out ${
             showResult ? 'opacity-100' : 'opacity-0'
@@ -471,7 +473,6 @@ function AICoachPanel() {
   const [containerRef, inView] = useInView<HTMLDivElement>(0.25)
   const videoRef = useRef<HTMLVideoElement>(null)
 
-  // Play only while the panel is visible — pause when the user scrolls away.
   useEffect(() => {
     const v = videoRef.current
     if (!v) return
@@ -506,7 +507,6 @@ function AICoachPanel() {
           playsInline
         />
 
-        {/* Pose tracking badge */}
         <div className="pointer-events-none absolute left-2 top-2 rounded-lg border border-cyan-200/30 bg-slate-950/80 px-2 py-1 text-[10px] text-cyan-100 backdrop-blur-xl sm:left-4 sm:top-4 sm:rounded-xl sm:px-3 sm:py-2 sm:text-xs">
           <div className="flex items-center gap-1.5 sm:gap-2">
             <span className="mm-pulse-soft h-1 w-1 rounded-full bg-cyan-300 sm:h-1.5 sm:w-1.5" />
@@ -514,14 +514,12 @@ function AICoachPanel() {
           </div>
         </div>
 
-        {/* HUD metrics — only Joint Angle on mobile, full stack on tablet+ */}
         <div className="pointer-events-none absolute right-2 top-2 flex flex-col gap-1.5 sm:right-4 sm:top-4 sm:gap-2">
           <Metric label="Joint angle" value="92°" hue="cyan" />
           <Metric label="Form score" value="87%" hue="orange" hideOnMobile />
           <Metric label="Reps" value="4 / 8" hue="cyan" hideOnMobile />
         </div>
 
-        {/* Live cue — bottom center, tighter on mobile */}
         <div className="pointer-events-none absolute bottom-2 left-1/2 w-[calc(100%-1rem)] max-w-md -translate-x-1/2 sm:bottom-4 sm:w-[calc(100%-2rem)] lg:bottom-6">
           <div className="rounded-xl border border-orange-200/30 bg-slate-950/85 px-3 py-2 text-center shadow-[0_10px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl sm:rounded-2xl sm:px-5 sm:py-4">
             <div className="text-[9px] font-semibold uppercase tracking-[0.22em] text-orange-200/90 sm:text-[11px] sm:tracking-[0.28em]">

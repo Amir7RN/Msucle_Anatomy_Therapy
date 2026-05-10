@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="Zevahealth AI icon">
+  <title>Zevahealth AI</title>
+  <!-- Rounded badge background. -->
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="#0b1220"/>
+  <rect x="2" y="2" width="60" height="60" rx="16" stroke="#67e8f9" stroke-opacity="0.35" stroke-width="1.5"/>
+  <!-- Stylized Z: top stroke, curving diagonal, bottom stroke. -->
+  <path d="M19 22 H45 C30 28 24 36 19 42 H45"
+        stroke="#a5f3fc"
+        stroke-width="4.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+  <!-- Pulse / focal-point dot on the curve. -->
+  <circle cx="24" cy="34" r="3" fill="#fb923c"/>
+</svg>
