@@ -157,7 +157,7 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl }: ZevahealthHomeProps)
       <section className="relative z-10 mx-auto max-w-5xl px-5 py-24 sm:px-8 lg:py-32">
         <div className="overflow-hidden rounded-[2rem] border border-white/12 bg-gradient-to-br from-cyan-300/10 via-white/[0.04] to-orange-300/10 p-10 text-center shadow-[0_30px_120px_rgba(0,0,0,0.48)] backdrop-blur-3xl sm:p-16">
           <h2 className="mx-auto max-w-3xl text-4xl font-semibold tracking-[-0.04em] sm:text-6xl">
-            Your body deserves better than YouTube tutorials.
+            Made to move with you.
           </h2>
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-slate-300">
             The first interactive muscle-target body model for everyday soreness relief. Find what hurts, then move
@@ -282,6 +282,28 @@ function DiagnosisStoryPanel() {
         <span className="h-2.5 w-2.5 rounded-full bg-yellow-400/70" />
         <span className="h-2.5 w-2.5 rounded-full bg-green-400/70" />
       </div>
+
+      {/* Mobile-only step note — sits ABOVE the video so it never overlaps
+          the in-video UI (details panel, contributor labels, etc.). */}
+      <div key={`m-${activeIdx}`} className="mm-fade-up mb-3 px-1 lg:hidden">
+        <div className="rounded-xl border border-cyan-200/30 bg-slate-950/85 px-3 py-2.5 text-center shadow-[0_10px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+          <div className="flex items-center justify-center gap-1">
+            {diagnosisNotes.map((_, i) => (
+              <span
+                key={i}
+                className={`h-1 rounded-full transition-all ${
+                  i === activeIdx ? 'w-5 bg-cyan-200' : 'w-3 bg-white/20'
+                }`}
+              />
+            ))}
+          </div>
+          <div className="mt-1.5 text-[9px] font-semibold uppercase tracking-[0.22em] text-cyan-200/90">
+            {active.label}
+          </div>
+          <div className="mt-0.5 text-sm font-medium leading-snug text-white">{active.text}</div>
+        </div>
+      </div>
+
       <div className="relative aspect-video w-full overflow-hidden rounded-[1.25rem] border border-white/10 bg-black">
         <video
           ref={videoRef}
@@ -296,27 +318,27 @@ function DiagnosisStoryPanel() {
           }}
         />
 
+        {/* Desktop-only overlay step note — same content, kept floating
+            over the model area at lg+ breakpoints. */}
         <div
-          key={activeIdx}
-          className="mm-fade-up pointer-events-none absolute left-1/2 top-2 w-[calc(100%-1rem)] max-w-[14rem] -translate-x-1/2 sm:top-4 sm:max-w-md lg:left-[38%] lg:top-6"
+          key={`d-${activeIdx}`}
+          className="mm-fade-up pointer-events-none absolute hidden max-w-md -translate-x-1/2 lg:left-[38%] lg:top-6 lg:block"
         >
-          <div className="rounded-xl border border-cyan-200/30 bg-slate-950/85 px-2.5 py-2 text-center shadow-[0_10px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl sm:rounded-2xl sm:px-5 sm:py-4">
-            <div className="flex items-center justify-center gap-1 sm:gap-1.5">
+          <div className="rounded-2xl border border-cyan-200/30 bg-slate-950/85 px-5 py-4 text-center shadow-[0_10px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+            <div className="flex items-center justify-center gap-1.5">
               {diagnosisNotes.map((_, i) => (
                 <span
                   key={i}
-                  className={`h-1 rounded-full transition-all sm:h-1.5 ${
-                    i === activeIdx ? 'w-4 bg-cyan-200 sm:w-7' : 'w-3 bg-white/20 sm:w-5'
+                  className={`h-1.5 rounded-full transition-all ${
+                    i === activeIdx ? 'w-7 bg-cyan-200' : 'w-5 bg-white/20'
                   }`}
                 />
               ))}
             </div>
-            <div className="mt-1 text-[9px] font-semibold uppercase tracking-[0.22em] text-cyan-200/90 sm:mt-2.5 sm:text-[11px] sm:tracking-[0.28em]">
+            <div className="mt-2.5 text-[11px] font-semibold uppercase tracking-[0.28em] text-cyan-200/90">
               {active.label}
             </div>
-            <div className="mt-0.5 text-xs font-medium leading-snug text-white sm:mt-1 sm:text-base lg:text-lg">
-              {active.text}
-            </div>
+            <div className="mt-1 text-base font-medium leading-snug text-white lg:text-lg">{active.text}</div>
           </div>
         </div>
       </div>
@@ -407,6 +429,23 @@ function AIChatPanel() {
             <ChatBubble key={i} sender={m.sender} text={m.text} />
           ))}
           {typing && <TypingBubble />}
+
+          {/* Mobile-only: result appears as the final inline bubble so the
+              chat reads as one continuous flow instead of two stacked boxes. */}
+          {showResult && (
+            <div className="mm-pop-in flex justify-start lg:hidden">
+              <div className="w-full max-w-[92%] overflow-hidden rounded-2xl border border-orange-300/40 bg-slate-900/60 shadow-lg">
+                <img
+                  src={chatBotImageAfter}
+                  alt="Likely source: Deltoid (Anterior), 100% — primary zone"
+                  className="block h-auto w-full"
+                />
+                <div className="border-t border-orange-300/20 px-3 py-2 text-center text-[10px] uppercase tracking-[0.24em] text-orange-200/80">
+                  Likely source — shown on model
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="border-t border-white/10 p-4">
@@ -418,7 +457,7 @@ function AIChatPanel() {
         </div>
       </div>
 
-      <div className="relative aspect-[3/2] overflow-hidden rounded-[2rem] border border-white/12 bg-[#05070d] shadow-[0_30px_120px_rgba(0,0,0,0.55)] backdrop-blur-3xl lg:aspect-auto lg:h-[600px]">
+      <div className="relative hidden aspect-[3/2] overflow-hidden rounded-[2rem] border border-white/12 bg-[#05070d] shadow-[0_30px_120px_rgba(0,0,0,0.55)] backdrop-blur-3xl lg:block lg:aspect-auto lg:h-[600px]">
         <img
           src={chatBotImageBefore}
           alt=""
@@ -507,30 +546,66 @@ function AICoachPanel() {
           playsInline
         />
 
-        <div className="pointer-events-none absolute left-2 top-2 rounded-lg border border-cyan-200/30 bg-slate-950/80 px-2 py-1 text-[10px] text-cyan-100 backdrop-blur-xl sm:left-4 sm:top-4 sm:rounded-xl sm:px-3 sm:py-2 sm:text-xs">
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            <span className="mm-pulse-soft h-1 w-1 rounded-full bg-cyan-300 sm:h-1.5 sm:w-1.5" />
-            <span className="font-semibold uppercase tracking-[0.18em] sm:tracking-[0.22em]">Pose tracking</span>
+        {/* Pose tracking badge — desktop overlay only. */}
+        <div className="pointer-events-none absolute left-4 top-4 hidden rounded-xl border border-cyan-200/30 bg-slate-950/80 px-3 py-2 text-xs text-cyan-100 backdrop-blur-xl sm:block">
+          <div className="flex items-center gap-2">
+            <span className="mm-pulse-soft h-1.5 w-1.5 rounded-full bg-cyan-300" />
+            <span className="font-semibold uppercase tracking-[0.22em]">Pose tracking</span>
           </div>
         </div>
 
-        <div className="pointer-events-none absolute right-2 top-2 flex flex-col gap-1.5 sm:right-4 sm:top-4 sm:gap-2">
+        {/* Metrics — desktop overlay only. */}
+        <div className="pointer-events-none absolute right-4 top-4 hidden flex-col gap-2 sm:flex">
           <Metric label="Joint angle" value="92°" hue="cyan" />
-          <Metric label="Form score" value="87%" hue="orange" hideOnMobile />
-          <Metric label="Reps" value="4 / 8" hue="cyan" hideOnMobile />
+          <Metric label="Form score" value="87%" hue="orange" />
+          <Metric label="Reps" value="4 / 8" hue="cyan" />
         </div>
 
-        <div className="pointer-events-none absolute bottom-2 left-1/2 w-[calc(100%-1rem)] max-w-md -translate-x-1/2 sm:bottom-4 sm:w-[calc(100%-2rem)] lg:bottom-6">
-          <div className="rounded-xl border border-orange-200/30 bg-slate-950/85 px-3 py-2 text-center shadow-[0_10px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl sm:rounded-2xl sm:px-5 sm:py-4">
-            <div className="text-[9px] font-semibold uppercase tracking-[0.22em] text-orange-200/90 sm:text-[11px] sm:tracking-[0.28em]">
-              Live cue
-            </div>
-            <div className="mt-0.5 text-xs font-medium leading-snug text-white sm:mt-1.5 sm:text-base lg:text-lg">
+        {/* Live cue — desktop overlay only (mobile version is below the video). */}
+        <div className="pointer-events-none absolute bottom-4 left-1/2 hidden w-[calc(100%-2rem)] max-w-md -translate-x-1/2 sm:block lg:bottom-6">
+          <div className="rounded-2xl border border-orange-200/30 bg-slate-950/85 px-5 py-4 text-center shadow-[0_10px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-orange-200/90">Live cue</div>
+            <div className="mt-1.5 text-base font-medium leading-snug text-white lg:text-lg">
               Slow the descent — control the eccentric.
             </div>
           </div>
         </div>
       </div>
+
+      {/* Mobile-only HUD strip — sits BELOW the video so it never covers
+          the form-coaching footage. */}
+      <div className="mt-3 space-y-2 px-1 sm:hidden">
+        <div className="flex items-center justify-between gap-2">
+          <div className="rounded-lg border border-cyan-200/30 bg-slate-950/80 px-2.5 py-1.5 text-[10px] text-cyan-100 backdrop-blur-xl">
+            <div className="flex items-center gap-1.5">
+              <span className="mm-pulse-soft h-1 w-1 rounded-full bg-cyan-300" />
+              <span className="font-semibold uppercase tracking-[0.2em]">Pose tracking</span>
+            </div>
+          </div>
+          <div className="flex gap-1.5">
+            <MobileMetric label="Joint" value="92°" hue="cyan" />
+            <MobileMetric label="Form" value="87%" hue="orange" />
+            <MobileMetric label="Reps" value="4/8" hue="cyan" />
+          </div>
+        </div>
+        <div className="rounded-xl border border-orange-200/30 bg-slate-950/85 px-3 py-2 text-center backdrop-blur-xl">
+          <div className="text-[9px] font-semibold uppercase tracking-[0.24em] text-orange-200/90">Live cue</div>
+          <div className="mt-0.5 text-xs font-medium leading-snug text-white">
+            Slow the descent — control the eccentric.
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MobileMetric({ label, value, hue }: { label: string; value: string; hue: 'cyan' | 'orange' }) {
+  const valueColor = hue === 'cyan' ? 'text-cyan-200' : 'text-orange-200'
+  const borderColor = hue === 'cyan' ? 'border-cyan-200/30' : 'border-orange-200/30'
+  return (
+    <div className={`rounded-md border bg-slate-950/80 px-2 py-1 text-right backdrop-blur-xl ${borderColor}`}>
+      <div className="text-[8px] font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</div>
+      <div className={`text-xs font-semibold leading-tight ${valueColor}`}>{value}</div>
     </div>
   )
 }
