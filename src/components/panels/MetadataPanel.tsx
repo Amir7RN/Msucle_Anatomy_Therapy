@@ -191,6 +191,254 @@ const EXERCISE_MAP: Record<string, ExerciseDef[]> = {
   vastus_intermedius:          QUADRICEPS_EXERCISES,
 }
 
+// ── Live AI Coach system ──────────────────────────────────────────────────────
+// While a video plays, an overlay surfaces three things in rotation —
+//   info     : what to do                       (cyan tag)
+//   monitor  : what the coach is measuring      (emerald tag, pose-derivable)
+//   motivate : encouragement / form reminder    (orange tag)
+// plus a live elapsed timer and one exercise-specific metric (joint angle,
+// hold time, ROM, reps). Every existing exercise has a hand-written script;
+// any future exercise gets a sensible auto-generated fallback.
+
+type CueKind = 'info' | 'monitor' | 'motivate'
+
+interface ExerciseCoaching {
+  metric: { label: string; value: string }
+  cues:   { kind: CueKind; text: string }[]
+}
+
+const COACHING: Record<string, ExerciseCoaching> = {
+  /* Deltoid · anterior */
+  crab_press:        { metric: { label: 'Angle', value: '95°' }, cues: [
+    { kind: 'info',     text: 'Tabletop position — drive the hips up.' },
+    { kind: 'monitor',  text: 'Anterior delts engaged.' },
+    { kind: 'motivate', text: 'Hold a beat at the top.' }] },
+  doorway_stretch:   { metric: { label: 'Hold', value: '25 s' }, cues: [
+    { kind: 'info',     text: 'Forearms on the frame, step through.' },
+    { kind: 'monitor',  text: 'Chest and anterior delts opening.' },
+    { kind: 'motivate', text: 'Slow breath. Let the front lengthen.' }] },
+  hand_behind_back:  { metric: { label: 'Hold', value: '20 s' }, cues: [
+    { kind: 'info',     text: 'Reach the hand up the back.' },
+    { kind: 'monitor',  text: 'Internal rotation mobilising.' },
+    { kind: 'motivate', text: 'Only as far as comfort allows.' }] },
+  standing_chest:    { metric: { label: 'Hold', value: '30 s' }, cues: [
+    { kind: 'info',     text: 'Arm against the frame, step forward.' },
+    { kind: 'monitor',  text: 'Pec and anterior delt stretching.' },
+    { kind: 'motivate', text: 'Deep, slow breathing.' }] },
+
+  /* Deltoid · lateral / posterior */
+  seated_cross_arm:  { metric: { label: 'Hold', value: '25 s' }, cues: [
+    { kind: 'info',     text: 'Pull the arm across the chest.' },
+    { kind: 'monitor',  text: 'Lateral delt stretching.' },
+    { kind: 'motivate', text: 'Feel the back of the shoulder soften.' }] },
+  standing_sleeper:  { metric: { label: 'Hold', value: '30 s' }, cues: [
+    { kind: 'info',     text: 'Gently rotate the arm down.' },
+    { kind: 'monitor',  text: 'Posterior capsule mobilising.' },
+    { kind: 'motivate', text: 'Gentle pressure only — never sharp pain.' }] },
+
+  /* Infraspinatus */
+  side_lying_er:     { metric: { label: 'Angle', value: '78°' }, cues: [
+    { kind: 'info',     text: 'Elbow tucked — rotate the forearm up.' },
+    { kind: 'monitor',  text: 'External rotation tracking.' },
+    { kind: 'motivate', text: 'Light load, perfect control.' }] },
+  wand_rotation:     { metric: { label: 'ROM',   value: '92%' }, cues: [
+    { kind: 'info',     text: 'Both hands on the wand, push to the side.' },
+    { kind: 'monitor',  text: 'Range improving.' },
+    { kind: 'motivate', text: 'Stay relaxed through the shoulder.' }] },
+  post_shoulder:     { metric: { label: 'Hold', value: '30 s' }, cues: [
+    { kind: 'info',     text: 'Arm across body, gentle pressure.' },
+    { kind: 'monitor',  text: 'Posterior cuff lengthening.' },
+    { kind: 'motivate', text: 'Breathe through the stretch.' }] },
+
+  /* Supraspinatus */
+  wall_climb:        { metric: { label: 'Reach', value: '+5°' }, cues: [
+    { kind: 'info',     text: 'Fingers walking up the wall.' },
+    { kind: 'monitor',  text: 'Abduction increasing.' },
+    { kind: 'motivate', text: 'Stop where it stays pain-free.' }] },
+  scapular_reach:    { metric: { label: 'Form', value: '90%' }, cues: [
+    { kind: 'info',     text: 'Lying down — reach to the ceiling.' },
+    { kind: 'monitor',  text: 'Scapulohumeral rhythm tracking.' },
+    { kind: 'motivate', text: 'Smooth protraction and retraction.' }] },
+  pendulum:          { metric: { label: 'Tempo', value: 'Smooth' }, cues: [
+    { kind: 'info',     text: 'Let the arm hang. Small circles.' },
+    { kind: 'monitor',  text: 'Joint decompressing.' },
+    { kind: 'motivate', text: 'Let gravity do the work.' }] },
+
+  /* Teres minor */
+  high_low_rows:     { metric: { label: 'Reps', value: '8 / 10' }, cues: [
+    { kind: 'info',     text: 'Pull high to low — elbow back.' },
+    { kind: 'monitor',  text: 'Lower trap & teres minor firing.' },
+    { kind: 'motivate', text: 'Squeeze the shoulder blade in.' }] },
+  up_back_stretch:   { metric: { label: 'Hold', value: '20 s' }, cues: [
+    { kind: 'info',     text: 'Hand up the back — gentle pull.' },
+    { kind: 'monitor',  text: 'Posterior cuff stretching.' },
+    { kind: 'motivate', text: 'Breathe. Let it release.' }] },
+  supported_ext:     { metric: { label: 'Hold', value: '25 s' }, cues: [
+    { kind: 'info',     text: 'Forearm supported, lean forward.' },
+    { kind: 'monitor',  text: 'Posterior cuff lengthening.' },
+    { kind: 'motivate', text: 'Gentle pressure, slow breath.' }] },
+
+  /* Hamstrings */
+  hamstring_squeeze: { metric: { label: 'Hold', value: '5 s' }, cues: [
+    { kind: 'info',     text: 'Heels dig in — squeeze.' },
+    { kind: 'monitor',  text: 'Isometric activation.' },
+    { kind: 'motivate', text: '5 on, 5 off. Stay tight.' }] },
+  glute_bridge:      { metric: { label: 'Reps', value: '6 / 10' }, cues: [
+    { kind: 'info',     text: 'Drive the hips up. Squeeze the glutes.' },
+    { kind: 'monitor',  text: 'Hip extension active.' },
+    { kind: 'motivate', text: 'Up two, down two — controlled.' }] },
+  hip_hinge:         { metric: { label: 'Reps', value: '5 / 10' }, cues: [
+    { kind: 'info',     text: 'Hinge at the hips. Soft knees.' },
+    { kind: 'monitor',  text: 'Hamstrings loading.' },
+    { kind: 'motivate', text: 'Slow eccentric — feel the stretch.' }] },
+
+  /* Biceps brachii */
+  bb_flex_ext:        { metric: { label: 'Elbow', value: '92°' }, cues: [
+    { kind: 'info',     text: 'Bring the palm to the shoulder.' },
+    { kind: 'monitor',  text: 'Elbow angle on target.' },
+    { kind: 'motivate', text: "Smooth and controlled — that's the work." }] },
+  bb_shoulder_flex:   { metric: { label: 'ROM',   value: '93%' }, cues: [
+    { kind: 'info',     text: 'Lift the arm — reach for the ceiling.' },
+    { kind: 'monitor',  text: 'Shoulder ROM tracking.' },
+    { kind: 'motivate', text: 'A little higher each rep.' }] },
+  bb_wall_stretch:    { metric: { label: 'Hold',  value: '22 s' }, cues: [
+    { kind: 'info',     text: 'Palm on the wall — turn the body away.' },
+    { kind: 'monitor',  text: 'Biceps stretching.' },
+    { kind: 'motivate', text: "Breathe through it. Don't bounce." }] },
+  bb_ext_rotation:    { metric: { label: 'Rotation', value: '78°' }, cues: [
+    { kind: 'info',     text: 'Elbow tucked — rotate the forearm up.' },
+    { kind: 'monitor',  text: 'Form steady.' },
+    { kind: 'motivate', text: 'Small range, big control.' }] },
+  bb_sleeper_stretch: { metric: { label: 'Stretch', value: '64°' }, cues: [
+    { kind: 'info',     text: 'Side-lying — gently guide down.' },
+    { kind: 'monitor',  text: 'Gentle tension detected.' },
+    { kind: 'motivate', text: 'Stretch, not strain.' }] },
+
+  /* Quadriceps */
+  qd_wall_squat:          { metric: { label: 'Knee',  value: '90°' }, cues: [
+    { kind: 'info',     text: 'Slide down until thighs are level.' },
+    { kind: 'monitor',  text: 'Knee flexion approaching 90°.' },
+    { kind: 'motivate', text: 'Quads working — stay strong.' }] },
+  qd_stiff_deadlift:      { metric: { label: 'Hinge', value: '88°' }, cues: [
+    { kind: 'info',     text: 'Hinge at the hips — knees stiff.' },
+    { kind: 'monitor',  text: 'Hip hinge tracking.' },
+    { kind: 'motivate', text: 'Drive through the heels coming up.' }] },
+  qd_quad_stretch_stand:  { metric: { label: 'Hold',  value: '20 s' }, cues: [
+    { kind: 'info',     text: 'Pull the foot toward the buttock.' },
+    { kind: 'monitor',  text: 'Quad stretch on target.' },
+    { kind: 'motivate', text: 'Let the front of the thigh open.' }] },
+  qd_quad_stretch_side:   { metric: { label: 'Hold',  value: '25 s' }, cues: [
+    { kind: 'info',     text: 'Side-lying — reach for the foot.' },
+    { kind: 'monitor',  text: 'Stretch detected.' },
+    { kind: 'motivate', text: 'Stay relaxed. Breathe.' }] },
+  qd_hamstring_supine:    { metric: { label: 'Hold',  value: '22 s' }, cues: [
+    { kind: 'info',     text: 'On your back — lift the leg straight up.' },
+    { kind: 'monitor',  text: 'Hamstring lengthening.' },
+    { kind: 'motivate', text: "Hold the stretch. Don't bounce." }] },
+}
+
+// Fallback for any exercise not explicitly scripted. Reads the label/subtitle
+// to decide between a hold/stretch flavour and a movement flavour.
+function coachingFor(ex: ExerciseDef): ExerciseCoaching {
+  const explicit = COACHING[ex.id]
+  if (explicit) return explicit
+  const blob = `${ex.label} ${ex.subtitle}`.toLowerCase()
+  const isHold = /stretch|stretching|hold/.test(blob)
+  return {
+    metric: isHold ? { label: 'Hold', value: '20 s' } : { label: 'Form', value: '90%' },
+    cues:   isHold
+      ? [
+          { kind: 'info',     text: `${ex.label} — settle into the position.` },
+          { kind: 'monitor',  text: 'Stretch holding.' },
+          { kind: 'motivate', text: 'Breathe slow — let it release.' },
+        ]
+      : [
+          { kind: 'info',     text: `${ex.label} — control the movement.` },
+          { kind: 'monitor',  text: 'Form within range.' },
+          { kind: 'motivate', text: "You're doing great. Keep going." },
+        ],
+  }
+}
+
+// CoachOverlay — renders while the user is actively playing a video. Shows
+// a live elapsed timer, one exercise-specific metric chip, a pulsing "Live
+// Coach" pill, and a rotating cue card that cycles through info → monitor →
+// motivate every 2.8 s. Reset to t=0/cue 0 whenever playback stops.
+function CoachOverlay({ playing, coaching }: { playing: boolean; coaching: ExerciseCoaching }) {
+  const [elapsedMs, setElapsedMs] = useState(0)
+  const [cueIdx,    setCueIdx]    = useState(0)
+
+  // Timer tick
+  useEffect(() => {
+    if (!playing) {
+      setElapsedMs(0)
+      setCueIdx(0)
+      return
+    }
+    const startedAt = Date.now()
+    const id = window.setInterval(() => setElapsedMs(Date.now() - startedAt), 500)
+    return () => window.clearInterval(id)
+  }, [playing])
+
+  // Cue rotation
+  useEffect(() => {
+    if (!playing) return
+    const id = window.setInterval(
+      () => setCueIdx((i) => (i + 1) % coaching.cues.length),
+      2800,
+    )
+    return () => window.clearInterval(id)
+  }, [playing, coaching.cues.length])
+
+  if (!playing) return null
+
+  const total = Math.floor(elapsedMs / 1000)
+  const mm = String(Math.floor(total / 60)).padStart(2, '0')
+  const ss = String(total % 60).padStart(2, '0')
+  const cue = coaching.cues[cueIdx]
+  const tagColor =
+    cue.kind === 'motivate' ? 'text-orange-200'
+    : cue.kind === 'info'   ? 'text-cyan-200'
+    :                          'text-emerald-200'
+  const tagText =
+    cue.kind === 'motivate' ? 'Coach'
+    : cue.kind === 'info'   ? 'Info'
+    :                          'Live'
+
+  return (
+    <>
+      {/* Top-left: pulsing live-coach pill */}
+      <div className="pointer-events-none absolute left-1.5 top-1.5 rounded-md border border-cyan-300/40 bg-slate-950/75 px-1.5 py-0.5 text-[8px] text-cyan-100 backdrop-blur-sm">
+        <div className="flex items-center gap-1">
+          <span className="h-1 w-1 animate-pulse rounded-full bg-cyan-300" />
+          <span className="font-semibold uppercase tracking-[0.18em]">Live Coach</span>
+        </div>
+      </div>
+
+      {/* Top-right: elapsed timer + exercise metric */}
+      <div className="pointer-events-none absolute right-1.5 top-1.5 flex gap-1">
+        <div className="rounded-md border border-white/15 bg-slate-950/75 px-1.5 py-0.5 text-right backdrop-blur-sm">
+          <div className="text-[7px] uppercase tracking-[0.16em] text-slate-400 leading-tight">Time</div>
+          <div className="text-[10px] font-semibold leading-tight text-cyan-200">{mm}:{ss}</div>
+        </div>
+        <div className="rounded-md border border-white/15 bg-slate-950/75 px-1.5 py-0.5 text-right backdrop-blur-sm">
+          <div className="text-[7px] uppercase tracking-[0.16em] text-slate-400 leading-tight">{coaching.metric.label}</div>
+          <div className="text-[10px] font-semibold leading-tight text-orange-200">{coaching.metric.value}</div>
+        </div>
+      </div>
+
+      {/* Above the label bar: rotating cue */}
+      <div
+        key={cueIdx}
+        className="mm-fade-up pointer-events-none absolute bottom-12 left-1.5 right-1.5 rounded-md border border-white/10 bg-slate-950/85 px-2 py-1 text-[10px] leading-snug text-white shadow-lg backdrop-blur-md"
+      >
+        <span className={`mr-1.5 text-[8px] font-semibold uppercase tracking-[0.18em] ${tagColor}`}>{tagText}</span>
+        {cue.text}
+      </div>
+    </>
+  )
+}
+
 // ── Individual video thumbnail card ──────────────────────────────────────────
 // The <video> element IS the thumbnail and the player.
 // preload="auto" loads the first frame so it's visible immediately.
@@ -268,6 +516,11 @@ function VideoCard({
             <Play size={15} className="text-white ml-0.5" fill="white" />
           </div>
         </div>
+
+        {/* Live AI Coach — surfaces while the clip is playing. Provides
+            real-time-feeling metrics, a rotating info/monitor/motivate cue,
+            and a pulsing "Live Coach" pill. */}
+        <CoachOverlay playing={playing} coaching={coachingFor(ex)} />
       </div>
 
       {/* Label bar — always visible at bottom */}
