@@ -16,71 +16,9 @@ type ZevahealthHomeProps = {
 }
 
 const diagnosisVideoUrl = new URL('../Videos/Shoulder-Deltoid/Diagnosis.mp4', import.meta.url).href
+const aiCoachVideoUrl = new URL('../Videos/Shoulder-Deltoid/AICouch.mp4', import.meta.url).href
 const chatBotImageBefore = new URL('../Videos/Shoulder-Deltoid/ChatBotImage_Example1.png', import.meta.url).href
 const chatBotImageAfter = new URL('../Videos/Shoulder-Deltoid/ChatBotImage_Example2.png', import.meta.url).href
-
-/* Biceps Brachii recovery cycle — applies to either left or right arm.
-   Each exercise carries its own pose-derived metrics + live cue so the
-   AI coach panel reads as a real, exercise-aware system rather than a
-   single canned demo. Videos are 8 s each; the cycle dwells slightly
-   longer to give the cue a beat to land. */
-const bicepExercises = [
-  {
-    name: 'Flexion & Extension',
-    focus: 'Pain Relief',
-    videoUrl: new URL('../Videos/Bicep/Flexion and Extension.mp4', import.meta.url).href,
-    metrics: [
-      { label: 'Elbow', value: '92°', hue: 'cyan' as const },
-      { label: 'Tempo', value: '3s · 3s', hue: 'orange' as const },
-      { label: 'Reps', value: '5 / 10', hue: 'cyan' as const },
-    ],
-    cue: 'Slow and smooth — bring the palm to the shoulder.',
-  },
-  {
-    name: 'Single Shoulder Flexion',
-    focus: 'Range of Motion',
-    videoUrl: new URL('../Videos/Bicep/Single Shoulder Flexion.mp4', import.meta.url).href,
-    metrics: [
-      { label: 'Shoulder', value: '168°', hue: 'cyan' as const },
-      { label: 'ROM', value: '93%', hue: 'orange' as const },
-      { label: 'Reps', value: '3 / 8', hue: 'cyan' as const },
-    ],
-    cue: 'Lift toward the ceiling — pause at the top.',
-  },
-  {
-    name: 'Wall Biceps Stretch',
-    focus: 'Static Hold',
-    videoUrl: new URL('../Videos/Bicep/Biceps Stretch.mp4', import.meta.url).href,
-    metrics: [
-      { label: 'Hold', value: '22 s', hue: 'cyan' as const },
-      { label: 'Tension', value: 'Easy', hue: 'orange' as const },
-      { label: 'Sets', value: '2 / 3', hue: 'cyan' as const },
-    ],
-    cue: "Hold the stretch — breathe, don't bounce.",
-  },
-  {
-    name: 'Reclining External Rotation',
-    focus: 'Rotator Control',
-    videoUrl: new URL('../Videos/Bicep/Reclining External Rotation.mp4', import.meta.url).href,
-    metrics: [
-      { label: 'Rotation', value: '78°', hue: 'cyan' as const },
-      { label: 'Form', value: '91%', hue: 'orange' as const },
-      { label: 'Reps', value: '6 / 12', hue: 'cyan' as const },
-    ],
-    cue: 'Keep your elbow tucked — small range, smooth control.',
-  },
-  {
-    name: 'Sleeper Stretch',
-    focus: 'Internal Rotation',
-    videoUrl: new URL('../Videos/Bicep/Sleeper Stretch.mp4', import.meta.url).href,
-    metrics: [
-      { label: 'Stretch', value: '64°', hue: 'cyan' as const },
-      { label: 'Hold', value: '18 s', hue: 'orange' as const },
-      { label: 'Sets', value: '1 / 3', hue: 'cyan' as const },
-    ],
-    cue: 'Gentle pressure — feel the stretch, not pain.',
-  },
-]
 
 /* ─────────────────────────── Brand mark ───────────────────────────
    Stylized "Z" formed by a top stroke, a curving diagonal, and a
@@ -573,26 +511,7 @@ function TypingBubble() {
 function AICoachPanel() {
   const [containerRef, inView] = useInView<HTMLDivElement>(0.25)
   const videoRef = useRef<HTMLVideoElement>(null)
-  const [exIdx, setExIdx] = useState(0)
-  const active = bicepExercises[exIdx]
 
-  // Reset to exercise 1 each time the panel enters view.
-  useEffect(() => {
-    if (inView) setExIdx(0)
-  }, [inView])
-
-  // Cycle through exercises while in view. Each video is 8s; we dwell 8.5s
-  // so the live cue can land before the next clip starts.
-  useEffect(() => {
-    if (!inView) return
-    const t = window.setTimeout(() => {
-      setExIdx((i) => (i + 1) % bicepExercises.length)
-    }, 8500)
-    return () => window.clearTimeout(t)
-  }, [exIdx, inView])
-
-  // Play / pause when entering / leaving view, and rewind on each
-  // exercise switch (also covers the case where the loop just looped).
   useEffect(() => {
     const v = videoRef.current
     if (!v) return
@@ -604,7 +523,7 @@ function AICoachPanel() {
     } else {
       v.pause()
     }
-  }, [inView, exIdx])
+  }, [inView])
 
   return (
     <div
@@ -619,8 +538,7 @@ function AICoachPanel() {
       <div className="relative aspect-video w-full overflow-hidden rounded-[1.25rem] border border-white/10 bg-black">
         <video
           ref={videoRef}
-          key={active.videoUrl}
-          src={active.videoUrl}
+          src={aiCoachVideoUrl}
           className="absolute inset-0 h-full w-full object-contain"
           autoPlay
           muted
@@ -628,80 +546,53 @@ function AICoachPanel() {
           playsInline
         />
 
-        {/* Exercise badge — desktop overlay only. Shows current exercise name
-            and a small pip indicator of progress through the bicep cycle. */}
+        {/* Pose tracking badge — desktop overlay only. */}
         <div className="pointer-events-none absolute left-4 top-4 hidden rounded-xl border border-cyan-200/30 bg-slate-950/80 px-3 py-2 text-xs text-cyan-100 backdrop-blur-xl sm:block">
           <div className="flex items-center gap-2">
             <span className="mm-pulse-soft h-1.5 w-1.5 rounded-full bg-cyan-300" />
-            <span className="font-semibold uppercase tracking-[0.22em]">{active.name}</span>
-          </div>
-          <div className="mt-1.5 flex items-center gap-1">
-            {bicepExercises.map((_, i) => (
-              <span
-                key={i}
-                className={`h-1 rounded-full transition-all ${
-                  i === exIdx ? 'w-5 bg-cyan-200' : 'w-3 bg-white/20'
-                }`}
-              />
-            ))}
-            <span className="ml-1 text-[9px] text-slate-400">{active.focus}</span>
+            <span className="font-semibold uppercase tracking-[0.22em]">Pose tracking</span>
           </div>
         </div>
 
-        {/* Metrics — desktop overlay only, exercise-specific. */}
-        <div
-          key={`metrics-${exIdx}`}
-          className="mm-fade-up pointer-events-none absolute right-4 top-4 hidden flex-col gap-2 sm:flex"
-        >
-          {active.metrics.map((m) => (
-            <Metric key={m.label} label={m.label} value={m.value} hue={m.hue} />
-          ))}
+        {/* Metrics — desktop overlay only. */}
+        <div className="pointer-events-none absolute right-4 top-4 hidden flex-col gap-2 sm:flex">
+          <Metric label="Joint angle" value="92°" hue="cyan" />
+          <Metric label="Form score" value="87%" hue="orange" />
+          <Metric label="Reps" value="4 / 8" hue="cyan" />
         </div>
 
-        {/* Live cue — desktop overlay only (mobile version is below). */}
-        <div
-          key={`cue-${exIdx}`}
-          className="mm-fade-up pointer-events-none absolute bottom-4 left-1/2 hidden w-[calc(100%-2rem)] max-w-md -translate-x-1/2 sm:block lg:bottom-6"
-        >
+        {/* Live cue — desktop overlay only (mobile version is below the video). */}
+        <div className="pointer-events-none absolute bottom-4 left-1/2 hidden w-[calc(100%-2rem)] max-w-md -translate-x-1/2 sm:block lg:bottom-6">
           <div className="rounded-2xl border border-orange-200/30 bg-slate-950/85 px-5 py-4 text-center shadow-[0_10px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl">
             <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-orange-200/90">Live cue</div>
-            <div className="mt-1.5 text-base font-medium leading-snug text-white lg:text-lg">{active.cue}</div>
+            <div className="mt-1.5 text-base font-medium leading-snug text-white lg:text-lg">
+              Slow the descent — control the eccentric.
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Mobile-only HUD strip — exercise name + pip progress, metrics row,
-          live cue card. Lives below the video so nothing overlaps the clip. */}
+      {/* Mobile-only HUD strip — sits BELOW the video so it never covers
+          the form-coaching footage. */}
       <div className="mt-3 space-y-2 px-1 sm:hidden">
         <div className="flex items-center justify-between gap-2">
           <div className="rounded-lg border border-cyan-200/30 bg-slate-950/80 px-2.5 py-1.5 text-[10px] text-cyan-100 backdrop-blur-xl">
             <div className="flex items-center gap-1.5">
               <span className="mm-pulse-soft h-1 w-1 rounded-full bg-cyan-300" />
-              <span className="font-semibold uppercase tracking-[0.2em]">{active.name}</span>
-            </div>
-            <div className="mt-1 flex items-center gap-1">
-              {bicepExercises.map((_, i) => (
-                <span
-                  key={i}
-                  className={`h-0.5 rounded-full transition-all ${
-                    i === exIdx ? 'w-3.5 bg-cyan-200' : 'w-2 bg-white/20'
-                  }`}
-                />
-              ))}
+              <span className="font-semibold uppercase tracking-[0.2em]">Pose tracking</span>
             </div>
           </div>
-          <div key={`m-${exIdx}`} className="mm-fade-up flex gap-1.5">
-            {active.metrics.map((m) => (
-              <MobileMetric key={m.label} label={m.label} value={m.value} hue={m.hue} />
-            ))}
+          <div className="flex gap-1.5">
+            <MobileMetric label="Joint" value="92°" hue="cyan" />
+            <MobileMetric label="Form" value="87%" hue="orange" />
+            <MobileMetric label="Reps" value="4/8" hue="cyan" />
           </div>
         </div>
-        <div
-          key={`mc-${exIdx}`}
-          className="mm-fade-up rounded-xl border border-orange-200/30 bg-slate-950/85 px-3 py-2 text-center backdrop-blur-xl"
-        >
+        <div className="rounded-xl border border-orange-200/30 bg-slate-950/85 px-3 py-2 text-center backdrop-blur-xl">
           <div className="text-[9px] font-semibold uppercase tracking-[0.24em] text-orange-200/90">Live cue</div>
-          <div className="mt-0.5 text-xs font-medium leading-snug text-white">{active.cue}</div>
+          <div className="mt-0.5 text-xs font-medium leading-snug text-white">
+            Slow the descent — control the eccentric.
+          </div>
         </div>
       </div>
     </div>
