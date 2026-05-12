@@ -119,6 +119,22 @@ const BICEPS_BRACHII_EXERCISES: ExerciseDef[] = [
   { id: 'bb_sleeper_stretch', label: 'Sleeper Stretch',             subtitle: 'Internal rotation release', src: VB('Sleeper Stretch.mp4')             },
 ]
 
+// ── Quadriceps exercises ──────────────────────────────────────────────────────
+// Videos live in /Videos/QuadRecipts/ (outside public/), so we use Vite's URL
+// import so the asset pipeline picks them up and hashes them at build time.
+// Subtitles encode the movement metric the AI coach should monitor at runtime
+// (knee flexion target, hold duration, rep count) — these map directly to
+// pose-derived signals (knee angle, hip-hinge angle, hold-state detector).
+const VQ = (file: string) => new URL(`../../../Videos/QuadRecipts/${file}`, import.meta.url).href
+
+const QUADRICEPS_EXERCISES: ExerciseDef[] = [
+  { id: 'qd_wall_squat',         label: 'Wall Squat',                 subtitle: 'Knee flex ~90° · 7–10 reps · 2–3 sets', src: VQ('Wall Squat.mp4')                    },
+  { id: 'qd_stiff_deadlift',     label: 'Stiff-Legged Deadlift',      subtitle: 'Hip hinge · knees stiff · 7–10 reps',   src: VQ('Stiff-legged Deadlift.mp4')         },
+  { id: 'qd_quad_stretch_stand', label: 'Quad Stretch (Standing)',    subtitle: 'Hold 15–30 s · 2–4× per leg',           src: VQ('Quad stretch (standing).mp4')       },
+  { id: 'qd_quad_stretch_side',  label: 'Quad Stretch (Side-Lying)',  subtitle: 'Side-lying · hold 15–30 s',             src: VQ('Quad stretch (lying on side).mp4')  },
+  { id: 'qd_hamstring_supine',   label: 'Hamstring Stretch (Supine)', subtitle: 'Lying down · hold 15–30 s · 2–4×',      src: VQ('Hamstring stretch (lying down).mp4')},
+]
+
 // ── Master lookup — keyed by both mesh ID and diagnostic muscle ID ────────────
 const EXERCISE_MAP: Record<string, ExerciseDef[]> = {
   // Deltoid (mesh IDs → all; diagnostic sub-IDs → targeted)
@@ -158,6 +174,21 @@ const EXERCISE_MAP: Record<string, ExerciseDef[]> = {
   MUSC_BICEPS_BRACHII_R:    BICEPS_BRACHII_EXERCISES,
   MUSC_BICEPS_BRACHII_L:    BICEPS_BRACHII_EXERCISES,
   biceps_brachii:            BICEPS_BRACHII_EXERCISES,
+
+  // Quadriceps — all four heads share the same protocol on both sides.
+  // Mesh IDs (8) + diagnostic lowercase keys (4) all route to the same set.
+  MUSC_RECTUS_FEMORIS_R:      QUADRICEPS_EXERCISES,
+  MUSC_RECTUS_FEMORIS_L:      QUADRICEPS_EXERCISES,
+  MUSC_VASTUS_LATERALIS_R:    QUADRICEPS_EXERCISES,
+  MUSC_VASTUS_LATERALIS_L:    QUADRICEPS_EXERCISES,
+  MUSC_VASTUS_MEDIALIS_R:     QUADRICEPS_EXERCISES,
+  MUSC_VASTUS_MEDIALIS_L:     QUADRICEPS_EXERCISES,
+  MUSC_VASTUS_INTERMEDIUS_R:  QUADRICEPS_EXERCISES,
+  MUSC_VASTUS_INTERMEDIUS_L:  QUADRICEPS_EXERCISES,
+  rectus_femoris:              QUADRICEPS_EXERCISES,
+  vastus_lateralis:            QUADRICEPS_EXERCISES,
+  vastus_medialis:             QUADRICEPS_EXERCISES,
+  vastus_intermedius:          QUADRICEPS_EXERCISES,
 }
 
 // ── Individual video thumbnail card ──────────────────────────────────────────
