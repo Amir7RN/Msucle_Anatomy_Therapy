@@ -106,6 +106,19 @@ const HAMSTRING_EXERCISES: ExerciseDef[] = [
   { id: 'hip_hinge',         label: 'Hip Hinge',           subtitle: 'Eccentric hamstring',     src: V('Hip_Hinge_Exercise.mp4')   },
 ]
 
+// ── Biceps brachii exercises ──────────────────────────────────────────────────
+// Videos live in /Videos/Bicep/ (outside public/), so we use Vite's URL import
+// so the asset pipeline picks them up and hashes them at build time.
+const VB = (file: string) => new URL(`../../../Videos/Bicep/${file}`, import.meta.url).href
+
+const BICEPS_BRACHII_EXERCISES: ExerciseDef[] = [
+  { id: 'bb_flex_ext',        label: 'Flexion & Extension',         subtitle: 'Gentle elbow mobility',     src: VB('Flexion and Extension.mp4')       },
+  { id: 'bb_shoulder_flex',   label: 'Single Shoulder Flexion',     subtitle: 'Range of motion',           src: VB('Single Shoulder Flexion.mp4')     },
+  { id: 'bb_wall_stretch',    label: 'Wall Biceps Stretch',         subtitle: 'Static stretch hold',       src: VB('Biceps Stretch.mp4')              },
+  { id: 'bb_ext_rotation',    label: 'Reclining External Rotation', subtitle: 'Rotator cuff control',      src: VB('Reclining External Rotation.mp4') },
+  { id: 'bb_sleeper_stretch', label: 'Sleeper Stretch',             subtitle: 'Internal rotation release', src: VB('Sleeper Stretch.mp4')             },
+]
+
 // ── Master lookup — keyed by both mesh ID and diagnostic muscle ID ────────────
 const EXERCISE_MAP: Record<string, ExerciseDef[]> = {
   // Deltoid (mesh IDs → all; diagnostic sub-IDs → targeted)
@@ -140,6 +153,11 @@ const EXERCISE_MAP: Record<string, ExerciseDef[]> = {
   biceps_femoris:            HAMSTRING_EXERCISES,
   semitendinosus:            HAMSTRING_EXERCISES,
   semimembranosus:           HAMSTRING_EXERCISES,
+
+  // Biceps brachii (left + right share the same recovery protocol)
+  MUSC_BICEPS_BRACHII_R:    BICEPS_BRACHII_EXERCISES,
+  MUSC_BICEPS_BRACHII_L:    BICEPS_BRACHII_EXERCISES,
+  biceps_brachii:            BICEPS_BRACHII_EXERCISES,
 }
 
 // ── Individual video thumbnail card ──────────────────────────────────────────
