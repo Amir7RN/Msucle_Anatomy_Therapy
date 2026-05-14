@@ -6,4 +6,6 @@ dist/
 # Large binary model files — check these in separately
 # public/models/*.glb
 vite.config.ts.timestamp-*
-Videos/
+# Videos/ is intentionally tracked — exercise clips are bundled by Vite
+# at build time via new URL() imports from src/. If a specific subfolder
+# gets too large, exclude it explicitly here (e.g. Videos/Raw/).
