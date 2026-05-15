@@ -566,6 +566,7 @@ function ExerciseVideos({ muscleId }: { muscleId: string }) {
           exerciseId={guidanceEx.id}
           exerciseLabel={guidanceEx.label}
           videoSrc={guidanceEx.src}
+          muscleId={subMuscleId ?? muscleId}
           onClose={() => setGuidanceEx(null)}
         />
       )}

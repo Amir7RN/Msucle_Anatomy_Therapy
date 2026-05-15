@@ -21,7 +21,7 @@
  *   • Reuses the Anthropic API key from the Triage chat (localStorage).
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   X, Camera, Play, CheckCircle, AlertCircle, Info,
   Mic, MicOff, Brain, Send, KeyRound,
@@ -41,6 +41,13 @@ import {
 import { useVoiceInput, useVoiceOutput } from '../../hooks/useVoice'
 import { createRepCounter } from '../../lib/movement/repCounter'
 import { getStoredApiKey, setStoredApiKey } from '../../lib/triage/llm'
+import {
+  createCueStream,
+  pickCueFromJoint,
+  type CueStreamState,
+  type JointSample,
+} from '../../lib/movement/directionalCue'
+import { loadROMHistory } from '../../lib/movement/romHistory'
 
 // ── Smoothing buffer ──────────────────────────────────────────────────────────
 const SMOOTH_FRAMES = 8
@@ -53,6 +60,10 @@ interface Props {
   exerciseId:    string | null
   exerciseLabel: string
   videoSrc:      string
+  /** Mesh/diagnostic muscle id (e.g. "MUSC_BICEPS_BRACHII_R" or "biceps_brachii").
+      Used to pull the user's measured ROM history so the coach can cap cues
+      at the user's safe peak instead of a healthy-population target. */
+  muscleId?:     string
   onClose:       () => void
 }
 
@@ -60,7 +71,7 @@ interface Props {
 //  Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, onClose }: Props) {
+export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId, onClose }: Props) {
   const biofeedbackKey = exerciseId ? EXERCISE_TO_BIOFEEDBACK[exerciseId] : null
   const def: BiofeedbackDef | null = biofeedbackKey ? BIOFEEDBACK_DEFS[biofeedbackKey] ?? null : null
 
@@ -99,22 +110,47 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, onClose 
     lmsRef.current = lms
     if (!def) return
     const snap = evaluateExercise(lms, def)
-    frameBuffer.current.push(snap)
+
+    // ── Permissive "visible-good" override ──────────────────────────────
+    // The original evaluateExercise sets snap.good only when EVERY check
+    // passes — including checks whose landmarks aren't currently visible.
+    // That made FormScore + reps stick at 0 even when the visible joint
+    // was already 97 % in band.  We now treat the snapshot as "good" if
+    // every VISIBLE detail is in band (and at least one detail exists).
+    const visibleGood =
+      snap.details.length > 0 && snap.details.every((d) => d.status === 'good')
+    const snapEff: FormSnapshot = { ...snap, good: visibleGood }
+
+    frameBuffer.current.push(snapEff)
     if (frameBuffer.current.length > SMOOTH_FRAMES) frameBuffer.current.shift()
     if (frameBuffer.current.length < SMOOTH_FRAMES) return
     const goodCount = frameBuffer.current.filter((s) => s.good).length
     const smoothed: FormSnapshot = goodCount >= SMOOTH_FRAMES / 2
-      ? { cueText: 'Good alignment — hold it.', good: true, details: snap.details }
-      : snap
+      ? { cueText: 'Good alignment — hold it.', good: true, details: snapEff.details }
+      : snapEff
     setSnapshot(smoothed)
 
     // ── Performance metrics ─────────────────────────────────────────────
     perfHistoryRef.current.push(smoothed)
     if (perfHistoryRef.current.length > PERF_WINDOW) perfHistoryRef.current.shift()
 
-    // Headline form score: % of frames in the window with good=true
-    const goodN = perfHistoryRef.current.filter((s) => s.good).length
-    const score = Math.round((goodN / perfHistoryRef.current.length) * 100)
+    // Headline form score: AVERAGE of per-joint accuracy over the window.
+    // This works even when only one joint is being measured (the old %-of-
+    // frames-where-snap.good was a binary all-or-nothing that bottomed at
+    // 0 whenever any single check failed silently).
+    const goodDetails = perfHistoryRef.current.reduce(
+      (acc, s) => {
+        for (const d of s.details) {
+          acc.total += 1
+          if (d.status === 'good') acc.good += 1
+        }
+        return acc
+      },
+      { good: 0, total: 0 },
+    )
+    const score = goodDetails.total > 0
+      ? Math.round((goodDetails.good / goodDetails.total) * 100)
+      : 0
     setFormScore(score)
 
     // Per-joint accuracy: for each detail label, % of frames where that
@@ -303,7 +339,7 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, onClose 
 
           {/* AI Coach — replaces static "Setup" text */}
           {def
-            ? <AiCoach def={def} snapshot={snapshot} lmsRef={lmsRef} />
+            ? <AiCoach def={def} snapshot={snapshot} lmsRef={lmsRef} muscleId={muscleId} />
             : (
               <div className="p-3 border-b border-slate-700 flex items-start gap-2">
                 <Info size={14} className="text-slate-400 mt-0.5 flex-shrink-0" />
@@ -380,11 +416,45 @@ function AiCoach({
   def,
   snapshot,
   lmsRef,
+  muscleId,
 }: {
-  def:     BiofeedbackDef
+  def:      BiofeedbackDef
   snapshot: FormSnapshot | null
-  lmsRef:  React.MutableRefObject<LandmarkSet | null>
+  lmsRef:   React.MutableRefObject<LandmarkSet | null>
+  /** For ROM-calibrated coaching — pulls the user's measured peak from history. */
+  muscleId?: string
 }) {
+  /* ── User-specific safe ceilings (from past assessments) ────────────────
+     For each joint label we coach (e.g. "Elbow Flexion"), find the user's
+     best measured peak from past ROM assessments on this muscle.  The
+     directional-cue engine uses these to cap cues at the user's actual
+     limit instead of a healthy-population number. */
+  const peakLookup = useMemo<(label: string) => number | undefined>(() => {
+    if (!muscleId) return () => undefined
+    const history = loadROMHistory().filter((r) => r.muscleId === muscleId)
+    if (history.length === 0) return () => undefined
+    // Best-peak per movementId — most recent record wins on ties.
+    const byMovement = new Map<string, number>()
+    for (const r of history) {
+      const cur = byMovement.get(r.movementId) ?? 0
+      if (r.angle > cur) byMovement.set(r.movementId, r.angle)
+    }
+    return (label: string) => {
+      const norm = label.toLowerCase().replace(/[^a-z]+/g, ' ').trim()
+      for (const [mvId, peak] of byMovement) {
+        const mvNorm = mvId.toLowerCase().replace(/_/g, ' ')
+        if (mvNorm.includes(norm) || norm.includes(mvNorm)) return peak
+      }
+      return undefined
+    }
+  }, [muscleId])
+
+  /* ── Directional-cue stream — speaks angle-precise local cues. ────────── */
+  const cueStreamRef = useRef<CueStreamState>(createCueStream(3000))
+  useEffect(() => {
+    cueStreamRef.current = createCueStream(3000)
+  }, [def.exerciseId])
+
   const [apiKey, setApiKey]   = useState<string | null>(getStoredApiKey)
   const [messages, setMessages] = useState<CoachMessage[]>([])
   const [input, setInput]     = useState('')
@@ -452,15 +522,56 @@ function AiCoach({
     setTimeout(() => voiceOutRef.current.speak(text, onEnd), 80)
   }, [])
 
-  // ── Announce step instruction on step advance ──────────────────────────
-  // Speak first step instruction on mount (once)
+  // ── First-cue on mount ──────────────────────────────────────────────────
+  // The OLD behaviour spoke the full procedure step instruction here. That
+  // collided with the live AI-coach voice and produced the "two voices"
+  // problem the user reported.  We now do a single warm welcome and let the
+  // directional-cue stream take over for everything else.
   useEffect(() => {
-    if (steps.length === 0 || stepSpokenRef.current) return
+    if (stepSpokenRef.current) return
     stepSpokenRef.current = true
-    // Small delay to let the overlay render first
-    const t = setTimeout(() => speakQueued(steps[0].instruction), 800)
+    const t = setTimeout(
+      () => speakQueued(`Live coach ready for ${def.title}. Start moving when you're set.`),
+      800,
+    )
     return () => clearTimeout(t)
-  }, [steps, speakQueued])
+  }, [def.title, speakQueued])
+
+  // ── Live directional cue engine ────────────────────────────────────────
+  // For every smoothed FormSnapshot we generate a short, angle-precise cue
+  // ("Bend 15 more degrees", "Ease off — you're past target") and speak it
+  // through the same TTS channel. Throttled by the cue-stream cooldown
+  // (3 s routine, ~1 s for safety overrides) and de-duped against the last
+  // spoken key. Doesn't fire while Claude is mid-reply or the user is
+  // talking — barge-in / non-interrupt by design.
+  useEffect(() => {
+    if (!snapshot || snapshot.details.length === 0) return
+    if (allDoneRef.current) return
+    if (voiceOutRef.current.speaking) return     // don't talk over Claude
+    if (voiceIn.listening && voiceIn.interimTranscript) return  // user is asking
+
+    // Pair each detail with the FormCheck that produced it (for ideal range).
+    let worst: JointSample | null = null
+    let worstScore = -1
+    for (const d of snapshot.details) {
+      const check = def.checks.find((c) => c.label === d.label)
+      if (!check) continue
+      const score = d.status === 'good' ? 0 : 1
+      if (score > worstScore) {
+        worstScore = score
+        worst = {
+          label:        d.label,
+          current:      d.deg,
+          ideal:        check.ideal,
+          status:       d.status,
+          measuredPeak: peakLookup(d.label),
+        }
+      }
+    }
+    if (!worst) return
+    const cue = pickCueFromJoint(worst, cueStreamRef.current)
+    if (cue) speakQueued(cue.text)
+  }, [snapshot, def.checks, peakLookup, voiceIn.listening, voiceIn.interimTranscript, speakQueued])
 
   // ── RAF loop — step machine ─────────────────────────────────────────────
   useEffect(() => {
@@ -499,11 +610,10 @@ function AiCoach({
       const held = now - holdStartRef.current
       setHoldElapsed(held)
 
-      // Mid-hold encouragement at ~40%
+      // Mid-hold encouragement — visual only (the directional-cue stream
+      // handles the spoken side now, so we don't double up).
       if (!midCueFiredRef.current && held >= step.holdMs * 0.4 && step.isTimedHold) {
         midCueFiredRef.current = true
-        const secsLeft = Math.ceil((step.holdMs - held) / 1000)
-        speakQueued(`Great — keep holding! About ${secsLeft} seconds left.`)
       }
 
       if (held >= step.holdMs) {
@@ -515,15 +625,12 @@ function AiCoach({
 
         const nextIdx = idx + 1
         if (nextIdx >= steps.length) {
-          // All done
+          // All steps complete — single closing cue from the coach.
           allDoneRef.current = true
           setAllDone(true)
-          speakQueued(step.completionText + ' All steps complete — excellent work!')
+          speakQueued('All steps complete — excellent work.')
         } else {
-          // Speak completion + next instruction
-          speakQueued(step.completionText, () => {
-            setTimeout(() => speakQueued(steps[nextIdx].instruction), 200)
-          })
+          // Quiet step advance — the live cue stream guides the next move.
           setStepIdx(nextIdx)
           stepIdxRef.current = nextIdx
           setStepCheck(null)
@@ -542,10 +649,33 @@ function AiCoach({
   function buildFormContext(): string {
     const snap = snapshotRef.current
     if (!snap || snap.details.length === 0) return 'Camera is still detecting your pose…'
-    const lines = snap.details.map(
-      (d) => `  • ${d.label}: ${Math.round(d.deg)}° → ${d.status.toUpperCase()}`,
-    )
+    const lines = snap.details.map((d) => {
+      const check = def.checks.find((c) => c.label === d.label)
+      const target = check ? ` (target ${check.ideal[0]}–${check.ideal[1]}°)` : ''
+      const peak = peakLookup(d.label)
+      const peakStr = peak !== undefined ? `, user's measured peak ${Math.round(peak)}°` : ''
+      return `  • ${d.label}: ${Math.round(d.deg)}° → ${d.status.toUpperCase()}${target}${peakStr}`
+    })
     return `Overall: ${snap.good ? 'GOOD FORM ✓' : 'NEEDS CORRECTION'}\n${lines.join('\n')}`
+  }
+
+  // ── Build assessment context — summarises the user's measured ROM ───────
+  function buildAssessmentContext(): string {
+    if (!muscleId) return 'No prior assessment data available.'
+    const history = loadROMHistory().filter((r) => r.muscleId === muscleId)
+    if (history.length === 0) return 'No prior assessment data for this muscle yet.'
+    // Best peak per movement, newest tie-break.
+    const byMove = new Map<string, { peak: number; ref: number }>()
+    for (const r of history) {
+      const cur = byMove.get(r.movementId)
+      if (!cur || r.angle > cur.peak) byMove.set(r.movementId, { peak: r.angle, ref: r.reference })
+    }
+    const lines: string[] = []
+    for (const [mv, v] of byMove) {
+      const pct = v.ref > 0 ? Math.round((v.peak / v.ref) * 100) : 0
+      lines.push(`  • ${mv.replace(/_/g, ' ')}: measured peak ${Math.round(v.peak)}° (healthy ${Math.round(v.ref)}°, ${pct}%)`)
+    }
+    return `User's measured ROM (from past assessments):\n${lines.join('\n')}`
   }
 
   function buildStepContext(): string {
@@ -562,19 +692,22 @@ function AiCoach({
     setSending(true)
     voiceIn.stop()
 
-    const systemPrompt = `You are a warm, expert physical therapist coaching a patient through the "${def.title}" exercise. You have real-time pose-tracking data and step-by-step procedure tracking.
+    const systemPrompt = `You are a warm, expert movement coach guiding a user through the "${def.title}" exercise. You have real-time pose tracking AND the user's prior ROM assessment.
 
 ${buildStepContext()}
 
-Current joint angles (live):
+LIVE JOINT ANGLES (this very moment):
 ${buildFormContext()}
 
-Rules:
-• Keep every reply to 1–2 short sentences — it is read aloud during the exercise hold.
-• Be encouraging and specific.
-• You may answer questions about the exercise, muscles, or sensations.
-• Do NOT repeat the step instruction verbatim — they already heard it.
-• Do NOT list multiple things at once.`
+${buildAssessmentContext()}
+
+How to coach:
+• You speak ALONGSIDE a fast local cue engine that already calls out micro-corrections like "bend 10 more degrees" every few seconds. Do NOT duplicate those mechanical cues — your role is the higher-level voice.
+• Use the user's measured peak as the safe ceiling. If their peak is below the healthy target, coach them to THEIR peak, never push past it (+5° at most).
+• Be encouraging, specific, and motion-aware. Reference what their body is actually doing right now ("you've been holding well", "I see you're easing back, good").
+• Keep every reply to 1–2 short sentences. It's read aloud while they're moving.
+• You may answer questions about the exercise, the muscles working, or sensations they describe.
+• Never list multiple things at once and never repeat a generic "good job" — earn the praise with a specific observation.`
 
     const userMsg    = isProactive ? 'Give me a brief motivating cue.' : userText
     const baseHistory: CoachMessage[] = isProactive
@@ -604,7 +737,9 @@ Rules:
       if (reply) {
         const assistantMsg: CoachMessage = { role: 'assistant', content: reply }
         setMessages((m) => [...(isProactive ? m : baseHistory), assistantMsg])
-        voiceOut.speak(reply, () => { if (voiceIn.supported) voiceIn.start() })
+        // Route Claude's voice through speakQueued so it CANCELS any
+        // in-progress local cue first. Prevents the two-voice overlap.
+        speakQueued(reply, () => { if (voiceIn.supported) voiceIn.start() })
       }
     } catch (e) {
       console.error('[AiCoach]', e)
@@ -613,19 +748,24 @@ Rules:
     }
   }
 
-  // ── Proactive coaching every 15 s during hold step when form needs work ─
+  // ── Proactive higher-level coaching ────────────────────────────────────
+  // The local directional-cue engine now handles fast mechanical corrections
+  // ("bend 10 more degrees"). Claude's job here is the deeper coaching beats
+  // — explaining what muscle is engaging, reinforcing good streaks, motivating
+  // through fatigue — at a slower 25 s cadence so it never collides with the
+  // local cue stream.
   const lastProactiveRef = useRef(0)
   useEffect(() => {
     const id = setInterval(() => {
       if (!apiKey || sendingRef.current || voiceOutRef.current.speaking) return
       const snap = snapshotRef.current
       const stepDone = allDoneRef.current
-      if (!snap || snap.good || stepDone) return
+      if (!snap || stepDone) return
       const now = Date.now()
-      if (now - lastProactiveRef.current < 15_000) return
+      if (now - lastProactiveRef.current < 25_000) return
       lastProactiveRef.current = now
       void sendToCoach('', true)
-    }, 4_000)
+    }, 5_000)
     return () => clearInterval(id)
   }, [apiKey]) // eslint-disable-line react-hooks/exhaustive-deps
 

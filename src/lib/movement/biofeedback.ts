@@ -57,10 +57,24 @@ export const EXERCISE_TO_BIOFEEDBACK: Record<string, string> = {
   // ── Rotator cuff ─────────────────────────────────────────────────────────
   side_lying_er:    'side_lying_er',
   post_shoulder:    'sleeper_stretch',
+  wand_rotation:    'side_lying_er',       // both monitor external-rotation angle
   // ── Glutes / hamstrings ───────────────────────────────────────────────────
   glute_bridge:     'glute_bridge',
   hip_hinge:        'hip_hinge',
   side_clamshell:   'side_clamshell',
+  hamstring_squeeze:'hip_hinge',           // similar hip-loading mechanics
+  // ── Biceps brachii ────────────────────────────────────────────────────────
+  bb_flex_ext:         'elbow_flexion',
+  bb_shoulder_flex:    'shoulder_flexion',
+  bb_wall_stretch:     'shoulder_extension',
+  bb_ext_rotation:     'side_lying_er',    // same external-rotation pattern
+  bb_sleeper_stretch:  'sleeper_stretch',
+  // ── Quadriceps ────────────────────────────────────────────────────────────
+  qd_wall_squat:           'knee_squat',
+  qd_stiff_deadlift:       'hip_hinge',
+  qd_quad_stretch_stand:   'quad_stretch',
+  qd_quad_stretch_side:    'quad_stretch',
+  qd_hamstring_supine:     'supine_hamstring',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -451,6 +465,153 @@ export const BIOFEEDBACK_DEFS: Record<string, BiofeedbackDef> = {
             : null,
         belowCue: 'Push the hips back further — hinge more at the hip.',
         aboveCue: 'Don\'t drop the chest too low — keep a neutral spine.',
+      },
+    ],
+  },
+
+  // ── Elbow Flexion / Extension (Biceps brachii flex_ext) ──────────────────
+  // Measures the more-flexed elbow (smaller angle = more bent).  Target the
+  // contracted top position of the curl.
+  elbow_flexion: {
+    exerciseId: 'bb_flex_ext',
+    title:      'Elbow Flexion & Extension',
+    introCue:   'Bring the palm toward your shoulder, then slowly straighten the arm.',
+    checks: [
+      {
+        label:    'Elbow Flexion',
+        ideal:    [40, 90],
+        measure:  (lms) => {
+          const hasL = visible(lms, LM.L_SHOULDER, LM.L_ELBOW, LM.L_WRIST)
+          const hasR = visible(lms, LM.R_SHOULDER, LM.R_ELBOW, LM.R_WRIST)
+          if (!hasL && !hasR) return null
+          const aL = hasL ? jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_ELBOW], lms[LM.L_WRIST]) : 999
+          const aR = hasR ? jointAngleDeg(lms[LM.R_SHOULDER], lms[LM.R_ELBOW], lms[LM.R_WRIST]) : 999
+          return Math.min(aL, aR)  // most-flexed (smallest angle)
+        },
+        belowCue: 'Ease off — don\'t over-flex the elbow.',
+        aboveCue: 'Bend the elbow more — bring the palm closer to the shoulder.',
+      },
+    ],
+  },
+
+  // ── Shoulder Flexion (single arm raise overhead) ──────────────────────────
+  // Pick the arm raised higher; measure hip→shoulder→elbow approaching 180°.
+  shoulder_flexion: {
+    exerciseId: 'bb_shoulder_flex',
+    title:      'Shoulder Flexion',
+    introCue:   'Lift your arm straight forward and up until it points at the ceiling.',
+    checks: [
+      {
+        label:    'Shoulder Flexion',
+        ideal:    [150, 180],
+        measure:  (lms) => {
+          const hasL = visible(lms, LM.L_HIP, LM.L_SHOULDER, LM.L_ELBOW)
+          const hasR = visible(lms, LM.R_HIP, LM.R_SHOULDER, LM.R_ELBOW)
+          if (!hasL && !hasR) return null
+          const aL = hasL ? jointAngleDeg(lms[LM.L_HIP], lms[LM.L_SHOULDER], lms[LM.L_ELBOW]) : 0
+          const aR = hasR ? jointAngleDeg(lms[LM.R_HIP], lms[LM.R_SHOULDER], lms[LM.R_ELBOW]) : 0
+          return Math.max(aL, aR)  // most-raised arm
+        },
+        belowCue: 'Lift the arm higher — reach for the ceiling.',
+        aboveCue: 'Don\'t arch the back — keep the lift smooth and controlled.',
+      },
+    ],
+  },
+
+  // ── Shoulder Extension (wall biceps stretch) ──────────────────────────────
+  // Wall arm — most horizontal arm; ideal close to horizontal (~90° from
+  // vertical) while the body turns away.
+  shoulder_extension: {
+    exerciseId: 'bb_wall_stretch',
+    title:      'Wall Biceps Stretch',
+    introCue:   'Place your palm on the wall behind you with the arm straight, then slowly turn your body away.',
+    checks: [
+      {
+        label:    'Arm Extension',
+        ideal:    [70, 110],
+        measure:  (lms) => {
+          const side = pickWallArm(lms)
+          if (!side) return null
+          const S = side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER
+          const E = side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW
+          if (!visible(lms, S, E)) return null
+          return Math.abs(vectorVerticalAngleDeg(lms[S], lms[E]))
+        },
+        belowCue: 'Straighten the arm more — keep it horizontal on the wall.',
+        aboveCue: 'Lower the elbow slightly — keep the arm at shoulder height.',
+      },
+    ],
+  },
+
+  // ── Wall Squat (knee bend ~90°) ───────────────────────────────────────────
+  knee_squat: {
+    exerciseId: 'qd_wall_squat',
+    title:      'Wall Squat',
+    introCue:   'Stand with your back on the wall, then slide down until your thighs are level with your knees.',
+    checks: [
+      {
+        label:    'Knee Flexion',
+        ideal:    [80, 105],
+        measure:  (lms) => {
+          const hasL = visible(lms, LM.L_HIP, LM.L_KNEE, LM.L_ANKLE)
+          const hasR = visible(lms, LM.R_HIP, LM.R_KNEE, LM.R_ANKLE)
+          if (!hasL && !hasR) return null
+          const aL = hasL ? jointAngleDeg(lms[LM.L_HIP], lms[LM.L_KNEE], lms[LM.L_ANKLE]) : 180
+          const aR = hasR ? jointAngleDeg(lms[LM.R_HIP], lms[LM.R_KNEE], lms[LM.R_ANKLE]) : 180
+          // Most-flexed knee (smaller angle = deeper squat)
+          return Math.min(aL, aR)
+        },
+        belowCue: 'Don\'t go too deep — bring the hips up slightly.',
+        aboveCue: 'Slide a little lower — thighs should be level with your knees.',
+      },
+    ],
+  },
+
+  // ── Quad Stretch (heel toward buttock, knee fully folded) ─────────────────
+  quad_stretch: {
+    exerciseId: 'qd_quad_stretch_stand',
+    title:      'Quadriceps Stretch',
+    introCue:   'Pull your foot toward your buttock and hold the stretch in the front of the thigh.',
+    checks: [
+      {
+        label:    'Knee Flexion (stretch)',
+        ideal:    [20, 60],
+        measure:  (lms) => {
+          const hasL = visible(lms, LM.L_HIP, LM.L_KNEE, LM.L_ANKLE)
+          const hasR = visible(lms, LM.R_HIP, LM.R_KNEE, LM.R_ANKLE)
+          if (!hasL && !hasR) return null
+          const aL = hasL ? jointAngleDeg(lms[LM.L_HIP], lms[LM.L_KNEE], lms[LM.L_ANKLE]) : 180
+          const aR = hasR ? jointAngleDeg(lms[LM.R_HIP], lms[LM.R_KNEE], lms[LM.R_ANKLE]) : 180
+          // Most-flexed knee (the one being stretched)
+          return Math.min(aL, aR)
+        },
+        belowCue: 'Ease the stretch — don\'t force the foot toward the buttock.',
+        aboveCue: 'Pull the heel closer to the buttock for a deeper stretch.',
+      },
+    ],
+  },
+
+  // ── Supine Hamstring Stretch (leg raised straight up) ─────────────────────
+  supine_hamstring: {
+    exerciseId: 'qd_hamstring_supine',
+    title:      'Supine Hamstring Stretch',
+    introCue:   'Lie on your back and lift your leg straight up toward your body.',
+    checks: [
+      {
+        label:    'Hip Flexion',
+        ideal:    [70, 100],
+        measure:  (lms) => {
+          const hasL = visible(lms, LM.L_SHOULDER, LM.L_HIP, LM.L_KNEE)
+          const hasR = visible(lms, LM.R_SHOULDER, LM.R_HIP, LM.R_KNEE)
+          if (!hasL && !hasR) return null
+          // Hip flexion = 180 - (shoulder-hip-knee angle).
+          // Pick the leg with greater flexion (the lifted one).
+          const fL = hasL ? 180 - jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_HIP], lms[LM.L_KNEE]) : 0
+          const fR = hasR ? 180 - jointAngleDeg(lms[LM.R_SHOULDER], lms[LM.R_HIP], lms[LM.R_KNEE]) : 0
+          return Math.max(fL, fR)
+        },
+        belowCue: 'Lift the leg higher toward you — keep it straight.',
+        aboveCue: 'Ease the leg back slightly — feel the stretch without strain.',
       },
     ],
   },
