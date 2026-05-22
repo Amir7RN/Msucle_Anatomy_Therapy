@@ -1191,7 +1191,11 @@ function ReferenceVideo({
         preload="auto"
         playsInline
         muted                              /* always muted — AI coach handles audio */
-        className="w-full h-full object-cover block bg-black"
+        /* object-contain keeps the WHOLE reference clip visible regardless of
+           container aspect (was object-cover, which cropped the demo badly on
+           portrait monitors and mobile). Letterboxing on the side is fine —
+           seeing all of the demo matters more than filling the box. */
+        className="w-full h-full object-contain block bg-black"
         onEnded={handleEnded}
         onLoadedData={() => {
           if (videoRef.current && videoRef.current.currentTime === 0)

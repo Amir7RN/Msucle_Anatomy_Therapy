@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { MousePointerClick, MapPin, Zap, StickyNote, Activity, Play, Mic, Square, Volume2, ChevronDown, ChevronRight, Camera } from 'lucide-react'
 import { ExerciseGuidance } from '../movement/ExerciseGuidance'
 import { AssessmentView } from '../assessment/AssessmentView'
+import { loadROMHistory } from '../../lib/movement/romHistory'
 
 /**
  * Resolve the diagnostic-flavoured muscle_id (e.g. 'deltoid_anterior')
@@ -450,11 +451,14 @@ function VideoCard({
   isActive,
   onSelect,
   onGuide,
+  recommended = false,
 }: {
-  ex:       ExerciseDef
-  isActive: boolean
-  onSelect: () => void
-  onGuide:  (ex: ExerciseDef) => void
+  ex:           ExerciseDef
+  isActive:     boolean
+  onSelect:     () => void
+  onGuide:      (ex: ExerciseDef) => void
+  /** True when this exercise scored highest for the user's measured ROM band. */
+  recommended?: boolean
 }) {
   const videoRef            = useRef<HTMLVideoElement>(null)
   const [playing, setPlaying] = useState(false)
@@ -487,9 +491,17 @@ function VideoCard({
         'relative rounded-lg overflow-hidden border transition-colors group',
         isActive
           ? 'border-emerald-500 dark:border-emerald-500'
-          : 'border-slate-200 dark:border-slate-700 hover:border-emerald-400/60 dark:hover:border-emerald-600/60',
+          : recommended
+            ? 'border-amber-400/70 dark:border-amber-500/70 shadow-[0_0_0_1px_rgba(251,191,36,0.25)]'
+            : 'border-slate-200 dark:border-slate-700 hover:border-emerald-400/60 dark:hover:border-emerald-600/60',
       ].join(' ')}
     >
+      {/* "Recommended" badge — only on top-ranked exercises for the user's ROM */}
+      {recommended && (
+        <div className="pointer-events-none absolute left-1.5 top-1.5 z-10 rounded-md border border-amber-400/70 bg-amber-500/85 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.2em] text-white shadow">
+          ★ Recommended
+        </div>
+      )}
       {/* Video — doubles as thumbnail (first frame) and inline player */}
       <div onClick={handleClick} className="cursor-pointer">
         <video
@@ -543,6 +555,50 @@ function VideoCard({
   )
 }
 
+// ── Exercise tailoring helpers ────────────────────────────────────────────────
+//
+// Categorise each exercise by load profile so the ranker can match it to the
+// user's measured ROM severity.  Keyword-based — cheap but accurate for the
+// current catalogue.
+type LoadCategory = 'gentle' | 'balanced' | 'loaded'
+
+function categoriseExercise(ex: ExerciseDef): LoadCategory {
+  const blob = `${ex.label} ${ex.subtitle}`.toLowerCase()
+  if (/squeeze|isometric|pendulum|reach|hold|stretch|sleeper|stretching/.test(blob))
+    return 'gentle'
+  if (/deadlift|squat|press|row|bridge|hinge|climb|rotation/.test(blob))
+    return 'loaded'
+  return 'balanced'
+}
+
+/** Severity bands from the user's most recent ROM assessments on this muscle. */
+type SeverityBand = 'severe' | 'moderate' | 'good' | 'unknown'
+
+function computeSeverity(muscleId: string): { band: SeverityBand; pct: number | null } {
+  const records = loadROMHistory().filter((r) => r.muscleId === muscleId)
+  if (records.length === 0) return { band: 'unknown', pct: null }
+  // Use the best peak per movement, then average percentages across movements.
+  const best = new Map<string, { angle: number; ref: number }>()
+  for (const r of records) {
+    const cur = best.get(r.movementId)
+    if (!cur || r.angle > cur.angle) best.set(r.movementId, { angle: r.angle, ref: r.reference })
+  }
+  const pcts = Array.from(best.values()).map((v) => (v.ref > 0 ? v.angle / v.ref : 0))
+  const avg = pcts.reduce((a, b) => a + b, 0) / pcts.length
+  const pct = Math.round(avg * 100)
+  if (avg < 0.5)  return { band: 'severe',   pct }
+  if (avg < 0.8)  return { band: 'moderate', pct }
+  return            { band: 'good',     pct }
+}
+
+/** Score table: how much each category fits each severity band. */
+const SCORE_MATRIX: Record<SeverityBand, Record<LoadCategory, number>> = {
+  severe:   { gentle: 3, balanced: 1, loaded: -2 },
+  moderate: { gentle: 2, balanced: 3, loaded:  0 },
+  good:     { gentle: 1, balanced: 2, loaded:  3 },
+  unknown:  { gentle: 1, balanced: 1, loaded:  1 },  // no preference
+}
+
 // ── Exercise video section ────────────────────────────────────────────────────
 
 function ExerciseVideos({ muscleId }: { muscleId: string }) {
@@ -553,10 +609,55 @@ function ExerciseVideos({ muscleId }: { muscleId: string }) {
   // (e.g. 'deltoid_anterior') for a more targeted exercise lookup.
   const subMuscleId = useAtlasStore((s) => s.diagnosticSubMuscleId)
 
+  const effectiveMuscleId = subMuscleId ?? muscleId
   const exercises = (subMuscleId && EXERCISE_MAP[subMuscleId])
     ? EXERCISE_MAP[subMuscleId]
     : EXERCISE_MAP[muscleId]
+
+  // ── Tailor the list to the user's assessment ──────────────────────────
+  // Rank exercises by suitability for the user's measured ROM severity.
+  // The top two for the band get a "Recommended" badge; the loaded
+  // exercises drop down for users with low ROM.
+  const { rankedExercises, severity } = useMemo(() => {
+    if (!exercises) return { rankedExercises: [], severity: { band: 'unknown' as SeverityBand, pct: null } }
+    const sev = computeSeverity(effectiveMuscleId)
+    const scored = exercises.map((ex) => ({
+      ex,
+      score: SCORE_MATRIX[sev.band][categoriseExercise(ex)],
+    }))
+    // Stable sort by score descending (preserves original order on ties).
+    const ranked = scored
+      .map((s, i) => ({ ...s, i }))
+      .sort((a, b) => b.score - a.score || a.i - b.i)
+    return { rankedExercises: ranked, severity: sev }
+  }, [exercises, effectiveMuscleId])
+
   if (!exercises) return null
+
+  // Recommend up to top 2 ranked entries IF user has any assessment data.
+  const recommendedIds = new Set<string>()
+  if (severity.band !== 'unknown') {
+    for (let i = 0; i < Math.min(2, rankedExercises.length); i++) {
+      if (rankedExercises[i].score > 0) recommendedIds.add(rankedExercises[i].ex.id)
+    }
+  }
+
+  // Tailoring banner copy — explains WHY the list is ordered this way.
+  const banner =
+    severity.band === 'severe'
+      ? { tone: 'orange' as const, text: `Your measured ROM is ${severity.pct}% of healthy — we've prioritised gentle stretches first and pushed loaded movements down.` }
+    : severity.band === 'moderate'
+      ? { tone: 'cyan' as const,   text: `Your measured ROM is ${severity.pct}% of healthy — balanced motion is best for you right now.` }
+    : severity.band === 'good'
+      ? { tone: 'emerald' as const,text: `Your measured ROM is ${severity.pct}% of healthy — full-range work is appropriate.` }
+    : null  // no assessment yet — no banner
+
+  const bannerClass =
+    banner?.tone === 'orange'
+      ? 'border-orange-500/40 bg-orange-500/10 text-orange-300'
+    : banner?.tone === 'cyan'
+      ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300'
+    : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
 
   return (
     <>
@@ -566,7 +667,7 @@ function ExerciseVideos({ muscleId }: { muscleId: string }) {
           exerciseId={guidanceEx.id}
           exerciseLabel={guidanceEx.label}
           videoSrc={guidanceEx.src}
-          muscleId={subMuscleId ?? muscleId}
+          muscleId={effectiveMuscleId}
           onClose={() => setGuidanceEx(null)}
         />
       )}
@@ -574,17 +675,24 @@ function ExerciseVideos({ muscleId }: { muscleId: string }) {
       <div className="py-2 border-b border-slate-100 dark:border-slate-700/60">
         <div className="flex items-center gap-1.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-2">
           <Play size={10} />
-          Exercises
+          Exercises {banner && <span className="text-slate-400 normal-case tracking-normal">· tailored to your ROM</span>}
         </div>
 
+        {banner && (
+          <div className={`mb-2 rounded-md border px-2.5 py-1.5 text-[10px] leading-snug ${bannerClass}`}>
+            {banner.text}
+          </div>
+        )}
+
         <div className="flex flex-col gap-2">
-          {exercises.map((ex) => (
+          {rankedExercises.map(({ ex }) => (
             <VideoCard
               key={ex.id}
               ex={ex}
               isActive={activeId === ex.id}
               onSelect={() => setActiveId(ex.id)}
               onGuide={(e) => setGuidanceEx(e)}
+              recommended={recommendedIds.has(ex.id)}
             />
           ))}
         </div>
