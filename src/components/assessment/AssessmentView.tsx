@@ -282,6 +282,16 @@ function AssessmentSession({
   useEffect(() => { ttsRef.current = tts }, [tts])
   // Throttle the "Hold neutral pose" voice cue.
   const lastNeutralCueAt = useRef(0)
+  // Neutral-pose debounce: require N CONSECUTIVE frames of ok-status before
+  // declaring "detected". Without this the calibration timer (and the TTS
+  // cue) fired on the very first ok frame — which routinely happens during
+  // a transient sweep as the user is still moving into position, well
+  // BEFORE they've actually settled into a stable neutral pose. The result
+  // was the spoken "Neutral pose detected" landing 0.5-1s ahead of the
+  // user being ready.
+  const neutralOkStreak = useRef(0)
+  // ~15 frames at 30 fps = 500 ms of sustained "ok" required.
+  const NEUTRAL_FRAMES_REQUIRED = 15
 
   // ── Refs that mirror the latest values of the state above ──────────────
   // CameraView captures the onLandmarks callback ONCE (when it mounts /
@@ -371,34 +381,40 @@ function AssessmentSession({
       setCalibStatus(status)
 
       if (status.ok) {
-        if (calibStartedAt.current === null) {
-          calibStartedAt.current = now
-          if (now - lastNeutralCueAt.current > 4000) {
-            ttsRef.current.speak('Neutral pose detected. Hold for three seconds.')
-            lastNeutralCueAt.current = now
+        // Require sustained ok-status before announcing detection.
+        neutralOkStreak.current += 1
+        if (neutralOkStreak.current >= NEUTRAL_FRAMES_REQUIRED) {
+          if (calibStartedAt.current === null) {
+            calibStartedAt.current = now
+            if (now - lastNeutralCueAt.current > 4000) {
+              ttsRef.current.speak('Neutral pose detected. Hold for three seconds.')
+              lastNeutralCueAt.current = now
+            }
+          }
+          const elapsed = now - calibStartedAt.current
+          setCalibProgress(Math.min(1, elapsed / CALIB_MS))
+          if (elapsed >= CALIB_MS) {
+            // Calibration complete — switch to measurement.  ONE-TIME ONLY:
+            // the only path back to calibration is the tracking-lost safety
+            // net below.
+            phaseRef.current = 'measure'
+            peakRef.current = 0
+            liveRef.current = null
+            measuredFrames.current = 0
+            calibStartedAt.current = null
+            trackingLostSince.current = null
+            neutralOkStreak.current = 0
+            setCalibProgress(0)
+            setError(null)
+            setTrackingWarning(null)
+            setPhase('measure')
+            ttsRef.current.speak(movement.cue)
           }
         }
-        const elapsed = now - calibStartedAt.current
-        setCalibProgress(Math.min(1, elapsed / CALIB_MS))
-        if (elapsed >= CALIB_MS) {
-          // Calibration complete — switch to measurement.  ONE-TIME ONLY:
-          // the only path back to calibration is the tracking-lost safety
-          // net below.
-          phaseRef.current = 'measure'
-          peakRef.current = 0
-          liveRef.current = null
-          measuredFrames.current = 0
-          calibStartedAt.current = null
-          trackingLostSince.current = null
-          setCalibProgress(0)
-          setError(null)
-          setTrackingWarning(null)
-          setPhase('measure')
-          ttsRef.current.speak(movement.cue)
-        }
       } else {
-        // Pose hasn't locked yet — keep waiting.  Don't penalise: the
-        // user might still be settling in.
+        // Pose broke — reset both the streak counter AND the calibration
+        // timer so the user must sustain a TRUE neutral hold from zero.
+        neutralOkStreak.current = 0
         calibStartedAt.current = null
         setCalibProgress(0)
       }
@@ -422,6 +438,7 @@ function AssessmentSession({
         calibStartedAt.current = null
         trackingLostSince.current = null
         lastValidLms.current = null
+        neutralOkStreak.current = 0
         setProgress(0)
         setPeak(0)
         setLive(null)

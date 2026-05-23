@@ -246,25 +246,60 @@ export interface JointMovement {
 //  Measurement helpers — all return degrees in 0..180 with 0 = neutral
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Shoulder abduction: angle between the trunk (hip→shoulder) and the
- *  upper arm (shoulder→elbow), measured at the shoulder.  0° = arm at side,
- *  180° = arm fully overhead.
+/** Shoulder abduction / flexion — gravity-relative.
  *
- *  Hip + shoulder are anchors (always visible when the user is standing
- *  straight); elbow can dip if the upper arm is partially out of frame at
- *  full overhead reach, so it gets the looser threshold. */
+ *  Old version computed hip-to-shoulder-to-elbow.  That measures arm angle
+ *  relative to the same-side TRUNK, so a slight lean (e.g. looking up at the
+ *  camera) tilts the trunk axis and SUBTRACTS that tilt from the reported
+ *  ROM.  A user with the arm visibly straight up read ~144° instead of 180°.
+ *
+ *  New version measures the upper-arm vector's angle from the GRAVITY axis
+ *  (MediaPipe world Y, gravity-aligned).  Body lean is irrelevant — what
+ *  matters is how far the elbow has travelled from "hanging by the side"
+ *  toward "pointed at the ceiling".
+ *
+ *    arm hanging by side  : elbow directly below shoulder → 0°
+ *    arm horizontal       : elbow level with shoulder     → 90°
+ *    arm fully overhead   : elbow directly above shoulder → 180°
+ *
+ *  2D fallback uses image-space Y (image Y grows downward = gravity dir).
+ *  Both abduction and flexion use the same calculation in a single-camera
+ *  view; the user is told to raise OUT vs IN by the spoken cue, not the
+ *  measurement.
+ */
 function measureShoulderAbduction(lms: LandmarkSet, side: 'L' | 'R'): number | null {
-  const HIP = side === 'L' ? LM.L_HIP : LM.R_HIP
-  const SH  = side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER
-  const EL  = side === 'L' ? LM.L_ELBOW : LM.R_ELBOW
-  if (!visAnchor(lms, HIP, SH)) return null
-  if (!vis(lms, EL))            return null
-  return jointAngleDeg(lms[HIP], lms[SH], lms[EL])
+  const SH = side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER
+  const EL = side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW
+  if (!visAnchor(lms, SH)) return null
+  if (!vis(lms, EL))       return null
+  const sh = lms[SH], el = lms[EL]
+
+  // Prefer 3-D world coords when available — they are gravity-aligned and
+  // independent of camera angle / body lean.
+  if (sh.wx !== undefined && el.wx !== undefined) {
+    const dx = el.wx - sh.wx
+    const dy = el.wy! - sh.wy!     // +y = downward (gravity direction)
+    const dz = el.wz! - sh.wz!
+    const len = Math.hypot(dx, dy, dz)
+    if (len < 1e-6) return 0
+    // cos(angle from gravity) = dy / len.
+    //   dy positive (elbow below shoulder)  → cos=+1 → 0°  (arm down)
+    //   dy negative (elbow above shoulder)  → cos=-1 → 180° (arm overhead)
+    const cosG = dy / len
+    return (Math.acos(Math.max(-1, Math.min(1, cosG))) * 180) / Math.PI
+  }
+
+  // 2-D fallback: image Y is also the gravity direction (grows downward).
+  const dx2 = el.x - sh.x
+  const dy2 = el.y - sh.y          // +y = elbow below shoulder
+  const len2 = Math.hypot(dx2, dy2)
+  if (len2 < 1e-6) return 0
+  const cosG2 = dy2 / len2
+  return (Math.acos(Math.max(-1, Math.min(1, cosG2))) * 180) / Math.PI
 }
 
-/** Shoulder flexion (forward raise): same as abduction in our 2D camera view —
- *  the user faces the camera so flexion appears similar to abduction.  We use
- *  the same formula but instruct the user to raise FORWARD, not OUT. */
+/** Shoulder flexion (forward raise) uses the same gravity-relative measurement
+ *  as abduction; the spoken cue distinguishes raise-forward vs raise-out. */
 const measureShoulderFlexion = measureShoulderAbduction
 
 /** Shoulder external rotation at 90° abduction: angle of the forearm

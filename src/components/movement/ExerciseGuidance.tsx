@@ -526,9 +526,9 @@ function AiCoach({
   }, [muscleId])
 
   /* ── Directional-cue stream — speaks angle-precise local cues. ────────── */
-  const cueStreamRef = useRef<CueStreamState>(createCueStream(3000))
+  const cueStreamRef = useRef<CueStreamState>(createCueStream(1200))
   useEffect(() => {
-    cueStreamRef.current = createCueStream(3000)
+    cueStreamRef.current = createCueStream(1200)
   }, [def.exerciseId])
 
   const [apiKey, setApiKey]   = useState<string | null>(getStoredApiKey)
@@ -593,9 +593,12 @@ function AiCoach({
   // ── Speak helper: queue after current TTS ends ─────────────────────────
   const speakQueued = useCallback((text: string, onEnd?: () => void) => {
     if (!text) return
-    // If speaking, cancel first so the new cue lands immediately
+    // If speaking, cancel first so the new cue lands immediately.
+    // The 20 ms delay is just enough for Web Speech API to flush its
+    // current utterance buffer; previously we waited 80 ms which felt
+    // sluggish on every cue handoff.
     if (voiceOutRef.current.speaking) voiceOutRef.current.cancel()
-    setTimeout(() => voiceOutRef.current.speak(text, onEnd), 80)
+    setTimeout(() => voiceOutRef.current.speak(text, onEnd), 20)
   }, [])
 
   // ── First-cue on mount ──────────────────────────────────────────────────
@@ -623,7 +626,11 @@ function AiCoach({
   useEffect(() => {
     if (!snapshot || snapshot.details.length === 0) return
     if (allDoneRef.current) return
-    if (voiceOutRef.current.speaking) return     // don't talk over Claude
+    // We INTENTIONALLY no longer early-return on voiceOut.speaking. The old
+    // guard waited for Claude's full reply (often 3-5 s) before any
+    // mechanical cue could fire — this was the dominant cause of "the AI
+    // coach is 2 seconds behind". speakQueued cancels in-flight TTS so the
+    // new fast cue lands immediately, then resumes.
     if (voiceIn.listening && voiceIn.interimTranscript) return  // user is asking
 
     // Pair each detail with the FormCheck that produced it (for ideal range).
@@ -838,7 +845,7 @@ How to coach:
       const stepDone = allDoneRef.current
       if (!snap || stepDone) return
       const now = Date.now()
-      if (now - lastProactiveRef.current < 25_000) return
+      if (now - lastProactiveRef.current < 45_000) return
       lastProactiveRef.current = now
       void sendToCoach('', true)
     }, 5_000)
