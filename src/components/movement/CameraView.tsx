@@ -74,39 +74,66 @@ const JOINT_SIZES: Record<number, number> = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Exponential Moving Average (EMA) landmark smoother
+//  Adaptive Exponential Moving Average (EMA) landmark smoother
 //
-//  Reduces per-frame jitter while keeping the skeleton responsive to real
-//  movement.  ALPHA controls the trade-off:
-//    • Higher ALPHA (→1.0) = faster response, more jitter
-//    • Lower  ALPHA (→0.0) = smoother, more lag on fast moves
+//  Fixed-alpha EMA is a poor compromise: at α = 0.35 the skeleton lags
+//  noticeably on a fast bicep curl AND visibly jitters on a still hold.
+//  We now compute alpha per-landmark per-frame from the apparent velocity:
 //
-//  0.35 is a good default for physio-exercise speed — it smooths out 1-frame
-//  detection noise without making the skeleton feel "floaty."
+//    • Slow motion (|Δposition| small)  →  α → α_min (very smooth)
+//    • Fast motion (|Δposition| large)  →  α → α_max (very responsive)
+//
+//  This is a hand-rolled simplification of the One-Euro filter — without
+//  pulling in a dependency we get the main benefit: holds are calm and
+//  fast motions don't visibly trail the body.
+//
+//  The same per-landmark alpha is reused for the world-coord channel so
+//  3-D angles stay in lock-step with the drawn 2-D skeleton.
 // ─────────────────────────────────────────────────────────────────────────────
-const EMA_ALPHA = 0.35
+
+const A_MIN     = 0.18   // calm hold — strong smoothing
+const A_MAX     = 0.80   // fast move — minimal smoothing
+const V_REF     = 0.05   // image-space velocity (norm units / frame) at which α saturates
+const VIS_ALPHA = 0.20   // visibility decays gradually — see note below
+
+function adaptiveAlpha(curr: LandmarkSet[number], prev: LandmarkSet[number]): number {
+  // |Δposition| in normalised image space.  0.005 ≈ small jitter, 0.05 ≈ full
+  // limb crossing the frame in a single frame interval.
+  const d = Math.hypot(curr.x - prev.x, curr.y - prev.y)
+  const t = Math.min(1, d / V_REF)
+  return A_MIN + (A_MAX - A_MIN) * t
+}
 
 function smoothLandmarks(current: LandmarkSet, prev: LandmarkSet | null): LandmarkSet {
   if (!prev || prev.length === 0) return current
   return current.map((lm, i): LandmarkSet[number] => {
     const p = prev[i]
     if (!lm || !p) return lm
-    // Visibility is also smoothed — but with a SLOWER decay than position.
-    // MediaPipe's per-frame visibility is noisy: a wrist held overhead can
-    // flicker between 0.6 and 0.05 in adjacent frames even when the actual
-    // hand position is stable.  Smoothing visibility means a 1-frame dip
-    // from 0.6 → 0.05 becomes 0.6 → 0.45 → 0.3 → 0.2 (over ~4 frames),
-    // which keeps the measurement engaged through the dip.  If the
-    // landmark really is lost (visibility stays 0), the smoothed value
-    // decays past the threshold within ~150ms.
-    const VIS_ALPHA = 0.20   // slower than position EMA so dips fade gradually
+    const a = adaptiveAlpha(lm, p)
+    // Visibility is smoothed with a slow constant alpha — MediaPipe's per-
+    // frame visibility flickers (a wrist held overhead can dip from 0.6 to
+    // 0.05 between frames even when the hand isn't moving).  Slow decay
+    // keeps measurements engaged through 1–2 frame dips; if the landmark
+    // really is lost (visibility stays 0), the smoothed value falls past
+    // the 0.5 threshold within ~150 ms.
     const smoothedVis =
       VIS_ALPHA * (lm.visibility ?? 0) + (1 - VIS_ALPHA) * (p.visibility ?? 0)
+
+    // World-coord smoothing — only when BOTH curr and prev have world coords.
+    // (First few frames before MediaPipe locks the depth model can have
+    // gaps; we propagate the world channel only once it's reliably present.)
+    const hasWorld =
+      lm.wx !== undefined && lm.wy !== undefined && lm.wz !== undefined &&
+      p.wx  !== undefined && p.wy  !== undefined && p.wz  !== undefined
+
     return {
-      x:          EMA_ALPHA * lm.x + (1 - EMA_ALPHA) * p.x,
-      y:          EMA_ALPHA * lm.y + (1 - EMA_ALPHA) * p.y,
-      z:          EMA_ALPHA * (lm.z ?? 0) + (1 - EMA_ALPHA) * (p.z ?? 0),
+      x:          a * lm.x + (1 - a) * p.x,
+      y:          a * lm.y + (1 - a) * p.y,
+      z:          a * (lm.z ?? 0) + (1 - a) * (p.z ?? 0),
       visibility: smoothedVis,
+      wx: hasWorld ? a * lm.wx! + (1 - a) * p.wx! : lm.wx,
+      wy: hasWorld ? a * lm.wy! + (1 - a) * p.wy! : lm.wy,
+      wz: hasWorld ? a * lm.wz! + (1 - a) * p.wz! : lm.wz,
     }
   })
 }

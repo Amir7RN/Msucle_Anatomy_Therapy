@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 import { CameraView } from './CameraView'
 import type { LandmarkSet } from '../../lib/movement/landmarks'
+import { LM } from '../../lib/movement/landmarks'
 import {
   BIOFEEDBACK_DEFS,
   EXERCISE_TO_BIOFEEDBACK,
@@ -105,9 +106,49 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
   const currentStreakRef = useRef(0)
   const [bestHoldSec, setBestHoldSec] = useState(0)
 
+  // ── Pose-readiness gate ───────────────────────────────────────────────
+  // Single-camera depth + angle estimation collapses when the user's torso
+  // anchor (shoulders + hips) is partially out of frame.  This is the
+  // dominant accuracy failure mode reported as "the angles are off when I
+  // turn" — what's actually happening is one shoulder going invisible and
+  // MediaPipe back-filling a guess.  We expose a small badge that turns
+  // green only when ALL four torso anchors are seen with confidence > 0.7
+  // (well above the 0.5 working threshold so we have headroom).  Smoothed
+  // over 5 frames so a single-frame dip doesn't strobe the badge.
+  const POSE_OK_VIS  = 0.7
+  const POSE_WIN     = 5
+  const poseHistRef  = useRef<boolean[]>([])
+  const [poseLocked, setPoseLocked] = useState(false)
+  const [poseHint,   setPoseHint]   = useState<string>('Step into frame…')
+
   const handleLandmarks = useCallback((lms: LandmarkSet) => {
     // Always update lmsRef so AiCoach step-machine can read it
     lmsRef.current = lms
+
+    // Torso-anchor readiness check — runs even when there's no biofeedback def
+    const ls = lms[LM.L_SHOULDER], rs = lms[LM.R_SHOULDER]
+    const lh = lms[LM.L_HIP],      rh = lms[LM.R_HIP]
+    const torsoOk =
+      (ls?.visibility ?? 0) >= POSE_OK_VIS &&
+      (rs?.visibility ?? 0) >= POSE_OK_VIS &&
+      (lh?.visibility ?? 0) >= POSE_OK_VIS &&
+      (rh?.visibility ?? 0) >= POSE_OK_VIS
+    poseHistRef.current.push(torsoOk)
+    if (poseHistRef.current.length > POSE_WIN) poseHistRef.current.shift()
+    const passing = poseHistRef.current.filter(Boolean).length
+    const locked  = passing >= Math.ceil(POSE_WIN * 0.6)
+    setPoseLocked(locked)
+    if (!locked) {
+      // Build a specific repositioning hint based on which anchor is weakest.
+      const worst = [
+        { v: ls?.visibility ?? 0, msg: 'Left shoulder hidden — step back / center yourself.' },
+        { v: rs?.visibility ?? 0, msg: 'Right shoulder hidden — step back / center yourself.' },
+        { v: lh?.visibility ?? 0, msg: 'Left hip out of frame — step further back.' },
+        { v: rh?.visibility ?? 0, msg: 'Right hip out of frame — step further back.' },
+      ].sort((a, b) => a.v - b.v)[0]
+      setPoseHint(worst.v < 0.3 ? worst.msg : 'Face the camera so both shoulders + hips are visible.')
+    }
+
     if (!def) return
     const snap = evaluateExercise(lms, def)
 
@@ -206,11 +247,14 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
     perfHistoryRef.current = []
     currentRepStatsRef.current = { good: 0, total: 0 }
     currentStreakRef.current = 0
+    poseHistRef.current = []
     setSnapshot(null)
     setFormScore(0)
     setJointAccuracy([])
     setRepScores([])
     setBestHoldSec(0)
+    setPoseLocked(false)
+    setPoseHint('Step into frame…')
     lmsRef.current = null
     repTrackerRef.current.reset()
     setRepCount(0)
@@ -291,10 +335,39 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
               </div>
             )}
 
-            {/* "Your pose" label */}
-            <div className="absolute top-1.5 left-1.5 text-[9px] font-semibold text-slate-400 bg-black/60 px-1.5 py-0.5 rounded">
-              YOUR POSE
-            </div>
+            {/* Pose-lock indicator — REPLACES the static "Your pose" label.
+                Green = torso anchors all visible above 0.7 confidence over the
+                last ~5 frames; angles are trustworthy.  Orange = anchor
+                missing; the system tells the user what to do about it instead
+                of silently mis-measuring. */}
+            {cameraReady && (
+              <div
+                className={[
+                  'absolute top-1.5 left-1.5 flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-semibold backdrop-blur',
+                  poseLocked
+                    ? 'bg-emerald-700/85 text-emerald-50 ring-1 ring-emerald-400/50'
+                    : 'bg-orange-700/85 text-orange-50 ring-1 ring-orange-400/50',
+                ].join(' ')}
+                title={poseLocked ? 'Anchors locked — angles are accurate' : poseHint}
+              >
+                <span
+                  className={[
+                    'inline-block w-1.5 h-1.5 rounded-full',
+                    poseLocked ? 'bg-emerald-300' : 'bg-orange-300 animate-pulse',
+                  ].join(' ')}
+                />
+                {poseLocked ? 'POSE LOCKED' : 'POSITION'}
+              </div>
+            )}
+
+            {/* Reposition hint banner — only when not locked.  Sits above the
+                form-cue banner so the user is told "where to stand" before
+                "what to fix in your form". */}
+            {cameraReady && !poseLocked && (
+              <div className="absolute bottom-7 left-0 right-0 px-2 py-1 text-center text-[10px] font-medium bg-orange-900/75 text-orange-100">
+                {poseHint}
+              </div>
+            )}
 
             {/* Rep counter — top-right of camera feed */}
             {cameraReady && def && (

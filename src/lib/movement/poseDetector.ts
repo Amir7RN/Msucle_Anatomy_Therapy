@@ -101,14 +101,28 @@ export function detectVideoFrame(
   timestamp: number,
 ): LandmarkSet | null {
   const result = detector.detectForVideo(video, timestamp)
-  const list = result.landmarks?.[0]
-  if (!list || list.length === 0) return null
-  return list.map((p) => ({
-    x:          p.x,
-    y:          p.y,
-    z:          p.z ?? 0,
-    visibility: p.visibility ?? 0,
-  }))
+  const img   = result.landmarks?.[0]
+  if (!img || img.length === 0) return null
+
+  // World landmarks (metres, hip-centered, gravity-aligned) are emitted in
+  // parallel and indexed identically.  They're the basis for accurate joint
+  // angles when the user is rotated relative to the camera — image-space
+  // angles foreshorten in that case, world-space ones do not.  Heavy model
+  // produces these reliably; lite model is also fine but noisier.
+  const world = result.worldLandmarks?.[0]
+
+  return img.map((p, i) => {
+    const w = world?.[i]
+    return {
+      x:          p.x,
+      y:          p.y,
+      z:          p.z ?? 0,
+      visibility: p.visibility ?? 0,
+      wx:         w ? w.x : undefined,
+      wy:         w ? w.y : undefined,
+      wz:         w ? w.z : undefined,
+    }
+  })
 }
 
 export function disposeDetector(): void {
