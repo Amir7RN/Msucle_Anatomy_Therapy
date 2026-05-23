@@ -134,9 +134,9 @@ function AtlasApp() {
       {/* Main body */}
       <div className="flex flex-1 min-h-0 overflow-hidden relative">
 
-        {/* Left sidebar — always shown on desktop; shown as full overlay on mobile when mobilePanel='chat' */}
+        {/* Left sidebar wrapper. h-full + min-h-0 propagate the height anchor down to the inner structures clamp. */}
         <div className={[
-          'flex-shrink-0 flex flex-col',
+          'flex-shrink-0 flex flex-col h-full min-h-0',
           // Desktop: always visible as a side column
           // Mobile: hidden by default; shown as absolute overlay when chat panel is open
           mobilePanel === 'chat'

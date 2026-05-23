@@ -1,12 +1,9 @@
 /**
  * LeftSidebar.tsx
  *
- * New layout — the sidebar is always split:
- *   80 %  AI Diagnosis chat  (always visible, voice-ready)
- *   20 %  Structures tree    (compact, scrollable, mini search)
- *
- * FilterPanel and LayerVisibilityPanel have been removed — the AI chat
- * is now the primary discovery surface.
+ * Sidebar layout: AI Diagnosis chat fills remaining height, Structures
+ * section is locked to a fixed pixel height so expanding a category never
+ * pushes the chat off-screen.
  */
 
 import React from 'react'
@@ -15,7 +12,6 @@ import { StructureTree } from '../controls/StructureTree'
 import { useStructureSearch } from '../../hooks/useStructureSearch'
 import { useAtlasStore } from '../../store/atlasStore'
 
-// ── Compact result count ──────────────────────────────────────────────────────
 function ResultCount() {
   const results = useStructureSearch()
   return (
@@ -25,7 +21,6 @@ function ResultCount() {
   )
 }
 
-// ── Mini search for the structures section ────────────────────────────────────
 function MiniSearch() {
   const query    = useAtlasStore((s) => s.searchQuery)
   const setQuery = useAtlasStore((s) => s.setSearchQuery)
@@ -40,42 +35,40 @@ function MiniSearch() {
   )
 }
 
-// ── Main sidebar ──────────────────────────────────────────────────────────────
+const noop = () => undefined
+
+const chatSlotStyle: React.CSSProperties = {
+  flex:      '1 1 0',
+  minHeight: 0,
+}
+
+const structuresSlotStyle: React.CSSProperties = {
+  height:    200,
+  maxHeight: 200,
+  minHeight: 200,
+  flex:      '0 0 200px',
+}
+
 export function LeftSidebar() {
   return (
-    <aside
-      className="flex flex-col border-r border-slate-700 bg-slate-900 flex-shrink-0 overflow-hidden w-full md:w-[300px] h-full"
-    >
-      {/* ── AI Diagnosis — 80 % ─────────────────────────────────────────── */}
-      {/* Always open, inline, no close button. */}
-      <div className="flex flex-col min-h-0" style={{ flex: 1 }}>
-        <TriageChat
-          open
-          onClose={() => {/* panel is always open — no-op */}}
-          inline
-        />
+    <aside className="flex flex-col border-r border-slate-700 bg-slate-900 flex-shrink-0 overflow-hidden w-full md:w-[300px] h-full">
+      <div className="flex flex-col min-h-0 overflow-hidden" style={chatSlotStyle}>
+        <TriageChat open onClose={noop} inline />
       </div>
-
-      {/* ── Structures — 20 % — desktop only (hidden on mobile) ────────── */}
       <div
-        className="hidden md:flex flex-col border-t border-slate-700 flex-shrink-0"
-        style={{ flex: '0 0 162px' }}
+        className="hidden md:flex md:flex-col border-t border-slate-700 flex-shrink-0 overflow-hidden"
+        style={structuresSlotStyle}
       >
-        {/* Header row */}
         <div className="flex items-center justify-between px-3 py-1.5 flex-shrink-0 border-b border-slate-700/60">
           <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
             Structures
           </span>
           <ResultCount />
         </div>
-
-        {/* Mini search */}
         <div className="px-2 py-1.5 flex-shrink-0">
           <MiniSearch />
         </div>
-
-        {/* Tree */}
-        <div className="flex-1 overflow-y-auto px-1.5 pb-1">
+        <div className="flex-1 min-h-0 overflow-y-auto px-1.5 pb-1">
           <StructureTree />
         </div>
       </div>

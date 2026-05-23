@@ -444,7 +444,7 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
           </div>
           <div className="mt-1 flex items-center justify-between text-[9px] text-slate-500">
             <span>Enter to send · Shift-Enter newline</span>
-            <span>Not medical advice</span>
+            <span>General-purpose suggestions</span>
           </div>
         </div>
       )}
@@ -635,4 +635,3 @@ function ApiKeyEntry({ onSave }: { onSave: (key: string) => void }) {
     </div>
   )
 }
-   
