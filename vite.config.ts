@@ -10,6 +10,10 @@ const base = process.env.VITE_BASE_PATH ?? '/'
 
 export default defineConfig({
   base,
+  // Expose BOTH the standard VITE_ prefix AND the NEXT_PUBLIC_ prefix to
+  // client code via import.meta.env. This is a forgiving fallback for env
+  // files copied from Next.js projects — the supabase client reads either.
+  envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
   plugins: [react()],
   resolve: {
     alias: {

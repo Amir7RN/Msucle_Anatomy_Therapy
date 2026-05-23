@@ -1,0 +1,101 @@
+-- ════════════════════════════════════════════════════════════════════════════
+-- Zevahealth / Muscle Atlas — Supabase Schema
+--
+-- Run this once in your Supabase project: Dashboard → SQL Editor → New query
+-- → paste this whole file → Run.
+--
+-- It creates ONE table (rom_history) and enables Row Level Security with
+-- policies that scope every row to its owner via auth.uid().
+-- ════════════════════════════════════════════════════════════════════════════
+
+-- ── Table: rom_history ──────────────────────────────────────────────────────
+-- Per-user log of measured range-of-motion samples from the assessment flow.
+
+create table if not exists public.rom_history (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null references auth.users(id) on delete cascade,
+  muscle_id    text not null,
+  movement_id  text not null,
+  side         text not null check (side in ('L', 'R')),
+  angle        double precision not null,
+  reference    double precision not null,
+  created_at   timestamptz not null default now()
+);
+
+-- Index for the typical read pattern (per-user, time-ordered).
+create index if not exists rom_history_user_created_idx
+  on public.rom_history (user_id, created_at desc);
+
+-- Index for the muscle-specific lookups (peakLookup in ExerciseGuidance).
+create index if not exists rom_history_user_muscle_idx
+  on public.rom_history (user_id, muscle_id);
+
+-- ── Row Level Security ──────────────────────────────────────────────────────
+-- Without RLS the anon key would let anyone read/write any row. These
+-- policies scope every operation to rows where user_id = auth.uid().
+
+alter table public.rom_history enable row level security;
+
+-- Drop any old policies before recreating (so this file is idempotent).
+drop policy if exists "rom_history_select_own" on public.rom_history;
+drop policy if exists "rom_history_insert_own" on public.rom_history;
+drop policy if exists "rom_history_update_own" on public.rom_history;
+drop policy if exists "rom_history_delete_own" on public.rom_history;
+
+create policy "rom_history_select_own"
+  on public.rom_history for select
+  using (auth.uid() = user_id);
+
+create policy "rom_history_insert_own"
+  on public.rom_history for insert
+  with check (auth.uid() = user_id);
+
+create policy "rom_history_update_own"
+  on public.rom_history for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create policy "rom_history_delete_own"
+  on public.rom_history for delete
+  using (auth.uid() = user_id);
+
+-- ── Default user_id on insert ───────────────────────────────────────────────
+-- The client doesn't have to send user_id explicitly — set it from the JWT.
+
+create or replace function public.set_rom_history_user_id()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.user_id is null then
+    new.user_id := auth.uid();
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists rom_history_set_user_id on public.rom_history;
+create trigger rom_history_set_user_id
+  before insert on public.rom_history
+  for each row execute function public.set_rom_history_user_id();
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- Notes
+--
+-- 1. Email confirmation: Dashboard → Authentication → Providers → Email →
+--    set "Confirm email" to OFF for fastest local testing. Turn it back ON
+--    for production.
+--
+-- 2. Test it: sign up via the in-app modal, then run this in SQL Editor to
+--    see your own user_id:
+--        select id, email from auth.users;
+--    Insert a row by hand to confirm the trigger sets user_id from your JWT:
+--        insert into public.rom_history (muscle_id, movement_id, side, angle, reference)
+--        values ('biceps_brachii_R', 'elbow_flexion', 'R', 142, 180);
+--
+-- 3. The app's migrateLocalStorageToSupabase() will fire automatically on
+--    your first sign-in if you already have localStorage history — those
+--    rows will land here with the correct user_id.
+-- ════════════════════════════════════════════════════════════════════════════

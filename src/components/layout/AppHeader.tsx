@@ -1,18 +1,26 @@
 import React, { useState } from 'react'
-import { Activity } from 'lucide-react'
+import { Activity, LogOut, LogIn } from 'lucide-react'
 import { ActionButtons } from '../controls/ActionButtons'
 import { CameraPresetBar } from '../controls/CameraPresetBar'
 import { useAtlasStore } from '../../store/atlasStore'
+import { useAuth } from '../../lib/auth/authContext'
+import { AuthModal } from '../auth/AuthModal'
 
 export function AppHeader() {
   const modelStatus = useAtlasStore((s) => s.modelStatus)
+  const { user, signOut } = useAuth()
   const [showPresets, setShowPresets] = useState(false)
+  const [authOpen,    setAuthOpen]    = useState(false)
+  const [signingOut,  setSigningOut]  = useState(false)
+
+  async function handleSignOut() {
+    setSigningOut(true)
+    try { await signOut() } finally { setSigningOut(false) }
+  }
 
   return (
     <header className="flex flex-col border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-shrink-0 z-20">
-      {/* Main header row */}
       <div className="flex items-center justify-between px-4 h-14">
-        {/* Brand */}
         <div className="flex items-center gap-2.5 min-w-[180px]">
           <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary-500">
             <Activity size={16} className="text-white" />
@@ -27,12 +35,9 @@ export function AppHeader() {
           </div>
         </div>
 
-        {/* Action toolbar */}
         <ActionButtons />
 
-        {/* Right: model status + preset toggle */}
-        <div className="hidden md:flex items-center gap-3 min-w-[160px] justify-end">
-          {/* Camera views toggle */}
+        <div className="hidden md:flex items-center gap-3 min-w-[280px] justify-end">
           <button
             onClick={() => setShowPresets((v) => !v)}
             className={`text-[10px] px-2 py-1 rounded border transition-colors ${
@@ -45,7 +50,6 @@ export function AppHeader() {
             📷 Views
           </button>
 
-          {/* Model status */}
           <div className="flex items-center gap-2">
             <div
               className={`w-2 h-2 rounded-full flex-shrink-0 ${
@@ -68,15 +72,44 @@ export function AppHeader() {
                 : 'Loading…'}
             </span>
           </div>
+
+          {user ? (
+            <div className="flex items-center gap-2 pl-3 border-l border-slate-200 dark:border-slate-700">
+              <span
+                className="text-[10px] text-slate-500 dark:text-slate-400 max-w-[140px] truncate"
+                title={user.email ?? ''}
+              >
+                {user.email}
+              </span>
+              <button
+                onClick={handleSignOut}
+                disabled={signingOut}
+                className="text-slate-400 hover:text-red-400 transition-colors disabled:opacity-50"
+                title="Sign out"
+              >
+                <LogOut size={14} />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setAuthOpen(true)}
+              className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded border border-cyan-500/50 text-cyan-500 hover:bg-cyan-500/10 transition-colors"
+              title="Sign in to sync your assessment history"
+            >
+              <LogIn size={12} />
+              Sign in
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Camera presets row — shown when toggled */}
       {showPresets && (
         <div className="border-t border-slate-100 dark:border-slate-700/60 px-4 py-2">
           <CameraPresetBar />
         </div>
       )}
+
+      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
     </header>
   )
 }

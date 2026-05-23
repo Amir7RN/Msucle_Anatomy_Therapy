@@ -244,6 +244,9 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
 
   useEffect(() => {
     frameBuffer.current = []
+    poseHistRef.current = []
+    setPoseLocked(false)
+    setPoseHint('Step into frame…')
     perfHistoryRef.current = []
     currentRepStatsRef.current = { good: 0, total: 0 }
     currentStreakRef.current = 0

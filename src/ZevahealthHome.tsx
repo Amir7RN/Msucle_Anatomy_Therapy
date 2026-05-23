@@ -4,11 +4,15 @@ import {
   Bot,
   Camera,
   ChevronRight,
+  LogIn,
+  LogOut,
   MessageSquare,
   Mic,
   ScanSearch,
   Sparkles,
 } from 'lucide-react'
+import { useAuth } from './lib/auth/authContext'
+import { AuthModal } from './components/auth/AuthModal'
 
 type ZevahealthHomeProps = {
   atlasUrl: string
@@ -61,6 +65,9 @@ function useInView<T extends HTMLElement>(threshold = 0.25) {
 }
 
 export function ZevahealthHome({ atlasUrl, diagnosticUrl }: ZevahealthHomeProps) {
+  const { user, signOut } = useAuth()
+  const [authOpen, setAuthOpen] = useState(false)
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin')
   return (
     <main className="h-full min-h-screen overflow-y-auto bg-[#05070d] text-white">
       {/* Background ambience */}
@@ -80,12 +87,48 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl }: ZevahealthHomeProps)
               <span className="block text-xs text-slate-400">Move smarter. Feel better.</span>
             </span>
           </a>
-          <a
-            href={diagnosticUrl}
-            className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-200/70 hover:bg-cyan-300/20"
-          >
-            Open App
-          </a>
+          <div className="flex items-center gap-2 sm:gap-3">
+            {user ? (
+              <>
+                <span
+                  className="hidden sm:inline text-xs text-slate-300/80 max-w-[160px] truncate"
+                  title={user.email ?? ''}
+                >
+                  {user.email}
+                </span>
+                <button
+                  onClick={() => signOut()}
+                  title="Sign out"
+                  className="flex items-center gap-1.5 rounded-full border border-white/15 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-white/30 hover:bg-white/5"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Sign out</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => { setAuthMode('signin'); setAuthOpen(true) }}
+                  className="flex items-center gap-1.5 rounded-full border border-cyan-300/30 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:border-cyan-200/70 hover:bg-cyan-300/10"
+                >
+                  <LogIn className="h-3.5 w-3.5" />
+                  Sign in
+                </button>
+                <button
+                  onClick={() => { setAuthMode('signup'); setAuthOpen(true) }}
+                  className="hidden sm:inline rounded-full bg-cyan-200 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-white"
+                >
+                  Sign up
+                </button>
+              </>
+            )}
+            <a
+              href={diagnosticUrl}
+              className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-200/70 hover:bg-cyan-300/20"
+            >
+              Open App
+            </a>
+          </div>
         </div>
       </nav>
 
@@ -178,6 +221,7 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl }: ZevahealthHomeProps)
         Zevahealth AI — built for every body. Suggestive, general-purpose movement guidance. Not a substitute for
         professional advice.
       </footer>
+      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} initialMode={authMode} />
     </main>
   )
 }

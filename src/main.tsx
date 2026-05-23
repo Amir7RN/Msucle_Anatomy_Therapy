@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import { ZevahealthHome } from './ZevahealthHome'
 import { useAtlasStore } from './store/atlasStore'
+import { AuthProvider } from './lib/auth/authContext'
 import './index.css'
 
 function Root() {
@@ -32,6 +33,8 @@ function AtlasEntry({ diagnosticRequested }: { diagnosticRequested: boolean }) {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <Root />
+    <AuthProvider>
+      <Root />
+    </AuthProvider>
   </React.StrictMode>,
 )
