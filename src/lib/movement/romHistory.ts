@@ -50,6 +50,27 @@ let currentUserId: string | null = null
 let activeStorageKey: string = ANON_KEY
 let cache: ROMRecord[] = readFromStorage(ANON_KEY)
 
+// ─── Reactive layer ──────────────────────────────────────────────────────────
+// Components (e.g. MetadataPanel) need to re-rank exercises when a new ROM
+// record is saved or the cache is replaced after sign-in. Plain mutation of
+// the module-level cache doesn't trigger React renders, so we publish a
+// monotonic version counter on every change. Components subscribe via the
+// useROMVersion hook below and add the returned number to their useMemo
+// deps — re-running the severity computation when it ticks.
+let romVersion = 0
+const romSubscribers = new Set<() => void>()
+function bumpVersion(): void {
+  romVersion += 1
+  for (const cb of romSubscribers) {
+    try { cb() } catch { /* subscriber error - skip */ }
+  }
+}
+export function getROMVersion(): number { return romVersion }
+export function subscribeROM(cb: () => void): () => void {
+  romSubscribers.add(cb)
+  return () => { romSubscribers.delete(cb) }
+}
+
 function readFromStorage(key: string): ROMRecord[] {
   try {
     const raw = localStorage.getItem(key)
@@ -107,6 +128,7 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
   } catch (err) {
     console.warn('[romHistory] hydrateFromSupabase failed:', err)
   }
+  bumpVersion()
 }
 
 /**
@@ -124,6 +146,7 @@ export function clearSupabaseUser(): void {
   currentUserId    = null
   activeStorageKey = ANON_KEY
   cache            = []
+  bumpVersion()
 }
 
 // ─── Background Supabase write ───────────────────────────────────────────────
@@ -154,6 +177,7 @@ export function saveROMRecord(rec: ROMRecord): void {
   if (cache.length > MAX_RECORDS) cache = cache.slice(-MAX_RECORDS)
   writeToStorage(activeStorageKey, cache)
   pushToSupabase(rec)
+  bumpVersion()
 }
 
 export function getRecordsFor(
@@ -178,6 +202,7 @@ export function computeImprovement(records: ROMRecord[]): number | null {
 export function clearROMHistory(): void {
   cache = []
   try { localStorage.removeItem(activeStorageKey) } catch {}
+  bumpVersion()
 }
 
 // ─── Compatibility shim ──────────────────────────────────────────────────────

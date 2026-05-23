@@ -4,6 +4,7 @@ import { MousePointerClick, MapPin, Zap, StickyNote, Activity, Play, Mic, Square
 import { ExerciseGuidance } from '../movement/ExerciseGuidance'
 import { AssessmentView } from '../assessment/AssessmentView'
 import { loadROMHistory } from '../../lib/movement/romHistory'
+import { useROMVersion } from '../../hooks/useROMVersion'
 
 /**
  * Resolve the diagnostic-flavoured muscle_id (e.g. 'deltoid_anterior')
@@ -618,6 +619,9 @@ function ExerciseVideos({ muscleId }: { muscleId: string }) {
   // Rank exercises by suitability for the user's measured ROM severity.
   // The top two for the band get a "Recommended" badge; the loaded
   // exercises drop down for users with low ROM.
+  // Subscribe to ROM changes so the memo re-runs after each assessment.
+  const romVersion = useROMVersion()
+
   const { rankedExercises, severity } = useMemo(() => {
     if (!exercises) return { rankedExercises: [], severity: { band: 'unknown' as SeverityBand, pct: null } }
     const sev = computeSeverity(effectiveMuscleId)
@@ -630,7 +634,8 @@ function ExerciseVideos({ muscleId }: { muscleId: string }) {
       .map((s, i) => ({ ...s, i }))
       .sort((a, b) => b.score - a.score || a.i - b.i)
     return { rankedExercises: ranked, severity: sev }
-  }, [exercises, effectiveMuscleId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exercises, effectiveMuscleId, romVersion])
 
   if (!exercises) return null
 
