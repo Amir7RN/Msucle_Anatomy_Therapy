@@ -49,15 +49,27 @@ jobs:
       - name: Build for GitHub Pages
         # VITE_BASE_PATH tells vite.config.ts to prefix all asset URLs with
         # the repo sub-path so the app works at /Msucle_Anatomy_Therapy/
+        #
         # VITE_ANTHROPIC_API_KEY is baked into the JS bundle at build time so
-        # visitors don't need to enter their own key.  Set it in:
+        # visitors don't need to enter their own key.
+        #
+        # VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are baked in for auth +
+        # ROM history persistence on the deployed site. The anon key is
+        # designed to be public (RLS protects rows server-side).
+        #
+        # Set all three in:
         #   GitHub repo → Settings → Secrets and variables → Actions → New secret
-        #   Name: VITE_ANTHROPIC_API_KEY   Value: sk-ant-...
+        #     VITE_ANTHROPIC_API_KEY   sk-ant-...
+        #     VITE_SUPABASE_URL        https://YOUR-PROJECT.supabase.co
+        #     VITE_SUPABASE_ANON_KEY   eyJhbGciOi...
+        #
         # NODE_OPTIONS gives the Node process extra heap for minifying large bundles.
         run: npm run build
         env:
           VITE_BASE_PATH: /Msucle_Anatomy_Therapy/
           VITE_ANTHROPIC_API_KEY: ${{ secrets.VITE_ANTHROPIC_API_KEY }}
+          VITE_SUPABASE_URL:      ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           NODE_OPTIONS: --max-old-space-size=4096
 
       - name: Configure GitHub Pages

@@ -69,7 +69,7 @@ type Phase = 'idle' | 'calibrate' | 'measure' | 'result'
 // measurement window — the user was confused about whether to listen or
 // move. Peak is captured continuously so a slightly late motion still gets
 // recorded.
-const HOLD_MS = 8000
+const HOLD_MS = 6000
 
 // 3-second NEUTRAL-POSE calibration — once the user is in a true neutral
 // standing pose we count down 3 seconds and move on.  Calibration runs ONCE
@@ -310,6 +310,12 @@ function AssessmentSession({
   const liveRef          = useRef<number | null>(null)
   const measuredFrames   = useRef(0)   // count of frames that yielded an angle
   const startedAt        = useRef<number>(0)
+  // True wall-clock 'GO' moment - the timer doesn't start until this is set
+  // by the chained TTS onEnd for "Begin in three... two... one... GO!".
+  // Null means measure phase is active but the user hasn't been told to go
+  // yet (coach is still explaining); the timer effect treats that as 0
+  // elapsed and just keeps tracking peak.
+  const measureReadyAt   = useRef<number | null>(null)
   const calibStartedAt   = useRef<number | null>(null)   // wall-clock ms when neutral pose first locked
   const lastValidLms     = useRef<LandmarkSet | null>(null)   // sticky cache for measurement
   const lastValidAt      = useRef<number>(0)
@@ -323,15 +329,27 @@ function AssessmentSession({
   useEffect(() => {
     if (phase !== 'measure') return
     let raf = 0
-    startedAt.current = performance.now()
+    // DON'T set startedAt here any more - we wait for measureReadyAt to be
+    // set by the "GO" TTS onEnd callback. This prevents the window from
+    // elapsing while the coach is still explaining what to do.
+    startedAt.current = 0
     measuredFrames.current = 0
     trackingLostSince.current = null
     const tick = () => {
+      // Always track peak (the user might start moving early on the
+      // explanation -> we'd rather catch that peak than miss it).
+      setPeak(peakRef.current)
+      setLive(liveRef.current)
+      // The HOLD_MS clock only runs after the GO cue has actually played.
+      if (measureReadyAt.current === null) {
+        setProgress(0)
+        raf = requestAnimationFrame(tick)
+        return
+      }
+      if (startedAt.current === 0) startedAt.current = measureReadyAt.current
       const elapsed = performance.now() - startedAt.current
       const p = Math.min(1, elapsed / HOLD_MS)
       setProgress(p)
-      setPeak(peakRef.current)
-      setLive(liveRef.current)
       if (p >= 1) {
         // Save whatever peak we got — even if zero — and show the result.
         // We don't bounce back to calibration here any more; the user asked
@@ -421,15 +439,23 @@ function AssessmentSession({
             setError(null)
             setTrackingWarning(null)
             setPhase('measure')
-            // Phased coaching: first announce success, then explain the
-            // movement using the rich howTo (plain language). If no howTo
-            // is defined fall back to the legacy short cue.
-            ttsRef.current.speak('Great. Locked in.')
+            // Phased coaching chained through TTS onEnd callbacks so the
+            // measurement window starts AFTER the user has actually heard
+            // the "Begin" cue. Previous code used hardcoded setTimeout
+            // delays that fired before TTS finished on a slowed (0.85x)
+            // rate -> user heard the explanation but measurement ended
+            // before "Begin" played. measureReadyAt stays null until the
+            // begin TTS completes; the timer effect respects that.
+            measureReadyAt.current = null
             const explanation = movement.howTo || movement.cue
-            setTimeout(() => { ttsRef.current.speak(explanation) }, 1200)
-            // "Get ready" beat right before the user is expected to move,
-            // so they know the measurement window is now live.
-            setTimeout(() => { ttsRef.current.speak('Begin when ready.') }, 5800)
+            ttsRef.current.speak('Great. Locked in.', () => {
+              ttsRef.current.speak(explanation, () => {
+                ttsRef.current.speak('Begin in three... two... one... GO!', () => {
+                  // ONLY now do we start the measurement clock.
+                  measureReadyAt.current = performance.now()
+                })
+              })
+            })
           }
         }
       } else {
@@ -460,6 +486,8 @@ function AssessmentSession({
         trackingLostSince.current = null
         lastValidLms.current = null
         neutralOkStreak.current = 0
+        measureReadyAt.current = null
+        startedAt.current = 0
         setProgress(0)
         setPeak(0)
         setLive(null)

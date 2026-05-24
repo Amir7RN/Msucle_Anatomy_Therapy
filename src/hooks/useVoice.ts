@@ -394,7 +394,11 @@ export function useVoiceOutput(lang = 'en-US'): UseVoiceOutputResult {
     }
     const utt = new SpeechSynthesisUtterance(text)
     utt.lang  = lang
-    utt.rate  = 1.0
+    // 0.85 = ~15 % slower than the synth default — easier to follow when
+    // the coach is delivering multi-sentence movement instructions during
+    // an assessment. The user repeatedly reported the default rate felt
+    // rushed.
+    utt.rate  = 0.85
     utt.pitch = 1.0
     if (voice) utt.voice = voice
     utt.onstart = () => setSpeaking(true)

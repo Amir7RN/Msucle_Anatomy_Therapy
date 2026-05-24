@@ -153,16 +153,28 @@ export function clearSupabaseUser(): void {
 
 function pushToSupabase(rec: ROMRecord): void {
   if (!currentUserId) return
+  // user_id is sent EXPLICITLY (not relying on the optional DB trigger).
+  // This makes inserts succeed whether the user's Supabase project has
+  // the trigger installed or not. RLS still scopes rows by auth.uid().
   supabase.from('rom_history').insert({
+    user_id:     currentUserId,
     muscle_id:   rec.muscleId,
     movement_id: rec.movementId,
     side:        rec.side,
     angle:       rec.angle,
     reference:   rec.reference,
-    // user_id is set by the DB trigger from auth.uid().
-    // created_at defaults to now().
   }).then(({ error }) => {
-    if (error) console.warn('[romHistory] supabase insert failed:', error)
+    if (error) {
+      // Loud error so a misconfigured DB / missing table / RLS issue is
+      // obvious in DevTools. Common causes:
+      //  - 42P01 / "relation does not exist" -> user hasn't run supabase-schema.sql
+      //  - 42501 / "permission denied" -> RLS policy missing or wrong
+      //  - 23502 / "null value in column" -> user_id wasn't set; check schema
+      console.error('[romHistory] Supabase insert FAILED:', error,
+        '\nRecord:', { muscle_id: rec.muscleId, movement_id: rec.movementId, side: rec.side, angle: rec.angle },
+        '\nFix: run docs/supabase-schema.sql in your Supabase project SQL editor.',
+      )
+    }
   })
 }
 
