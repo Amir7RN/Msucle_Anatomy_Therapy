@@ -99,3 +99,31 @@ create trigger rom_history_set_user_id
 --    your first sign-in if you already have localStorage history — those
 --    rows will land here with the correct user_id.
 -- ════════════════════════════════════════════════════════════════════════════
+
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- OPTIONAL: user_programs — persists the AI-generated 4-week mobility plan
+-- so it survives device changes. If skipped, the program still works (it
+-- falls back to localStorage), it just won't sync across browsers.
+-- ════════════════════════════════════════════════════════════════════════════
+
+create table if not exists public.user_programs (
+  user_id      uuid primary key references auth.users(id) on delete cascade,
+  generated_at timestamptz not null default now(),
+  title        text not null,
+  plan         jsonb not null
+);
+
+alter table public.user_programs enable row level security;
+
+drop policy if exists "user_programs_select_own" on public.user_programs;
+drop policy if exists "user_programs_upsert_own" on public.user_programs;
+
+create policy "user_programs_select_own"
+  on public.user_programs for select
+  using (auth.uid() = user_id);
+
+create policy "user_programs_upsert_own"
+  on public.user_programs for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);

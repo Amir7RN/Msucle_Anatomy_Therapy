@@ -1,10 +1,12 @@
 import React, { useState } from 'react'
-import { Activity, LogOut, LogIn } from 'lucide-react'
+import { Activity, LogOut, LogIn, Sparkles, Scan } from 'lucide-react'
 import { ActionButtons } from '../controls/ActionButtons'
 import { CameraPresetBar } from '../controls/CameraPresetBar'
 import { useAtlasStore } from '../../store/atlasStore'
 import { useAuth } from '../../lib/auth/authContext'
 import { AuthModal } from '../auth/AuthModal'
+import { SymmetryReport } from '../insights/SymmetryReport'
+import { PersonalProgramView } from '../insights/PersonalProgramView'
 
 export function AppHeader() {
   const modelStatus = useAtlasStore((s) => s.modelStatus)
@@ -12,6 +14,8 @@ export function AppHeader() {
   const [showPresets, setShowPresets] = useState(false)
   const [authOpen,    setAuthOpen]    = useState(false)
   const [signingOut,  setSigningOut]  = useState(false)
+  const [symOpen,     setSymOpen]     = useState(false)
+  const [progOpen,    setProgOpen]    = useState(false)
 
   async function handleSignOut() {
     setSigningOut(true)
@@ -48,6 +52,26 @@ export function AppHeader() {
             title="Toggle camera view presets"
           >
             📷 Views
+          </button>
+
+          {/* Symmetry Heatmap — opens the L/R asymmetry report */}
+          <button
+            onClick={() => setSymOpen(true)}
+            title="Open Symmetry Report — compare your left vs right ROM"
+            className="flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded border border-cyan-400/40 text-cyan-500 hover:bg-cyan-500/10 transition-colors"
+          >
+            <Scan size={11} />
+            Symmetry
+          </button>
+
+          {/* AI Personal Program — opens the 4-week plan */}
+          <button
+            onClick={() => setProgOpen(true)}
+            title="Open your AI-generated 4-week mobility program"
+            className="flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded border border-orange-400/40 text-orange-500 hover:bg-orange-500/10 transition-colors"
+          >
+            <Sparkles size={11} />
+            My Program
           </button>
 
           <div className="flex items-center gap-2">
@@ -110,6 +134,8 @@ export function AppHeader() {
       )}
 
       <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
+      <SymmetryReport       open={symOpen}  onClose={() => setSymOpen(false)} />
+      <PersonalProgramView open={progOpen} onClose={() => setProgOpen(false)} />
     </header>
   )
 }

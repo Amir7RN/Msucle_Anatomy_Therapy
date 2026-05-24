@@ -49,6 +49,8 @@ import {
   type JointSample,
 } from '../../lib/movement/directionalCue'
 import { loadROMHistory } from '../../lib/movement/romHistory'
+import { computeActivation, activationRegionColors } from '../../lib/movement/muscleActivation'
+import { BodySilhouette } from '../insights/BodySilhouette'
 
 // ── Smoothing buffer ──────────────────────────────────────────────────────────
 const SMOOTH_FRAMES = 8
@@ -398,6 +400,11 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
             quantitative feedback derived from the angle data we already
             compute every frame.                                         */}
         <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
+
+        {/* Live muscle activation overlay — body silhouette tinted by which
+            muscles are firing for the current pose. Educational + the kind
+            of demoable wow that screenshots well. */}
+        <ActivationOverlay snapshot={snapshot} hasDef={!!def} />
 
         {/* Performance tracker — fills the previously-empty area */}
         <PerformanceTracker
@@ -1300,6 +1307,39 @@ function ReferenceVideo({
       )}
       <div className="absolute bottom-0 left-0 right-0 px-2 py-1.5 bg-gradient-to-t from-black/80 to-transparent">
         <p className="text-[10px] font-medium text-white/80 leading-tight truncate">{label}</p>
+      </div>
+    </div>
+  )
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  ActivationOverlay — body silhouette tinted by per-muscle firing intensity
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ActivationOverlay({ snapshot, hasDef }: { snapshot: FormSnapshot | null; hasDef: boolean }) {
+  if (!hasDef) return null
+  const activations = computeActivation(snapshot)
+  const colors = activationRegionColors(activations)
+  const top = activations.slice(0, 4)
+  return (
+    <div className="w-full md:w-48 flex-shrink-0 flex flex-col border-r border-slate-700 bg-slate-950/60 p-3">
+      <div className="text-[10px] uppercase tracking-wider text-cyan-300 font-semibold mb-1.5">
+        Muscle activation
+      </div>
+      <div className="flex-1 min-h-0 flex items-center justify-center">
+        <BodySilhouette regionColors={colors} width={132} height={264} baseFill="#1e293b" outline="#334155" />
+      </div>
+      <div className="mt-1 space-y-0.5">
+        {top.length === 0 && (
+          <div className="text-[10px] text-slate-500 italic">Move into position to engage muscles…</div>
+        )}
+        {top.map((a) => (
+          <div key={a.muscleId} className="flex items-center justify-between text-[10px]">
+            <span className="text-slate-300 truncate">{a.muscleId.replace(/_/g, ' ')}</span>
+            <span className="font-mono tabular-nums text-orange-300">{Math.round(a.level * 100)}%</span>
+          </div>
+        ))}
       </div>
     </div>
   )

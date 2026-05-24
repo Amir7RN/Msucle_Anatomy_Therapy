@@ -40,6 +40,7 @@ import {
   computeImprovement,
   type ROMRecord,
 } from '../../lib/movement/romHistory'
+import { useROMVersion } from '../../hooks/useROMVersion'
 import type { LandmarkSet } from '../../lib/movement/landmarks'
 
 function calibrationCopy(seg: 'upper_body' | 'lower_body' | 'trunk' | 'neck'): string {
@@ -156,7 +157,12 @@ export function AssessmentView({ muscleId, muscleName }: Props) {
 function MovementRow({ muscleId, movement }: { muscleId: string; movement: JointMovement }) {
   const [side, setSide] = useState<'L' | 'R'>(movement.side === 'L' ? 'L' : movement.side === 'R' ? 'R' : 'R')
   const [open, setOpen] = useState(false)
-  const records = useMemo(() => getRecordsFor(muscleId, movement.id, side), [muscleId, movement.id, side, open])
+  // Subscribe to ROM history changes so the trend chart updates the moment
+  // an assessment is saved (without this, the useMemo only re-ran when the
+  // user toggled the side or reopened the modal).
+  const romVersion = useROMVersion()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const records = useMemo(() => getRecordsFor(muscleId, movement.id, side), [muscleId, movement.id, side, open, romVersion])
   const last = records[records.length - 1]
   const improvement = computeImprovement(records)
 
@@ -200,15 +206,25 @@ function MovementRow({ muscleId, movement }: { muscleId: string; movement: Joint
         </button>
       </div>
 
-      {/* Trend sparkline */}
-      {records.length >= 2 && (
-        <div className="mt-1.5 flex items-center gap-2">
-          <Sparkline records={records} reference={movement.reference.ideal} />
-          {improvement !== null && (
-            <span className={`text-[10px] font-semibold ${improvement >= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
-              {improvement >= 0 ? '+' : ''}{improvement}% vs. last
+      {/* Progressive trend chart - full width, with dots + area + target line */}
+      {records.length >= 1 && (
+        <div className="mt-2">
+          <TrendChart records={records} reference={movement.reference.ideal} />
+          <div className="mt-1 flex items-center justify-between text-[10px]">
+            <span className="text-slate-500">
+              <span className="text-slate-400">{records.length}</span> session{records.length === 1 ? '' : 's'}
+              {records.length >= 2 && (
+                <>
+                  {' · '}best <span className="text-emerald-300 tabular-nums">{Math.round(Math.max(...records.map((r) => r.angle)))}°</span>
+                </>
+              )}
             </span>
-          )}
+            {improvement !== null && (
+              <span className={`font-semibold ${improvement >= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {improvement >= 0 ? '▲ +' : '▼ '}{improvement}% vs. last session
+              </span>
+            )}
+          </div>
         </div>
       )}
 
@@ -229,21 +245,88 @@ function pct(angle: number, ref: number) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Sparkline — last N records as a tiny SVG line
+//  TrendChart - progressive plot of past assessment peaks for one movement.
+//
+//  Shows the last N sessions as a continuous line with dots, the target
+//  reference as a dashed horizontal line, the area under the curve filled,
+//  and the latest value annotated. Much more legible than the old 90x22
+//  micro-sparkline.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function Sparkline({ records, reference }: { records: ROMRecord[]; reference: number }) {
-  const W = 90, H = 22, P = 2
-  const xs = records.map((_, i) => P + (i * (W - P * 2)) / Math.max(1, records.length - 1))
-  const ys = records.map((r) => H - P - (Math.min(1, r.angle / reference)) * (H - P * 2))
-  const d  = xs.map((x, i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${ys[i].toFixed(1)}`).join(' ')
+function TrendChart({ records, reference }: { records: ROMRecord[]; reference: number }) {
+  const W = 280, H = 64, PL = 6, PR = 30, PT = 8, PB = 14   // pad-left/right/top/bottom
+  const innerW = W - PL - PR
+  const innerH = H - PT - PB
+  // Cap the visible series at the last 12 records so older trends don't
+  // squash the chart.
+  const data = records.slice(-12)
+  const n = data.length
+  const xs = data.map((_, i) => PL + (n === 1 ? innerW / 2 : (i * innerW) / (n - 1)))
+  // Normalise Y against the target reference. Cap visual at 1.10 (110 %)
+  // so a hyper-flexible result still fits without rescaling the chart.
+  const Y_MAX = Math.max(1.1, ...data.map((r) => r.angle / reference))
+  const ys = data.map((r) => PT + innerH - (Math.min(Y_MAX, r.angle / reference) / Y_MAX) * innerH)
+  const path = xs.map((x, i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${ys[i].toFixed(1)}`).join(' ')
+  // Closed path for the area fill underneath the line.
+  const area = `${path} L ${xs[n - 1].toFixed(1)} ${(PT + innerH).toFixed(1)} L ${xs[0].toFixed(1)} ${(PT + innerH).toFixed(1)} Z`
+  // Where 100 % of reference sits on the chart.
+  const refY = PT + innerH - (1 / Y_MAX) * innerH
+  const last = data[n - 1]
+  const lastX = xs[n - 1]
+  const lastY = ys[n - 1]
+  const lastIsGood = (last.angle / reference) >= 0.8
+
   return (
-    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="rounded bg-slate-900">
-      <line x1={P} x2={W - P} y1={H * 0.18} y2={H * 0.18} stroke="#64748b" strokeWidth={0.4} strokeDasharray="2 2" />
-      <path d={d} fill="none" stroke="#fb923c" strokeWidth="1.4" />
+    <svg
+      width="100%"
+      height={H}
+      viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="none"
+      className="rounded bg-slate-950/60 ring-1 ring-slate-700/60"
+    >
+      <defs>
+        <linearGradient id="rom-area" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"  stopColor="#fb923c" stopOpacity="0.45" />
+          <stop offset="100%" stopColor="#fb923c" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+
+      {/* Target reference dashed line */}
+      <line
+        x1={PL} x2={W - PR}
+        y1={refY} y2={refY}
+        stroke="#64748b" strokeWidth="0.8" strokeDasharray="3 3"
+      />
+      <text x={W - PR + 2} y={refY + 3} fontSize="9" fill="#64748b" fontFamily="ui-monospace,monospace">
+        {Math.round(reference)}°
+      </text>
+
+      {/* Filled area under the curve */}
+      {n >= 2 && <path d={area} fill="url(#rom-area)" />}
+
+      {/* Trend line */}
+      {n >= 2 && <path d={path} fill="none" stroke="#fb923c" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />}
+
+      {/* Per-session dots */}
       {xs.map((x, i) => (
-        <circle key={i} cx={x} cy={ys[i]} r="1.6" fill="#fb923c" />
+        <circle
+          key={i}
+          cx={x} cy={ys[i]} r={i === n - 1 ? 3 : 2}
+          fill={i === n - 1 ? (lastIsGood ? '#34d399' : '#fb923c') : '#fb923c'}
+          stroke="#0f172a" strokeWidth="0.8"
+        />
       ))}
+
+      {/* Latest-value annotation */}
+      <text
+        x={lastX + 5}
+        y={Math.max(10, lastY - 4)}
+        fontSize="10" fontWeight="600"
+        fill={lastIsGood ? '#34d399' : '#fb923c'}
+        fontFamily="ui-monospace,monospace"
+      >
+        {Math.round(last.angle)}°
+      </text>
     </svg>
   )
 }
