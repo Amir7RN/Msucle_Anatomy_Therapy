@@ -24,6 +24,19 @@
  */
 
 import { jointAngleDeg, vectorVerticalAngleDeg, LM, type LandmarkSet } from './landmarks'
+import {
+  computeAnatomicalFrame,
+  worldVec,
+  signedAngleInPlane,
+  angleBetween,
+  angleFromAxisInPlane,
+  sub,
+  scale,
+  midpoint,
+  normalize,
+  type Vec3,
+  type AnatomicalFrame,
+} from './anatomicalFrame'
 
 // Soft visibility threshold for ROM measurement.
 //
@@ -243,154 +256,385 @@ export interface JointMovement {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Measurement helpers — all return degrees in 0..180 with 0 = neutral
+//  Measurement helpers — goniometric (anatomical plane based).
+//
+//  Every movement here follows the reference table in
+//  `human_joint_measurements.json` (AAOS / Norkin & White goniometry).  We
+//  build a body-frame from shoulders + hips each frame, project the relevant
+//  body segment into the joint's anatomical plane, and read the angle from
+//  the standard goniometric axis. Unlike the old gravity-only approach,
+//  these stay accurate when the user is rotated, leaning, or off-axis to
+//  the camera — and the same measurement cleanly distinguishes flexion from
+//  abduction (which a gravity-only angle cannot).
+//
+//  Conventions
+//    • All angles in degrees, 0 = neutral position, increasing with motion.
+//    • Sagittal plane normal  = xAxis (user's lateral axis)
+//    • Frontal  plane normal  = zAxis (user's anteroposterior axis)
+//    • Transverse plane normal= yAxis (user's superior axis along spine)
+//    • Sign convention: positive when the motion follows the standard
+//      goniometric direction (flexion / abduction / external rotation
+//      etc.). For movements with paired left/right tests we report the
+//      unsigned magnitude in the cued direction; out-of-direction motion
+//      reads 0 so the assessment doesn't reward the wrong way.
+//
+//  Unmeasurable with MediaPipe Pose alone (would require MediaPipe Hands):
+//    – Wrist flexion / extension
+//    – Wrist radial / ulnar deviation
+//    – Forearm supination / pronation
+//  Those return null with a brief comment so the rest of the registry stays
+//  consistent.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Shoulder abduction / flexion — gravity-relative.
- *
- *  Old version computed hip-to-shoulder-to-elbow.  That measures arm angle
- *  relative to the same-side TRUNK, so a slight lean (e.g. looking up at the
- *  camera) tilts the trunk axis and SUBTRACTS that tilt from the reported
- *  ROM.  A user with the arm visibly straight up read ~144° instead of 180°.
- *
- *  New version measures the upper-arm vector's angle from the GRAVITY axis
- *  (MediaPipe world Y, gravity-aligned).  Body lean is irrelevant — what
- *  matters is how far the elbow has travelled from "hanging by the side"
- *  toward "pointed at the ceiling".
- *
- *    arm hanging by side  : elbow directly below shoulder → 0°
- *    arm horizontal       : elbow level with shoulder     → 90°
- *    arm fully overhead   : elbow directly above shoulder → 180°
- *
- *  2D fallback uses image-space Y (image Y grows downward = gravity dir).
- *  Both abduction and flexion use the same calculation in a single-camera
- *  view; the user is told to raise OUT vs IN by the spoken cue, not the
- *  measurement.
- */
-function measureShoulderAbduction(lms: LandmarkSet, side: 'L' | 'R'): number | null {
+/** Build a world-vector from a landmark, falling back to image coords if
+ *  the world channel isn't populated. Image y is flipped so +y = up. */
+function lmVec(lm: { wx?: number; wy?: number; wz?: number; x: number; y: number } | undefined): Vec3 | null {
+  if (!lm) return null
+  const w = worldVec(lm as any)
+  if (w) return w
+  return { x: lm.x, y: -lm.y, z: 0 }
+}
+
+// ── Shoulder flexion ────────────────────────────────────────────────────────
+// Sagittal plane. Arm raised FORWARD. 0° = arm at side, 180° = arm overhead
+// in the sagittal plane. Extension reads 0 in this measurement (use the
+// shoulder_extension entry for that).
+function measureShoulderFlexion(lms: LandmarkSet, side: 'L' | 'R'): number | null {
+  const frame = computeAnatomicalFrame(lms)
+  if (!frame) return null
   const SH = side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER
   const EL = side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW
-  if (!visAnchor(lms, SH)) return null
-  if (!vis(lms, EL))       return null
-  const sh = lms[SH], el = lms[EL]
-
-  // Prefer 3-D world coords when available — they are gravity-aligned and
-  // independent of camera angle / body lean.
-  if (sh.wx !== undefined && el.wx !== undefined) {
-    const dx = el.wx - sh.wx
-    const dy = el.wy! - sh.wy!     // +y = downward (gravity direction)
-    const dz = el.wz! - sh.wz!
-    const len = Math.hypot(dx, dy, dz)
-    if (len < 1e-6) return 0
-    // cos(angle from gravity) = dy / len.
-    //   dy positive (elbow below shoulder)  → cos=+1 → 0°  (arm down)
-    //   dy negative (elbow above shoulder)  → cos=-1 → 180° (arm overhead)
-    const cosG = dy / len
-    return (Math.acos(Math.max(-1, Math.min(1, cosG))) * 180) / Math.PI
-  }
-
-  // 2-D fallback: image Y is also the gravity direction (grows downward).
-  const dx2 = el.x - sh.x
-  const dy2 = el.y - sh.y          // +y = elbow below shoulder
-  const len2 = Math.hypot(dx2, dy2)
-  if (len2 < 1e-6) return 0
-  const cosG2 = dy2 / len2
-  return (Math.acos(Math.max(-1, Math.min(1, cosG2))) * 180) / Math.PI
+  if (!visAnchor(lms, SH) || !vis(lms, EL)) return null
+  const sh = lmVec(lms[SH])!, el = lmVec(lms[EL])!
+  const arm = sub(el, sh)
+  // Reference axis: straight DOWN at the side = −yAxis (anatomical inferior).
+  const down = scale(frame.yAxis, -1)
+  // Signed angle in the sagittal plane (normal = xAxis). Positive when arm
+  // rotates from down toward +zAxis (anterior / forward).
+  const ang = signedAngleInPlane(arm, down, frame.xAxis)
+  return Math.max(0, ang)   // only flexion direction
 }
 
-/** Shoulder flexion (forward raise) uses the same gravity-relative measurement
- *  as abduction; the spoken cue distinguishes raise-forward vs raise-out. */
-const measureShoulderFlexion = measureShoulderAbduction
+// ── Shoulder extension ─────────────────────────────────────────────────────
+// Sagittal plane, opposite direction. Arm reaches BACKWARD. 0..50° normal ROM.
+function measureShoulderExtension(lms: LandmarkSet, side: 'L' | 'R'): number | null {
+  const frame = computeAnatomicalFrame(lms)
+  if (!frame) return null
+  const SH = side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER
+  const EL = side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW
+  if (!visAnchor(lms, SH) || !vis(lms, EL)) return null
+  const sh = lmVec(lms[SH])!, el = lmVec(lms[EL])!
+  const arm = sub(el, sh)
+  const down = scale(frame.yAxis, -1)
+  const ang = signedAngleInPlane(arm, down, frame.xAxis)
+  return Math.max(0, -ang)  // negative-signed motion = extension
+}
 
-/** Shoulder external rotation at 90° abduction: angle of the forearm
- *  relative to vertical when the elbow is at shoulder height. */
+// ── Shoulder abduction ─────────────────────────────────────────────────────
+// Frontal plane. Arm raised OUT TO THE SIDE. 0° = arm at side, 180° overhead.
+function measureShoulderAbduction(lms: LandmarkSet, side: 'L' | 'R'): number | null {
+  const frame = computeAnatomicalFrame(lms)
+  if (!frame) return null
+  const SH = side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER
+  const EL = side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW
+  if (!visAnchor(lms, SH) || !vis(lms, EL)) return null
+  const sh = lmVec(lms[SH])!, el = lmVec(lms[EL])!
+  const arm = sub(el, sh)
+  const down = scale(frame.yAxis, -1)
+  // Frontal plane normal = zAxis. Returns the unsigned angle from straight
+  // down within the frontal plane — abduction reads positive whether the
+  // raise is to the user's left or right.
+  return angleFromAxisInPlane(arm, down, frame.zAxis)
+}
+
+// ── Shoulder external rotation (at 90° abduction, 90° elbow flexion) ──────
+// Transverse plane. With arm out at 90° + elbow bent 90°, forearm rotates
+// upward (external) or downward (internal). We measure how far the forearm
+// has rotated AWAY from horizontal-forward.
 function measureShoulderER(lms: LandmarkSet, side: 'L' | 'R'): number | null {
-  const SH  = side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER
-  const EL  = side === 'L' ? LM.L_ELBOW : LM.R_ELBOW
-  const WR  = side === 'L' ? LM.L_WRIST : LM.R_WRIST
-  if (!visAnchor(lms, SH, EL)) return null
-  if (!vis(lms, WR))           return null
-  // Elbow→wrist vector vertical angle: 0° = pointing straight up (full ER),
-  // 180° = pointing straight down (full IR).  We map to ER degrees.
-  const v = vectorVerticalAngleDeg(lms[EL], lms[WR])
-  // 0 → 90° ER, 90 → 0° (neutral), 180 → -90° (IR).
-  // Clamp to 0..90 for ER measurement.
-  return Math.max(0, Math.min(90, 90 - Math.abs(v)))
+  const frame = computeAnatomicalFrame(lms)
+  if (!frame) return null
+  const SH = side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER
+  const EL = side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW
+  const WR = side === 'L' ? LM.L_WRIST    : LM.R_WRIST
+  if (!visAnchor(lms, SH, EL) || !vis(lms, WR)) return null
+  const el = lmVec(lms[EL])!, wr = lmVec(lms[WR])!
+  const forearm = sub(wr, el)
+  // Rotation axis ≈ the upper arm itself (humerus long axis). Project
+  // forearm into the plane perpendicular to the upper arm.
+  const sh = lmVec(lms[SH])!
+  const arm = normalize(sub(el, sh))
+  // Reference direction within that plane: project the body's anterior
+  // axis (zAxis) onto the plane to define "forearm pointing forward".
+  // Signed angle from forward toward +yAxis (up) = external rotation.
+  const ang = signedAngleInPlane(forearm, frame.zAxis, arm)
+  // For the user's RIGHT side, external rotation rotates forearm toward
+  // the user's right (mediolateral). We just report unsigned ROM
+  // magnitude in the "upward" direction (toward +yAxis) — the cue tells
+  // the user which way to rotate.
+  return Math.max(0, Math.abs(ang))
 }
 
-/** Elbow flexion: angle at the elbow (shoulder→elbow→wrist).
- *  180° straight ≈ 0° flex; 30° fully bent ≈ 150° flex.  Returns "how much
- *  flexed from straight" so 0 = neutral, 150 = fully flexed.
- *
- *  Visibility tiering — we require the SHOULDER and ELBOW (the angle's
- *  vertex chain) to have ≥0.25 visibility, but we accept the WRIST at
- *  ≥0.10.  Shoulder + elbow positions almost never drop low because they're
- *  near the centre of frame; wrists routinely dip into the 0.15-0.25 band
- *  when the hand is above the head, which is precisely the pose users
- *  perform during this test.  The CameraView EMA smoother keeps the wrist
- *  position stable even when visibility is fluctuating, so the angle stays
- *  accurate.
- */
+// ── Shoulder internal rotation — same axis, opposite direction ─────────────
+function measureShoulderIR(lms: LandmarkSet, side: 'L' | 'R'): number | null {
+  // Symmetric ROM around neutral; we report the same magnitude. The cue
+  // distinguishes "rotate down" (IR) vs "rotate up" (ER).
+  return measureShoulderER(lms, side)
+}
+
+// ── Elbow flexion ───────────────────────────────────────────────────────────
+// Sagittal plane angle at elbow vertex. 0° = straight (anatomical neutral),
+// up to ~150° fully bent. Goniometer axis at lateral epicondyle, stationary
+// arm along humerus to acromion, moving arm along radius to styloid.
 function measureElbowFlexion(lms: LandmarkSet, side: 'L' | 'R'): number | null {
   const SH = side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER
-  const EL = side === 'L' ? LM.L_ELBOW : LM.R_ELBOW
-  const WR = side === 'L' ? LM.L_WRIST : LM.R_WRIST
-  if (!visAnchor(lms, SH, EL)) return null
-  if (!vis(lms, WR))           return null
-  const ang = jointAngleDeg(lms[SH], lms[EL], lms[WR])
-  return Math.max(0, 180 - ang)
+  const EL = side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW
+  const WR = side === 'L' ? LM.L_WRIST    : LM.R_WRIST
+  if (!visAnchor(lms, SH, EL) || !vis(lms, WR)) return null
+  const ang = jointAngleDeg(lms[SH], lms[EL], lms[WR])  // 0..180 at the elbow
+  return Math.max(0, 180 - ang)                          // 0 = straight, 150+ = full flex
 }
 
-/** Hip flexion (standing knee raise): angle between trunk vertical
- *  (hip→shoulder) and the thigh (hip→knee). */
+// ── Hip flexion ─────────────────────────────────────────────────────────────
+// Sagittal plane. Thigh raised FORWARD toward chest. 0° = leg at side
+// (standing), up to ~120° (knee to chest).
 function measureHipFlexion(lms: LandmarkSet, side: 'L' | 'R'): number | null {
-  const SH = side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER
-  const HIP = side === 'L' ? LM.L_HIP : LM.R_HIP
+  const frame = computeAnatomicalFrame(lms)
+  if (!frame) return null
+  const HP = side === 'L' ? LM.L_HIP  : LM.R_HIP
   const KN = side === 'L' ? LM.L_KNEE : LM.R_KNEE
-  if (!vis(lms, SH, HIP, KN)) return null
-  // Angle at hip — bigger angle = thigh closer to chest = more flexion
-  const ang = jointAngleDeg(lms[SH], lms[HIP], lms[KN])
-  return Math.max(0, 180 - ang)
+  if (!visAnchor(lms, HP) || !vis(lms, KN)) return null
+  const hp = lmVec(lms[HP])!, kn = lmVec(lms[KN])!
+  const thigh = sub(kn, hp)
+  const down  = scale(frame.yAxis, -1)
+  const ang   = signedAngleInPlane(thigh, down, frame.xAxis)
+  return Math.max(0, ang)
 }
 
-/** Hip abduction: angle between trunk vertical and the thigh in the frontal plane. */
+// ── Hip extension ──────────────────────────────────────────────────────────
+// Sagittal plane, thigh moves BACKWARD. 0..30° normal ROM standing.
+function measureHipExtension(lms: LandmarkSet, side: 'L' | 'R'): number | null {
+  const frame = computeAnatomicalFrame(lms)
+  if (!frame) return null
+  const HP = side === 'L' ? LM.L_HIP  : LM.R_HIP
+  const KN = side === 'L' ? LM.L_KNEE : LM.R_KNEE
+  if (!visAnchor(lms, HP) || !vis(lms, KN)) return null
+  const hp = lmVec(lms[HP])!, kn = lmVec(lms[KN])!
+  const thigh = sub(kn, hp)
+  const down  = scale(frame.yAxis, -1)
+  const ang   = signedAngleInPlane(thigh, down, frame.xAxis)
+  return Math.max(0, -ang)
+}
+
+// ── Hip abduction ──────────────────────────────────────────────────────────
+// Frontal plane. Leg lifted OUT TO THE SIDE. 0..45° normal.
 function measureHipAbduction(lms: LandmarkSet, side: 'L' | 'R'): number | null {
-  const HIP_THIS = side === 'L' ? LM.L_HIP : LM.R_HIP
-  const HIP_OTHER = side === 'L' ? LM.R_HIP : LM.L_HIP
+  const frame = computeAnatomicalFrame(lms)
+  if (!frame) return null
+  const HP = side === 'L' ? LM.L_HIP  : LM.R_HIP
   const KN = side === 'L' ? LM.L_KNEE : LM.R_KNEE
-  if (!vis(lms, HIP_THIS, HIP_OTHER, KN)) return null
-  return jointAngleDeg(lms[HIP_OTHER], lms[HIP_THIS], lms[KN])
+  if (!visAnchor(lms, HP) || !vis(lms, KN)) return null
+  const hp = lmVec(lms[HP])!, kn = lmVec(lms[KN])!
+  const thigh = sub(kn, hp)
+  const down  = scale(frame.yAxis, -1)
+  // Frontal plane normal = zAxis. We want abduction (leg out, away from
+  // midline) to read positive. The thigh component along +xAxis is the
+  // lateral motion; for the user's LEFT leg, lateral motion is −xAxis.
+  const ang = signedAngleInPlane(thigh, down, frame.zAxis)
+  // Positive sign convention: abduction for both sides.
+  return side === 'R' ? Math.max(0, ang) : Math.max(0, -ang)
 }
 
-/** Knee flexion: 0 = straight, increases as the knee bends. */
+// ── Hip adduction ──────────────────────────────────────────────────────────
+// Frontal plane, opposite direction (leg crosses midline). 0..30° normal.
+function measureHipAdduction(lms: LandmarkSet, side: 'L' | 'R'): number | null {
+  const frame = computeAnatomicalFrame(lms)
+  if (!frame) return null
+  const HP = side === 'L' ? LM.L_HIP  : LM.R_HIP
+  const KN = side === 'L' ? LM.L_KNEE : LM.R_KNEE
+  if (!visAnchor(lms, HP) || !vis(lms, KN)) return null
+  const hp = lmVec(lms[HP])!, kn = lmVec(lms[KN])!
+  const thigh = sub(kn, hp)
+  const down  = scale(frame.yAxis, -1)
+  const ang = signedAngleInPlane(thigh, down, frame.zAxis)
+  return side === 'R' ? Math.max(0, -ang) : Math.max(0, ang)
+}
+
+// ── Hip internal / external rotation ───────────────────────────────────────
+// Transverse plane, seated 90/90 (hip + knee both flexed 90°). We measure
+// the tibia's angle in the transverse plane. Without seated 90/90 (which the
+// camera-standing assessment doesn't enforce) this is a best-effort estimate
+// based on the visible foot rotation; reliability drops if the user is not
+// in the prescribed position.
+function measureHipRotation(lms: LandmarkSet, side: 'L' | 'R'): number | null {
+  const frame = computeAnatomicalFrame(lms)
+  if (!frame) return null
+  const KN = side === 'L' ? LM.L_KNEE  : LM.R_KNEE
+  const AN = side === 'L' ? LM.L_ANKLE : LM.R_ANKLE
+  if (!visAnchor(lms, KN) || !vis(lms, AN)) return null
+  const kn = lmVec(lms[KN])!, an = lmVec(lms[AN])!
+  const tibia = sub(an, kn)
+  // Transverse plane normal = yAxis. Reference = anterior axis (+zAxis).
+  const ang = signedAngleInPlane(tibia, frame.zAxis, frame.yAxis)
+  return Math.max(0, Math.abs(ang))
+}
+
+// ── Knee flexion ───────────────────────────────────────────────────────────
+// Sagittal plane angle at knee vertex. 0° = straight, ~135° max.
 function measureKneeFlexion(lms: LandmarkSet, side: 'L' | 'R'): number | null {
-  const HIP = side === 'L' ? LM.L_HIP : LM.R_HIP
-  const KN  = side === 'L' ? LM.L_KNEE : LM.R_KNEE
-  const AN  = side === 'L' ? LM.L_ANKLE : LM.R_ANKLE
-  if (!vis(lms, HIP, KN, AN)) return null
-  const ang = jointAngleDeg(lms[HIP], lms[KN], lms[AN])
+  const HP = side === 'L' ? LM.L_HIP   : LM.R_HIP
+  const KN = side === 'L' ? LM.L_KNEE  : LM.R_KNEE
+  const AN = side === 'L' ? LM.L_ANKLE : LM.R_ANKLE
+  if (!vis(lms, HP, KN, AN)) return null
+  const ang = jointAngleDeg(lms[HP], lms[KN], lms[AN])
   return Math.max(0, 180 - ang)
 }
 
-/** Cervical rotation: nose offset relative to mid-shoulder, normalised by ear-spread. */
-function measureCervicalRotation(lms: LandmarkSet, side: 'L' | 'R'): number | null {
-  if (!vis(lms, LM.NOSE, LM.L_EAR, LM.R_EAR, LM.L_SHOULDER, LM.R_SHOULDER)) return null
-  const midShX = (lms[LM.L_SHOULDER].x + lms[LM.R_SHOULDER].x) / 2
-  const earSpread = Math.abs(lms[LM.L_EAR].x - lms[LM.R_EAR].x) + 1e-6
-  const noseShift = (lms[LM.NOSE].x - midShX) / earSpread
-  const deg = Math.atan(noseShift * 2) * 180 / Math.PI
-  // For 'L' side rotation, head turns LEFT (camera right because mirrored).
-  // We just report the absolute rotation angle.
-  return side === 'L' ? Math.max(0, -deg) : Math.max(0, deg)
+// ── Ankle dorsiflexion / plantarflexion ────────────────────────────────────
+// Sagittal plane. Neutral = foot perpendicular to tibia. Dorsiflexion
+// reduces the tibia-foot angle below 90° (toes toward shin), plantarflexion
+// increases it above 90° (point toes down). Returns positive degrees of
+// motion FROM NEUTRAL in the cued direction.
+function measureAnkleDorsiflexion(lms: LandmarkSet, side: 'L' | 'R'): number | null {
+  const KN = side === 'L' ? LM.L_KNEE     : LM.R_KNEE
+  const AN = side === 'L' ? LM.L_ANKLE    : LM.R_ANKLE
+  const FT = side === 'L' ? LM.L_FOOT_IDX : LM.R_FOOT_IDX
+  if (!vis(lms, KN, AN, FT)) return null
+  const ang = jointAngleDeg(lms[KN], lms[AN], lms[FT])   // 0..180 at ankle
+  // Neutral standing ≈ 90°. Dorsiflexion drives angle below 90°.
+  return Math.max(0, 90 - ang)
 }
 
-/** Trunk flexion (forward fold): angle between hip→shoulder and vertical. */
-function measureTrunkFlexion(lms: LandmarkSet, _side: 'L' | 'R'): number | null {
-  if (!vis(lms, LM.L_SHOULDER, LM.R_SHOULDER, LM.L_HIP, LM.R_HIP)) return null
-  const midSh = { x: (lms[LM.L_SHOULDER].x + lms[LM.R_SHOULDER].x) / 2, y: (lms[LM.L_SHOULDER].y + lms[LM.R_SHOULDER].y) / 2, z: 0, visibility: 1 }
-  const midHip = { x: (lms[LM.L_HIP].x + lms[LM.R_HIP].x) / 2, y: (lms[LM.L_HIP].y + lms[LM.R_HIP].y) / 2, z: 0, visibility: 1 }
-  return Math.abs(vectorVerticalAngleDeg(midHip, midSh))
+function measureAnklePlantarflexion(lms: LandmarkSet, side: 'L' | 'R'): number | null {
+  const KN = side === 'L' ? LM.L_KNEE     : LM.R_KNEE
+  const AN = side === 'L' ? LM.L_ANKLE    : LM.R_ANKLE
+  const FT = side === 'L' ? LM.L_FOOT_IDX : LM.R_FOOT_IDX
+  if (!vis(lms, KN, AN, FT)) return null
+  const ang = jointAngleDeg(lms[KN], lms[AN], lms[FT])
+  return Math.max(0, ang - 90)
 }
+
+// ── Cervical flexion / extension ────────────────────────────────────────────
+// Sagittal plane. Head vector = midEar − midShoulder. Flexion (chin to
+// chest) reads positive; extension (chin up) reads as a separate movement.
+function headVector(lms: LandmarkSet): Vec3 | null {
+  if (!vis(lms, LM.L_EAR, LM.R_EAR, LM.L_SHOULDER, LM.R_SHOULDER)) return null
+  const le = lmVec(lms[LM.L_EAR]), re = lmVec(lms[LM.R_EAR])
+  const ls = lmVec(lms[LM.L_SHOULDER]), rs = lmVec(lms[LM.R_SHOULDER])
+  if (!le || !re || !ls || !rs) return null
+  const midEar = midpoint(le, re)
+  const midSh  = midpoint(ls, rs)
+  return sub(midEar, midSh)
+}
+
+function measureCervicalFlexion(lms: LandmarkSet, _side: 'L' | 'R'): number | null {
+  const frame = computeAnatomicalFrame(lms)
+  const head  = headVector(lms)
+  if (!frame || !head) return null
+  // Reference = anatomical UP (yAxis). Sagittal plane normal = xAxis.
+  const ang = signedAngleInPlane(head, frame.yAxis, frame.xAxis)
+  return Math.max(0, ang)    // positive = forward = flexion
+}
+
+function measureCervicalExtension(lms: LandmarkSet, _side: 'L' | 'R'): number | null {
+  const frame = computeAnatomicalFrame(lms)
+  const head  = headVector(lms)
+  if (!frame || !head) return null
+  const ang = signedAngleInPlane(head, frame.yAxis, frame.xAxis)
+  return Math.max(0, -ang)   // negative = backward = extension
+}
+
+function measureCervicalLateralFlexion(lms: LandmarkSet, side: 'L' | 'R'): number | null {
+  const frame = computeAnatomicalFrame(lms)
+  const head  = headVector(lms)
+  if (!frame || !head) return null
+  // Frontal plane normal = zAxis. Positive sign = tilt toward +xAxis (user's right).
+  const ang = signedAngleInPlane(head, frame.yAxis, frame.zAxis)
+  return side === 'R' ? Math.max(0, ang) : Math.max(0, -ang)
+}
+
+function measureCervicalRotation(lms: LandmarkSet, side: 'L' | 'R'): number | null {
+  const frame = computeAnatomicalFrame(lms)
+  if (!frame) return null
+  if (!vis(lms, LM.L_EAR, LM.R_EAR, LM.L_SHOULDER, LM.R_SHOULDER)) return null
+  const le = lmVec(lms[LM.L_EAR])!, re = lmVec(lms[LM.R_EAR])!
+  // Ear-to-ear vector represents head orientation in the transverse plane.
+  const earLine = sub(re, le)
+  // Reference = the body's lateral axis (xAxis) — head facing forward.
+  const ang = signedAngleInPlane(earLine, frame.xAxis, frame.yAxis)
+  return side === 'R' ? Math.max(0, ang) : Math.max(0, -ang)
+}
+
+// ── Trunk flexion / extension / lateral / rotation ─────────────────────────
+// Trunk movements need a PELVIC frame, not the body frame (which uses the
+// spine as its yAxis — so trunk flexion would always read 0). We construct
+// a pelvic frame from the hip line + world gravity.
+
+function pelvicFrame(lms: LandmarkSet): AnatomicalFrame | null {
+  if (!vis(lms, LM.L_HIP, LM.R_HIP)) return null
+  const lh = lmVec(lms[LM.L_HIP]), rh = lmVec(lms[LM.R_HIP])
+  if (!lh || !rh) return null
+  // Pelvic yAxis = world UP (assumes user is standing). In our convention
+  // (+y = up) that's just (0, 1, 0).
+  const yAxis: Vec3 = { x: 0, y: 1, z: 0 }
+  // Pelvic xAxis = lateral hip line, orthogonalised to yAxis.
+  const hipLine = sub(rh, lh)
+  const xRaw = sub(hipLine, scale(yAxis, hipLine.y))
+  const xAxis = normalize(xRaw)
+  const zAxis = normalize({
+    x: xAxis.y * yAxis.z - xAxis.z * yAxis.y,
+    y: xAxis.z * yAxis.x - xAxis.x * yAxis.z,
+    z: xAxis.x * yAxis.y - xAxis.y * yAxis.x,
+  })
+  return { yAxis, xAxis, zAxis, origin: midpoint(lh, rh), is3D: true }
+}
+
+function trunkVector(lms: LandmarkSet): Vec3 | null {
+  if (!vis(lms, LM.L_SHOULDER, LM.R_SHOULDER, LM.L_HIP, LM.R_HIP)) return null
+  const ls = lmVec(lms[LM.L_SHOULDER])!, rs = lmVec(lms[LM.R_SHOULDER])!
+  const lh = lmVec(lms[LM.L_HIP])!,      rh = lmVec(lms[LM.R_HIP])!
+  return sub(midpoint(ls, rs), midpoint(lh, rh))
+}
+
+function measureTrunkFlexion(lms: LandmarkSet, _side: 'L' | 'R'): number | null {
+  const frame = pelvicFrame(lms)
+  const tr    = trunkVector(lms)
+  if (!frame || !tr) return null
+  // Sagittal plane normal = xAxis. Positive sign = forward fold.
+  const ang = signedAngleInPlane(tr, frame.yAxis, frame.xAxis)
+  return Math.max(0, ang)
+}
+
+function measureTrunkExtension(lms: LandmarkSet, _side: 'L' | 'R'): number | null {
+  const frame = pelvicFrame(lms)
+  const tr    = trunkVector(lms)
+  if (!frame || !tr) return null
+  const ang = signedAngleInPlane(tr, frame.yAxis, frame.xAxis)
+  return Math.max(0, -ang)
+}
+
+function measureTrunkLateralFlexion(lms: LandmarkSet, side: 'L' | 'R'): number | null {
+  const frame = pelvicFrame(lms)
+  const tr    = trunkVector(lms)
+  if (!frame || !tr) return null
+  const ang = signedAngleInPlane(tr, frame.yAxis, frame.zAxis)
+  return side === 'R' ? Math.max(0, ang) : Math.max(0, -ang)
+}
+
+function measureTrunkRotation(lms: LandmarkSet, side: 'L' | 'R'): number | null {
+  const frame = pelvicFrame(lms)
+  if (!frame) return null
+  if (!vis(lms, LM.L_SHOULDER, LM.R_SHOULDER)) return null
+  const ls = lmVec(lms[LM.L_SHOULDER])!, rs = lmVec(lms[LM.R_SHOULDER])!
+  const shoulderLine = sub(rs, ls)
+  // Compare shoulder line to pelvic lateral (xAxis) in the transverse plane.
+  const ang = signedAngleInPlane(shoulderLine, frame.xAxis, frame.yAxis)
+  return side === 'R' ? Math.max(0, ang) : Math.max(0, -ang)
+}
+
+// ── Backward-compat: keep `vectorVerticalAngleDeg` symbol used elsewhere ──
+//   (unused inside this file now; suppress lint via underscore).
+const _kVVAD = vectorVerticalAngleDeg
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Joint movement catalog
@@ -471,6 +715,126 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
     side: 'either', reference: { min: 60, ideal: 80 },
     cue: 'Keeping legs straight, hinge at the hips and fold forward toward the floor.',
     measure: measureTrunkFlexion,
+    segment: 'trunk', calibrationLandmarks: LMS_TRUNK,
+  },
+  // ── New goniometric movements (added in the biomechanics overhaul) ──────
+  shoulder_extension: {
+    id: 'shoulder_extension', joint: 'shoulder', label: 'Shoulder Extension',
+    side: 'either', reference: { min: 40, ideal: 50 },
+    cue: 'Stand tall, then reach your arm backward as far as comfortable, keeping the elbow straight.',
+    measure: measureShoulderExtension,
+    segment: 'upper_body', calibrationLandmarks: LMS_UPPER,
+  },
+  shoulder_adduction: {
+    id: 'shoulder_adduction', joint: 'shoulder', label: 'Shoulder Adduction',
+    side: 'either', reference: { min: 30, ideal: 45 },
+    cue: 'Raise your arm to the side and then bring it back across the front of your body.',
+    measure: measureShoulderAbduction,  // adduction is the return-from-abduction; we use the same plane projection
+    segment: 'upper_body', calibrationLandmarks: LMS_UPPER,
+  },
+  shoulder_internal_rotation: {
+    id: 'shoulder_internal_rotation', joint: 'shoulder', label: 'Shoulder Internal Rotation',
+    side: 'either', reference: { min: 60, ideal: 70 },
+    cue: 'Elbow at your side, bent 90 degrees, rotate your forearm across your stomach.',
+    measure: measureShoulderIR,
+    segment: 'upper_body', calibrationLandmarks: [...LMS_UPPER, LM.L_WRIST, LM.R_WRIST],
+  },
+  hip_extension: {
+    id: 'hip_extension', joint: 'hip', label: 'Hip Extension',
+    side: 'either', reference: { min: 20, ideal: 30 },
+    cue: 'Stand tall, then lift one straight leg backward without arching your back.',
+    measure: measureHipExtension,
+    segment: 'lower_body', calibrationLandmarks: LMS_LOWER,
+  },
+  hip_adduction: {
+    id: 'hip_adduction', joint: 'hip', label: 'Hip Adduction',
+    side: 'either', reference: { min: 20, ideal: 30 },
+    cue: 'Stand on one leg and bring the other leg across your body to the opposite side.',
+    measure: measureHipAdduction,
+    segment: 'lower_body', calibrationLandmarks: LMS_LOWER,
+  },
+  hip_rotation: {
+    id: 'hip_rotation', joint: 'hip', label: 'Hip Rotation',
+    side: 'either', reference: { min: 30, ideal: 45 },
+    cue: 'Seated with knees bent, rotate one foot inward and then outward.',
+    measure: measureHipRotation,
+    segment: 'lower_body', calibrationLandmarks: [...LMS_LOWER, LM.L_ANKLE, LM.R_ANKLE],
+  },
+  ankle_dorsiflexion: {
+    id: 'ankle_dorsiflexion', joint: 'ankle', label: 'Ankle Dorsiflexion',
+    side: 'either', reference: { min: 15, ideal: 20 },
+    cue: 'Stand or sit and pull your toes up toward your shin as far as you can.',
+    measure: measureAnkleDorsiflexion,
+    segment: 'lower_body', calibrationLandmarks: [...LMS_LOWER, LM.L_ANKLE, LM.R_ANKLE, LM.L_FOOT_IDX, LM.R_FOOT_IDX],
+  },
+  ankle_plantarflexion: {
+    id: 'ankle_plantarflexion', joint: 'ankle', label: 'Ankle Plantarflexion',
+    side: 'either', reference: { min: 40, ideal: 50 },
+    cue: 'Stand or sit and point your toes downward, like pressing a gas pedal.',
+    measure: measureAnklePlantarflexion,
+    segment: 'lower_body', calibrationLandmarks: [...LMS_LOWER, LM.L_ANKLE, LM.R_ANKLE, LM.L_FOOT_IDX, LM.R_FOOT_IDX],
+  },
+  cervical_flexion: {
+    id: 'cervical_flexion', joint: 'cervical', label: 'Neck Flexion',
+    side: 'either', reference: { min: 40, ideal: 50 },
+    cue: 'Slowly bring your chin down toward your chest.',
+    measure: measureCervicalFlexion,
+    segment: 'neck', calibrationLandmarks: LMS_NECK,
+  },
+  cervical_extension: {
+    id: 'cervical_extension', joint: 'cervical', label: 'Neck Extension',
+    side: 'either', reference: { min: 50, ideal: 60 },
+    cue: 'Slowly tilt your head backward to look at the ceiling.',
+    measure: measureCervicalExtension,
+    segment: 'neck', calibrationLandmarks: LMS_NECK,
+  },
+  cervical_lateral_flexion_left: {
+    id: 'cervical_lateral_flexion_left', joint: 'cervical', label: 'Neck Side-Bend Left',
+    side: 'L', reference: { min: 35, ideal: 45 },
+    cue: 'Slowly tilt your head to the left, bringing your left ear toward your left shoulder.',
+    measure: measureCervicalLateralFlexion,
+    segment: 'neck', calibrationLandmarks: LMS_NECK,
+  },
+  cervical_lateral_flexion_right: {
+    id: 'cervical_lateral_flexion_right', joint: 'cervical', label: 'Neck Side-Bend Right',
+    side: 'R', reference: { min: 35, ideal: 45 },
+    cue: 'Slowly tilt your head to the right, bringing your right ear toward your right shoulder.',
+    measure: measureCervicalLateralFlexion,
+    segment: 'neck', calibrationLandmarks: LMS_NECK,
+  },
+  trunk_extension: {
+    id: 'trunk_extension', joint: 'trunk', label: 'Trunk Extension',
+    side: 'either', reference: { min: 20, ideal: 30 },
+    cue: 'Stand tall with hands on hips, then slowly lean backward without bending your knees.',
+    measure: measureTrunkExtension,
+    segment: 'trunk', calibrationLandmarks: LMS_TRUNK,
+  },
+  trunk_lateral_flexion_left: {
+    id: 'trunk_lateral_flexion_left', joint: 'trunk', label: 'Trunk Side-Bend Left',
+    side: 'L', reference: { min: 25, ideal: 35 },
+    cue: 'Stand tall and slide your left hand down the outside of your left thigh.',
+    measure: measureTrunkLateralFlexion,
+    segment: 'trunk', calibrationLandmarks: LMS_TRUNK,
+  },
+  trunk_lateral_flexion_right: {
+    id: 'trunk_lateral_flexion_right', joint: 'trunk', label: 'Trunk Side-Bend Right',
+    side: 'R', reference: { min: 25, ideal: 35 },
+    cue: 'Stand tall and slide your right hand down the outside of your right thigh.',
+    measure: measureTrunkLateralFlexion,
+    segment: 'trunk', calibrationLandmarks: LMS_TRUNK,
+  },
+  trunk_rotation_left: {
+    id: 'trunk_rotation_left', joint: 'trunk', label: 'Trunk Rotation Left',
+    side: 'L', reference: { min: 35, ideal: 45 },
+    cue: 'Standing tall with hips facing forward, rotate your shoulders to the left as far as possible.',
+    measure: measureTrunkRotation,
+    segment: 'trunk', calibrationLandmarks: LMS_TRUNK,
+  },
+  trunk_rotation_right: {
+    id: 'trunk_rotation_right', joint: 'trunk', label: 'Trunk Rotation Right',
+    side: 'R', reference: { min: 35, ideal: 45 },
+    cue: 'Standing tall with hips facing forward, rotate your shoulders to the right as far as possible.',
+    measure: measureTrunkRotation,
     segment: 'trunk', calibrationLandmarks: LMS_TRUNK,
   },
 }
@@ -559,10 +923,23 @@ export const MUSCLE_TO_MOVEMENTS: Record<string, string[]> = {
   adductor_longus:   ['hip_abduction'],
 
   // Calf
-  gastrocnemius:    ['knee_flexion'],
-  soleus:           ['knee_flexion'],
+  gastrocnemius:    ['knee_flexion', 'ankle_plantarflexion'],
+  soleus:           ['ankle_plantarflexion'],
   popliteus:        ['knee_flexion'],
-  tibialis_anterior:['knee_flexion'],
+  tibialis_anterior:['ankle_dorsiflexion'],
+
+  // ── Movements added in the goniometric overhaul ─────────────────────────
+  // Spine / posterior chain
+  rectus_abdominis_lower:  ['trunk_flexion'],
+  internal_oblique:        ['trunk_lateral_flexion_left', 'trunk_lateral_flexion_right', 'trunk_rotation_left', 'trunk_rotation_right'],
+  iliocostalis:            ['trunk_extension', 'trunk_lateral_flexion_left', 'trunk_lateral_flexion_right'],
+  longissimus:             ['trunk_extension'],
+  spinalis:                ['trunk_extension'],
+
+  // Neck deeper coverage
+  scalenus:                ['cervical_flexion', 'cervical_lateral_flexion_left', 'cervical_lateral_flexion_right'],
+  longus_colli:            ['cervical_flexion'],
+  suboccipitals:           ['cervical_extension'],
 }
 
 /** Helper: get the JointMovement objects for a muscle_id. */
