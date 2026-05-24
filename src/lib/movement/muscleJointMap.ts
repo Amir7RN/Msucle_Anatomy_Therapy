@@ -240,7 +240,15 @@ export interface JointMovement {
   joint:      string
   side:       Side
   reference:  { min: number; ideal: number }
+  /** Short cue spoken once the measurement window opens — legacy field. */
   cue:        string
+  /** Plain-language explanation spoken BEFORE calibration starts so the
+   *  user understands what motion is coming. Avoid clinical terms. */
+  intro?:     string
+  /** Plain-language step-by-step instruction spoken AFTER neutral pose is
+   *  detected, before the measurement window. Tells the user exactly how
+   *  to move. */
+  howTo?:     string
   measure:    (lms: LandmarkSet, side: 'L' | 'R') => number | null
   /**
    * Body region required in frame for this movement.  Drives the calibration
@@ -312,7 +320,10 @@ function measureShoulderFlexion(lms: LandmarkSet, side: 'L' | 'R'): number | nul
   // Signed angle in the sagittal plane (normal = xAxis). Positive when arm
   // rotates from down toward +zAxis (anterior / forward).
   const ang = signedAngleInPlane(arm, down, frame.xAxis)
-  return Math.max(0, ang)   // only flexion direction
+  // Sign flip: forward arm raise (anterior motion from down) is CW about +x,
+  // which signedAngleInPlane reports as NEGATIVE. We want flexion (forward)
+  // positive.
+  return Math.max(0, -ang)
 }
 
 // ── Shoulder extension ─────────────────────────────────────────────────────
@@ -327,7 +338,9 @@ function measureShoulderExtension(lms: LandmarkSet, side: 'L' | 'R'): number | n
   const arm = sub(el, sh)
   const down = scale(frame.yAxis, -1)
   const ang = signedAngleInPlane(arm, down, frame.xAxis)
-  return Math.max(0, -ang)  // negative-signed motion = extension
+  // Extension = backward motion = CCW about +x = positive sign. We report
+  // the positive part directly.
+  return Math.max(0, ang)
 }
 
 // ── Shoulder abduction ─────────────────────────────────────────────────────
@@ -408,7 +421,8 @@ function measureHipFlexion(lms: LandmarkSet, side: 'L' | 'R'): number | null {
   const thigh = sub(kn, hp)
   const down  = scale(frame.yAxis, -1)
   const ang   = signedAngleInPlane(thigh, down, frame.xAxis)
-  return Math.max(0, ang)
+  // Same sign-flip as shoulder: forward thigh raise = CW about +x = negative.
+  return Math.max(0, -ang)
 }
 
 // ── Hip extension ──────────────────────────────────────────────────────────
@@ -423,7 +437,7 @@ function measureHipExtension(lms: LandmarkSet, side: 'L' | 'R'): number | null {
   const thigh = sub(kn, hp)
   const down  = scale(frame.yAxis, -1)
   const ang   = signedAngleInPlane(thigh, down, frame.xAxis)
-  return Math.max(0, -ang)
+  return Math.max(0, ang)
 }
 
 // ── Hip abduction ──────────────────────────────────────────────────────────
@@ -651,69 +665,89 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
     id: 'shoulder_abduction', joint: 'shoulder', label: 'Shoulder Abduction',
     side: 'either', reference: { min: 150, ideal: 180 },
     cue: 'Raise your arm straight out to the side, all the way overhead.',
+    intro: 'Next test: how far you can lift your arm out to the side. Stand tall with arms at your sides. I will let you know when to start.',
+    howTo: 'When I say go, slowly raise your arm straight out to the side — like making a snow angel — all the way up until it reaches the ceiling. Keep your elbow straight.',
     measure: measureShoulderAbduction,
     segment: 'upper_body', calibrationLandmarks: LMS_UPPER,
   },
   shoulder_flexion: {
     id: 'shoulder_flexion', joint: 'shoulder', label: 'Shoulder Flexion',
     side: 'either', reference: { min: 150, ideal: 180 },
-    cue: 'Raise your arm straight forward and overhead, like reaching for the sky.',
+    cue: 'Raise your arm straight forward and overhead.',
+    intro: 'Next test: how far you can lift your arm forward overhead. Stand tall with arms at your sides.',
+    howTo: 'When I say go, slowly raise your arm straight forward in front of you and continue all the way up overhead, like reaching toward the ceiling. Keep your elbow straight and your back tall.',
     measure: measureShoulderFlexion,
     segment: 'upper_body', calibrationLandmarks: LMS_UPPER,
   },
   shoulder_external_rotation: {
     id: 'shoulder_external_rotation', joint: 'shoulder', label: 'Shoulder External Rotation',
     side: 'either', reference: { min: 70, ideal: 90 },
-    cue: 'Bring your elbow to shoulder height, bent 90 degrees, then rotate your forearm up and back.',
+    cue: 'Rotate your forearm up and back.',
+    intro: 'Next test: how far you can rotate your shoulder outward. Bring your elbow up to shoulder height with your forearm pointing straight forward, palm down.',
+    howTo: 'Keeping your elbow at shoulder height, slowly rotate your forearm UP toward the ceiling — like you are waving. Your hand should end up pointing toward the sky.',
     measure: measureShoulderER,
     segment: 'upper_body', calibrationLandmarks: [...LMS_UPPER, LM.L_WRIST, LM.R_WRIST],
   },
   elbow_flexion: {
     id: 'elbow_flexion', joint: 'elbow', label: 'Elbow Flexion',
     side: 'either', reference: { min: 130, ideal: 150 },
-    cue: 'Bend your elbow as far as you can, bringing your hand toward your shoulder.',
+    cue: 'Bend your elbow as far as you can.',
+    intro: 'Next test: how far you can bend your elbow. Stand with your arm hanging at your side, palm facing forward.',
+    howTo: 'Slowly bend your elbow, bringing your hand toward your shoulder, until you cannot go any further.',
     measure: measureElbowFlexion,
     segment: 'upper_body', calibrationLandmarks: [...LMS_UPPER, LM.L_WRIST, LM.R_WRIST],
   },
   hip_flexion: {
     id: 'hip_flexion', joint: 'hip', label: 'Hip Flexion',
     side: 'either', reference: { min: 100, ideal: 120 },
-    cue: 'Standing on one leg, lift the other knee as high as you can toward your chest.',
+    cue: 'Lift your knee toward your chest.',
+    intro: 'Next test: how high you can lift your knee. Stand tall on one leg. Use a wall for balance if needed.',
+    howTo: 'Slowly lift your other knee straight up in front of you, as high as you can without leaning back. Aim to bring it toward your chest.',
     measure: measureHipFlexion,
     segment: 'lower_body', calibrationLandmarks: LMS_LOWER,
   },
   hip_abduction: {
     id: 'hip_abduction', joint: 'hip', label: 'Hip Abduction',
     side: 'either', reference: { min: 35, ideal: 45 },
-    cue: 'Standing tall, lift one leg straight out to the side as far as you comfortably can.',
+    cue: 'Lift one leg out to the side.',
+    intro: 'Next test: how far you can lift your leg out to the side. Stand tall, feet together. Use a wall for balance if needed.',
+    howTo: 'Keeping your leg straight, slowly lift one foot out to the side, away from your body, as far as you comfortably can. Do not lean.',
     measure: measureHipAbduction,
     segment: 'lower_body', calibrationLandmarks: LMS_LOWER,
   },
   knee_flexion: {
     id: 'knee_flexion', joint: 'knee', label: 'Knee Flexion',
     side: 'either', reference: { min: 110, ideal: 135 },
-    cue: 'Standing tall, bend your knee back, bringing your heel toward your glute.',
+    cue: 'Bend your knee back, heel toward your glute.',
+    intro: 'Next test: how far you can bend your knee. Stand tall on one leg.',
+    howTo: 'Slowly bend your other knee, bringing your heel up behind you toward your glute, as far as you can.',
     measure: measureKneeFlexion,
     segment: 'lower_body', calibrationLandmarks: [...LMS_LOWER, LM.L_ANKLE, LM.R_ANKLE],
   },
   cervical_rotation_left: {
     id: 'cervical_rotation_left', joint: 'cervical', label: 'Neck Rotation Left',
     side: 'L', reference: { min: 60, ideal: 80 },
-    cue: 'Look straight ahead, then slowly turn your head to the left as far as comfortable.',
+    cue: 'Turn your head to the left.',
+    intro: 'Next test: how far you can turn your head to the left. Sit or stand tall, facing the camera.',
+    howTo: 'Keeping your shoulders still and your chin level, slowly turn your head to the LEFT as far as feels comfortable, like checking your blind spot.',
     measure: measureCervicalRotation,
     segment: 'neck', calibrationLandmarks: LMS_NECK,
   },
   cervical_rotation_right: {
     id: 'cervical_rotation_right', joint: 'cervical', label: 'Neck Rotation Right',
     side: 'R', reference: { min: 60, ideal: 80 },
-    cue: 'Look straight ahead, then slowly turn your head to the right as far as comfortable.',
+    cue: 'Turn your head to the right.',
+    intro: 'Next test: how far you can turn your head to the right. Sit or stand tall, facing the camera.',
+    howTo: 'Keeping your shoulders still and your chin level, slowly turn your head to the RIGHT as far as feels comfortable.',
     measure: measureCervicalRotation,
     segment: 'neck', calibrationLandmarks: LMS_NECK,
   },
   trunk_flexion: {
     id: 'trunk_flexion', joint: 'trunk', label: 'Trunk Forward Flexion',
     side: 'either', reference: { min: 60, ideal: 80 },
-    cue: 'Keeping legs straight, hinge at the hips and fold forward toward the floor.',
+    cue: 'Hinge forward toward the floor.',
+    intro: 'Next test: how far you can bend forward. Stand tall with feet hip-width apart, knees soft.',
+    howTo: 'Keeping your knees mostly straight, slowly hinge forward at your hips — let your hands reach down toward the floor. Stop at the first feeling of stretch.',
     measure: measureTrunkFlexion,
     segment: 'trunk', calibrationLandmarks: LMS_TRUNK,
   },
@@ -721,119 +755,153 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   shoulder_extension: {
     id: 'shoulder_extension', joint: 'shoulder', label: 'Shoulder Extension',
     side: 'either', reference: { min: 40, ideal: 50 },
-    cue: 'Stand tall, then reach your arm backward as far as comfortable, keeping the elbow straight.',
+    cue: 'Reach your arm backward.',
+    intro: 'Next test: how far you can reach your arm behind you. Stand tall, arms at your sides.',
+    howTo: 'Keeping your arm straight, slowly swing it BEHIND you, as far back as feels comfortable. Do not arch your back.',
     measure: measureShoulderExtension,
     segment: 'upper_body', calibrationLandmarks: LMS_UPPER,
   },
   shoulder_adduction: {
     id: 'shoulder_adduction', joint: 'shoulder', label: 'Shoulder Adduction',
     side: 'either', reference: { min: 30, ideal: 45 },
-    cue: 'Raise your arm to the side and then bring it back across the front of your body.',
+    cue: 'Bring your arm across the front of your body.',
+    intro: 'Next test: how far you can pull your arm across your chest.',
+    howTo: 'Raise your arm to shoulder height in front of you, then slowly sweep it across the front of your body toward the opposite shoulder.',
     measure: measureShoulderAbduction,  // adduction is the return-from-abduction; we use the same plane projection
     segment: 'upper_body', calibrationLandmarks: LMS_UPPER,
   },
   shoulder_internal_rotation: {
     id: 'shoulder_internal_rotation', joint: 'shoulder', label: 'Shoulder Internal Rotation',
     side: 'either', reference: { min: 60, ideal: 70 },
-    cue: 'Elbow at your side, bent 90 degrees, rotate your forearm across your stomach.',
+    cue: 'Rotate your forearm across your stomach.',
+    intro: 'Next test: how far you can rotate your shoulder inward. Keep your upper arm pinned at your side.',
+    howTo: 'With your elbow tucked at your side and bent 90 degrees, slowly rotate your forearm INWARD across the front of your stomach — like closing a swinging door.',
     measure: measureShoulderIR,
     segment: 'upper_body', calibrationLandmarks: [...LMS_UPPER, LM.L_WRIST, LM.R_WRIST],
   },
   hip_extension: {
     id: 'hip_extension', joint: 'hip', label: 'Hip Extension',
     side: 'either', reference: { min: 20, ideal: 30 },
-    cue: 'Stand tall, then lift one straight leg backward without arching your back.',
+    cue: 'Lift one straight leg backward.',
+    intro: 'Next test: how far you can lift your leg behind you. Stand tall facing the camera.',
+    howTo: 'Keeping your leg straight, slowly lift one foot BEHIND you. Do not arch your lower back. Use a wall for balance if needed.',
     measure: measureHipExtension,
     segment: 'lower_body', calibrationLandmarks: LMS_LOWER,
   },
   hip_adduction: {
     id: 'hip_adduction', joint: 'hip', label: 'Hip Adduction',
     side: 'either', reference: { min: 20, ideal: 30 },
-    cue: 'Stand on one leg and bring the other leg across your body to the opposite side.',
+    cue: 'Bring your leg across the front of your body.',
+    intro: 'Next test: how far you can swing your leg across your body.',
+    howTo: 'Stand on one leg. Slowly swing the other leg across the front of your body to the opposite side, like crossing your legs while standing.',
     measure: measureHipAdduction,
     segment: 'lower_body', calibrationLandmarks: LMS_LOWER,
   },
   hip_rotation: {
     id: 'hip_rotation', joint: 'hip', label: 'Hip Rotation',
     side: 'either', reference: { min: 30, ideal: 45 },
-    cue: 'Seated with knees bent, rotate one foot inward and then outward.',
+    cue: 'Rotate your foot in then out.',
+    intro: 'Next test: hip rotation. Sit on a chair with your hip and knee both bent 90 degrees.',
+    howTo: 'Keeping your knees still and pointing forward, slowly swing one foot OUTWARD away from the other foot, then back IN across the other foot.',
     measure: measureHipRotation,
     segment: 'lower_body', calibrationLandmarks: [...LMS_LOWER, LM.L_ANKLE, LM.R_ANKLE],
   },
   ankle_dorsiflexion: {
     id: 'ankle_dorsiflexion', joint: 'ankle', label: 'Ankle Dorsiflexion',
     side: 'either', reference: { min: 15, ideal: 20 },
-    cue: 'Stand or sit and pull your toes up toward your shin as far as you can.',
+    cue: 'Pull your toes up toward your shin.',
+    intro: 'Next test: how far you can pull your toes up. Stand or sit with your foot flat on the floor.',
+    howTo: 'Keeping your heel down, slowly lift the front of your foot — your toes — up toward your shin, as far as you can.',
     measure: measureAnkleDorsiflexion,
     segment: 'lower_body', calibrationLandmarks: [...LMS_LOWER, LM.L_ANKLE, LM.R_ANKLE, LM.L_FOOT_IDX, LM.R_FOOT_IDX],
   },
   ankle_plantarflexion: {
     id: 'ankle_plantarflexion', joint: 'ankle', label: 'Ankle Plantarflexion',
     side: 'either', reference: { min: 40, ideal: 50 },
-    cue: 'Stand or sit and point your toes downward, like pressing a gas pedal.',
+    cue: 'Point your toes down.',
+    intro: 'Next test: how far you can point your toes down. Stand or sit comfortably.',
+    howTo: 'Slowly point your toes DOWN toward the floor, like pressing a gas pedal, as far as you can.',
     measure: measureAnklePlantarflexion,
     segment: 'lower_body', calibrationLandmarks: [...LMS_LOWER, LM.L_ANKLE, LM.R_ANKLE, LM.L_FOOT_IDX, LM.R_FOOT_IDX],
   },
   cervical_flexion: {
     id: 'cervical_flexion', joint: 'cervical', label: 'Neck Flexion',
     side: 'either', reference: { min: 40, ideal: 50 },
-    cue: 'Slowly bring your chin down toward your chest.',
+    cue: 'Chin toward your chest.',
+    intro: 'Next test: how far you can bring your chin toward your chest. Sit or stand tall.',
+    howTo: 'Keeping your shoulders still, slowly nod your head forward and bring your chin down toward your chest, as far as feels comfortable.',
     measure: measureCervicalFlexion,
     segment: 'neck', calibrationLandmarks: LMS_NECK,
   },
   cervical_extension: {
     id: 'cervical_extension', joint: 'cervical', label: 'Neck Extension',
     side: 'either', reference: { min: 50, ideal: 60 },
-    cue: 'Slowly tilt your head backward to look at the ceiling.',
+    cue: 'Tilt your head backward.',
+    intro: 'Next test: how far you can tilt your head backward. Sit or stand tall.',
+    howTo: 'Keeping your shoulders still, slowly tilt your head BACKWARD to look up at the ceiling, as far as feels comfortable.',
     measure: measureCervicalExtension,
     segment: 'neck', calibrationLandmarks: LMS_NECK,
   },
   cervical_lateral_flexion_left: {
     id: 'cervical_lateral_flexion_left', joint: 'cervical', label: 'Neck Side-Bend Left',
     side: 'L', reference: { min: 35, ideal: 45 },
-    cue: 'Slowly tilt your head to the left, bringing your left ear toward your left shoulder.',
+    cue: 'Left ear toward left shoulder.',
+    intro: 'Next test: how far you can tilt your head sideways to the left. Sit or stand tall.',
+    howTo: 'Keeping your shoulders level and DOWN, slowly tilt your head to the LEFT, bringing your left ear toward your left shoulder. Do not lift your shoulder.',
     measure: measureCervicalLateralFlexion,
     segment: 'neck', calibrationLandmarks: LMS_NECK,
   },
   cervical_lateral_flexion_right: {
     id: 'cervical_lateral_flexion_right', joint: 'cervical', label: 'Neck Side-Bend Right',
     side: 'R', reference: { min: 35, ideal: 45 },
-    cue: 'Slowly tilt your head to the right, bringing your right ear toward your right shoulder.',
+    cue: 'Right ear toward right shoulder.',
+    intro: 'Next test: how far you can tilt your head sideways to the right.',
+    howTo: 'Keeping your shoulders level and DOWN, slowly tilt your head to the RIGHT, bringing your right ear toward your right shoulder.',
     measure: measureCervicalLateralFlexion,
     segment: 'neck', calibrationLandmarks: LMS_NECK,
   },
   trunk_extension: {
     id: 'trunk_extension', joint: 'trunk', label: 'Trunk Extension',
     side: 'either', reference: { min: 20, ideal: 30 },
-    cue: 'Stand tall with hands on hips, then slowly lean backward without bending your knees.',
+    cue: 'Lean backward.',
+    intro: 'Next test: how far you can lean backward. Stand tall, feet hip-width apart, hands on your hips.',
+    howTo: 'Keeping your knees straight and hands on hips, slowly lean BACKWARD from your hips, as far as feels comfortable. Stop if you feel pinching.',
     measure: measureTrunkExtension,
     segment: 'trunk', calibrationLandmarks: LMS_TRUNK,
   },
   trunk_lateral_flexion_left: {
     id: 'trunk_lateral_flexion_left', joint: 'trunk', label: 'Trunk Side-Bend Left',
     side: 'L', reference: { min: 25, ideal: 35 },
-    cue: 'Stand tall and slide your left hand down the outside of your left thigh.',
+    cue: 'Side-bend to the left.',
+    intro: 'Next test: how far you can bend sideways to your left. Stand tall, feet hip-width apart, arms at your sides.',
+    howTo: 'Keeping your hips facing forward, slowly slide your LEFT hand DOWN the outside of your left thigh, bending sideways. Do not lean forward.',
     measure: measureTrunkLateralFlexion,
     segment: 'trunk', calibrationLandmarks: LMS_TRUNK,
   },
   trunk_lateral_flexion_right: {
     id: 'trunk_lateral_flexion_right', joint: 'trunk', label: 'Trunk Side-Bend Right',
     side: 'R', reference: { min: 25, ideal: 35 },
-    cue: 'Stand tall and slide your right hand down the outside of your right thigh.',
+    cue: 'Side-bend to the right.',
+    intro: 'Next test: how far you can bend sideways to your right.',
+    howTo: 'Keeping your hips facing forward, slowly slide your RIGHT hand DOWN the outside of your right thigh, bending sideways.',
     measure: measureTrunkLateralFlexion,
     segment: 'trunk', calibrationLandmarks: LMS_TRUNK,
   },
   trunk_rotation_left: {
     id: 'trunk_rotation_left', joint: 'trunk', label: 'Trunk Rotation Left',
     side: 'L', reference: { min: 35, ideal: 45 },
-    cue: 'Standing tall with hips facing forward, rotate your shoulders to the left as far as possible.',
+    cue: 'Rotate your shoulders left.',
+    intro: 'Next test: how far you can rotate your upper body to the left. Stand tall with feet planted, hips facing forward.',
+    howTo: 'Keeping your hips facing forward, slowly twist your shoulders and chest to the LEFT as far as you can. Let your arms come along naturally.',
     measure: measureTrunkRotation,
     segment: 'trunk', calibrationLandmarks: LMS_TRUNK,
   },
   trunk_rotation_right: {
     id: 'trunk_rotation_right', joint: 'trunk', label: 'Trunk Rotation Right',
     side: 'R', reference: { min: 35, ideal: 45 },
-    cue: 'Standing tall with hips facing forward, rotate your shoulders to the right as far as possible.',
+    cue: 'Rotate your shoulders right.',
+    intro: 'Next test: how far you can rotate your upper body to the right.',
+    howTo: 'Keeping your hips facing forward, slowly twist your shoulders and chest to the RIGHT as far as you can.',
     measure: measureTrunkRotation,
     segment: 'trunk', calibrationLandmarks: LMS_TRUNK,
   },

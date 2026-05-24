@@ -63,9 +63,13 @@ interface Props {
 
 type Phase = 'idle' | 'calibrate' | 'measure' | 'result'
 
-// 5-second measurement window — long enough to bend the joint, hold for a
-// beat at the peak, and release without feeling rushed.
-const HOLD_MS = 5000
+// 8-second measurement window. The user hears the plain-language howTo
+// (~3-4 s) and then has 4-5 s to actually perform + peak-hold the motion.
+// Previously this was 5 s and the spoken instructions overlapped with the
+// measurement window — the user was confused about whether to listen or
+// move. Peak is captured continuously so a slightly late motion still gets
+// recorded.
+const HOLD_MS = 8000
 
 // 3-second NEUTRAL-POSE calibration — once the user is in a true neutral
 // standing pose we count down 3 seconds and move on.  Calibration runs ONCE
@@ -134,7 +138,7 @@ export function AssessmentView({ muscleId, muscleName }: Props) {
         </span>
       </div>
       <p className="text-[11px] text-slate-400">
-        Quick range-of-motion check for your {muscleName?.toLowerCase()}.  3 s neutral-pose calibration, then move through the joint for {Math.round(HOLD_MS / 1000)} s — peak angle is tracked over time.
+        Quick range-of-motion check for your {muscleName?.toLowerCase()}. I will coach you through it: first stand in neutral pose for a moment, then I will explain the movement, then you will have time to do it.
       </p>
       <div className="space-y-1.5">
         {movements.map((mv) => (
@@ -282,6 +286,7 @@ function AssessmentSession({
   useEffect(() => { ttsRef.current = tts }, [tts])
   // Throttle the "Hold neutral pose" voice cue.
   const lastNeutralCueAt = useRef(0)
+  const introSpokenForId = useRef<string | null>(null)
   // Neutral-pose debounce: require N CONSECUTIVE frames of ok-status before
   // declaring "detected". Without this the calibration timer (and the TTS
   // cue) fired on the very first ok frame — which routinely happens during
@@ -375,6 +380,15 @@ function AssessmentSession({
     const phaseNow = phaseRef.current
 
     if (phaseNow === 'calibrate') {
+      // Fire the plain-language intro ONCE per movement so the user knows
+      // what is coming before we start chasing neutral-pose lock. Without
+      // this the system jumps straight to "Neutral pose detected. Hold for
+      // three seconds." which is confusing if the user has not been told
+      // what test is about to happen.
+      if (introSpokenForId.current !== movement.id && movement.intro) {
+        introSpokenForId.current = movement.id
+        ttsRef.current.speak(movement.intro)
+      }
       // Verify this is a TRUE neutral pose.  Per-check status drives the
       // overlay so the user knows which item to fix.
       const status = verifyNeutralPose(lms, movement.segment)
@@ -394,9 +408,8 @@ function AssessmentSession({
           const elapsed = now - calibStartedAt.current
           setCalibProgress(Math.min(1, elapsed / CALIB_MS))
           if (elapsed >= CALIB_MS) {
-            // Calibration complete — switch to measurement.  ONE-TIME ONLY:
-            // the only path back to calibration is the tracking-lost safety
-            // net below.
+            // Calibration complete -> announce + explain in plain language,
+            // then switch to measurement. ONE-TIME ONLY per session.
             phaseRef.current = 'measure'
             peakRef.current = 0
             liveRef.current = null
@@ -408,7 +421,15 @@ function AssessmentSession({
             setError(null)
             setTrackingWarning(null)
             setPhase('measure')
-            ttsRef.current.speak(movement.cue)
+            // Phased coaching: first announce success, then explain the
+            // movement using the rich howTo (plain language). If no howTo
+            // is defined fall back to the legacy short cue.
+            ttsRef.current.speak('Great. Locked in.')
+            const explanation = movement.howTo || movement.cue
+            setTimeout(() => { ttsRef.current.speak(explanation) }, 1200)
+            // "Get ready" beat right before the user is expected to move,
+            // so they know the measurement window is now live.
+            setTimeout(() => { ttsRef.current.speak('Begin when ready.') }, 5800)
           }
         }
       } else {
