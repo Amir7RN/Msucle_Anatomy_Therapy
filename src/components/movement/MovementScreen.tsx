@@ -72,6 +72,11 @@ export function MovementScreen({ open, onClose }: Props) {
   // (zoom state removed — camera uses object-fit:contain natively)
 
   const tts = useVoiceOutput()
+  // Hard safety net: cancel any queued speech when this component unmounts
+  // (route change, etc.) so the coach voice never leaks across screens.
+  useEffect(() => () => {
+    try { window.speechSynthesis?.cancel() } catch { /* ignore */ }
+  }, [])
   // Stable-identity ref to TTS so timer effects don't re-run every render.
   const ttsRef = useRef(tts)
   useEffect(() => { ttsRef.current = tts }, [tts])

@@ -6,7 +6,8 @@
  * Score, and per-joint breakdown. One-tap PNG export via html2canvas.
  */
 
-import React, { useMemo, useRef, useState } from 'react'
+import { useAtlasStore } from '../../store/atlasStore'
+import React, { useEffect, useMemo, useRef, useState  } from 'react'
 import { X, Download, AlertTriangle, Activity } from 'lucide-react'
 import {
   computeAllSymmetry,
@@ -24,6 +25,14 @@ interface Props {
 }
 
 export function SymmetryReport({ open, onClose }: Props) {
+  // Hide the 3D canvas chrome while this modal is open.
+  useEffect(() => {
+    if (!open) return
+    const { pushModal, popModal } = useAtlasStore.getState()
+    pushModal()
+    return () => popModal()
+  }, [open])
+
   const romVersion = useROMVersion()
   const scores: SymmetryScore[] = useMemo(
     () => computeAllSymmetry(),

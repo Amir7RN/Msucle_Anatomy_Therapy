@@ -31,6 +31,7 @@ import { JOINT_MOVEMENTS } from '../../lib/movement/muscleJointMap'
 import { getRecordsFor } from '../../lib/movement/romHistory'
 import { useROMVersion } from '../../hooks/useROMVersion'
 import { PersonalProgramView } from '../insights/PersonalProgramView'
+import { useAtlasStore } from '../../store/atlasStore'
 
 interface Props {
   open:    boolean
@@ -45,6 +46,14 @@ export function FullBodyAssessmentView({ open, onClose }: Props) {
   const [items, setItems]       = useState<BatteryItem[]>([])
   const [cursor, setCursor]     = useState(0)
   const [progOpen, setProgOpen] = useState(false)
+
+  // Hide the 3D canvas chrome while this modal is open.
+  useEffect(() => {
+    if (!open) return
+    const { pushModal, popModal } = useAtlasStore.getState()
+    pushModal()
+    return () => popModal()
+  }, [open])
 
   // Reset when re-opened.
   useEffect(() => {

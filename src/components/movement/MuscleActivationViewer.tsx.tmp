@@ -64,7 +64,7 @@ export function MuscleActivationViewer({ activations, targetMuscleId }: Props) {
       gl={{ antialias: true, alpha: true, powerPreference: 'low-power' }}
       dpr={[1, 2]}
       style={{ background: 'transparent' }}
-      camera={{ position: [0, 0, 3.6], fov: 42, near: 0.1, far: 100 }}
+      camera={{ position: [0, 0.4, 5.4], fov: 34, near: 0.1, far: 100 }}
     >
       <ambientLight intensity={0.55} />
       <directionalLight position={[3, 5, 4]}  intensity={0.7} />
@@ -91,19 +91,8 @@ function ActivationModel({ lookup }: { lookup: Map<string, number> }) {
   // Clone the scene graph so we don't fight the main atlas viewer for the
   // same Object3D instances. Cloning a GLTF scene preserves names + geometry
   // references and is cheap.
-  // Clone, then center on origin AND apply 1.5x scale. The GLB's natural
-  // origin sits somewhere in the upper torso (not at the feet), so we
-  // compute the bounding-box centre and shift the model so that centre
-  // lands at world (0,0,0). Combined with a camera that looks at origin,
-  // this guarantees the body is centred in the box regardless of which
-  // axis convention the source GLB uses.
   const cloned = useMemo(() => {
     const c = scene.clone(true)
-    const box = new THREE.Box3().setFromObject(c)
-    const centre = box.getCenter(new THREE.Vector3())
-    c.position.sub(centre)            // shift so geometry centre = (0,0,0)
-    c.scale.setScalar(1.5)            // bigger so muscle pulses are obvious
-    c.position.multiplyScalar(1.5)    // apply same scale to the shift
     return c
   }, [scene])
 
@@ -185,8 +174,16 @@ function ActivationModel({ lookup }: { lookup: Map<string, number> }) {
     }
   })
 
-  // The cloned scene is already centred + scaled — just drop it in.
-  return <primitive object={cloned} />
+  // Frame the model so the WHOLE body fits in the panel box at a generous
+  // scale. The GLB is centred near the chest in its source coords; we shift
+  // it DOWN by ~1.4 units so the head ends up roughly two thirds up the
+  // viewport, then scale the entire body up 1.65× so a clinical full-body
+  // shot fills the box rather than floating as a thumbnail.
+  return (
+    <group position={[0, -1.4, 0]} scale={1.65}>
+      <primitive object={cloned} />
+    </group>
+  )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

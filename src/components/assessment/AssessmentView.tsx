@@ -379,6 +379,13 @@ export function AssessmentSession({
   const tts = useVoiceOutput()
   const ttsRef = useRef(tts)
   useEffect(() => { ttsRef.current = tts }, [tts])
+  // Ensure the AI coach stops talking the moment this overlay is unmounted
+  // (close button, outside click, browser back, route change, etc.).
+  useEffect(() => {
+    return () => {
+      try { window.speechSynthesis?.cancel() } catch { /* ignore */ }
+    }
+  }, [])
   // Throttle the "Hold neutral pose" voice cue.
   const lastNeutralCueAt = useRef(0)
   const introSpokenForId = useRef<string | null>(null)
@@ -561,13 +568,26 @@ export function AssessmentSession({
             // begin TTS completes; the timer effect respects that.
             measureReadyAt.current = null
             const explanation = movement.howTo || movement.cue
+            // If the movement applies to either side, name the side up front
+            // so the user knows whether to use their left or right limb. (For
+            // movements that are inherently L or R the cue already encodes it.)
+            const sideCue = movement.side === 'either'
+              ? `Use your ${side === 'L' ? 'left' : 'right'} side.`
+              : ''
             ttsRef.current.speak('Great. Locked in.', () => {
-              ttsRef.current.speak(explanation, () => {
-                ttsRef.current.speak('Begin in three... two... one... GO!', () => {
-                  // ONLY now do we start the measurement clock.
-                  measureReadyAt.current = performance.now()
+              const speakExplanation = () => {
+                ttsRef.current.speak(explanation, () => {
+                  ttsRef.current.speak('Begin in three... two... one... GO!', () => {
+                    // ONLY now do we start the measurement clock.
+                    measureReadyAt.current = performance.now()
+                  })
                 })
-              })
+              }
+              if (sideCue) {
+                ttsRef.current.speak(sideCue, speakExplanation)
+              } else {
+                speakExplanation()
+              }
             })
           }
         }

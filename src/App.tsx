@@ -157,10 +157,8 @@ function AtlasApp() {
         <main className="flex-1 min-w-0 relative">
           <ViewerCanvas />
           <DiagnosticModeToggle />
-          {/* Movement launcher — hidden on mobile, accessible via bottom bar */}
-          <div className="hidden md:block">
-            <MovementLauncher />
-          </div>
+          {/* Movement launcher removed - the new 'Assessment' header button
+              replaces it. Mobile still has access via the bottom-nav tab. */}
         </main>
 
         {/* Right panel — always shown on desktop; shown as full overlay on mobile when mobilePanel='details' */}
@@ -267,6 +265,8 @@ function MovementScreenMount() {
 function DiagnosticModeToggle() {
   const diagnosticMode       = useAtlasStore((s) => s.diagnosticMode)
   const toggleDiagnosticMode = useAtlasStore((s) => s.toggleDiagnosticMode)
+  const modalOpenCount       = useAtlasStore((s) => s.modalOpenCount)
+  if (modalOpenCount > 0) return null
   return (
     <button
       onClick={toggleDiagnosticMode}

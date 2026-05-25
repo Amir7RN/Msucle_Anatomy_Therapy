@@ -66,6 +66,11 @@ interface AtlasState {
 
   // Movement Assessment full-screen
   movementOpen:         boolean
+  /** Number of full-screen overlay modals currently open. When > 0,
+   *  the 3D canvas chrome (Movement Screen launcher, schematic overlay,
+   *  diagnostic toggle, status badges) is hidden so the modal is the
+   *  visual focus. */
+  modalOpenCount:       number
 
   // Muscle-overlay calibration onto the Meshy body — non-uniform scale
   muscleOverlayScaleX:  number
@@ -133,6 +138,8 @@ interface AtlasState {
   setTriageOpen:        (open: boolean) => void
   toggleMovement:       () => void
   setMovementOpen:      (open: boolean) => void
+  pushModal:            () => void
+  popModal:             () => void
 
   setMuscleOverlayScaleX:  (v: number) => void
   setMuscleOverlayScaleY:  (v: number) => void
@@ -184,6 +191,7 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   showMuscleDebug:       false,
   triageOpen:            false,
   movementOpen:          false,
+  modalOpenCount:        0,
   // Baked calibration values — tuned so the 52-mesh muscles align with
   // the male-normal.glb ghost body without needing the slider panel open.
   muscleOverlayScaleX:   1.090,
@@ -335,6 +343,8 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   setTriageOpen:     (open) => set({ triageOpen: open }),
   toggleMovement:    () => set((s) => ({ movementOpen: !s.movementOpen })),
   setMovementOpen:   (open) => set({ movementOpen: open }),
+  pushModal:         () => set((s) => ({ modalOpenCount: s.modalOpenCount + 1 })),
+  popModal:          () => set((s) => ({ modalOpenCount: Math.max(0, s.modalOpenCount - 1) })),
 
   setMuscleOverlayScaleX:  (v) => set({ muscleOverlayScaleX:  v }),
   setMuscleOverlayScaleY:  (v) => set({ muscleOverlayScaleY:  v }),

@@ -15,39 +15,48 @@ import {
   type ProgramExercise,
 } from '../../lib/insights/personalProgram'
 import { ExerciseGuidance } from '../movement/ExerciseGuidance'
+import { useAtlasStore } from '../../store/atlasStore'
 
 // Map of exerciseId -> { label, videoSrc } so we can launch the existing
 // ExerciseGuidance component. Pulled from MetadataPanel's EXERCISE_MAP via a
 // thin lookup table to avoid coupling.
 const EXERCISE_RESOLVER: Record<string, { label: string; src: string }> = (() => {
+  // Shoulder/deltoid + glute/hamstring videos live in public/videos/ (flat).
   const base = import.meta.env.BASE_URL
-  const VB = (n: string) => `${base}Videos/Bicep/${n}`
-  const VQ = (n: string) => `${base}Videos/QuadRecipts/${n}`
-  const VS = (n: string) => `${base}Videos/Shoulder-Deltoid/${n}`
+  const V = (n: string) => `${base}videos/${n}`
+  // Bicep & Quad videos live OUTSIDE public/ as Vite asset-pipeline imports
+  // (../../../Videos/...) - we re-use the same paths MetadataPanel resolves
+  // via new URL(...) so the build hashes them and copies them into /assets.
+  const VB = (n: string) => new URL(`../../../Videos/Bicep/${n}`, import.meta.url).href
+  const VQ = (n: string) => new URL(`../../../Videos/QuadRecipts/${n}`, import.meta.url).href
   return {
-    doorway_stretch:        { label: 'Doorway Stretch',        src: VS('Doorway_Stretch.mp4') },
-    seated_cross_arm:       { label: 'Seated Cross-Arm Stretch', src: VS('Cross_Arm_Stretch.mp4') },
-    standing_sleeper:       { label: 'Standing Sleeper Stretch', src: VS('Sleeper_Stretch.mp4') },
-    hand_behind_back:       { label: 'Hand Behind Back Stretch', src: VS('Behind_Back_Stretch.mp4') },
-    standing_chest:         { label: 'Standing Chest Stretch', src: VS('Standing_Chest_Stretch.mp4') },
-    crab_press:             { label: 'Crab Press',             src: VS('Crab_Press.mp4') },
-    side_lying_er:          { label: 'Side-Lying ER',          src: VS('Sleeper_Stretch.mp4') },
-    post_shoulder:          { label: 'Posterior Shoulder',     src: VS('Sleeper_Stretch.mp4') },
-    wand_rotation:          { label: 'Wand Rotation',          src: VS('Sleeper_Stretch.mp4') },
-    bb_flex_ext:            { label: 'Biceps Flex/Extend',     src: VB('FlexExtend.mp4') },
-    bb_shoulder_flex:       { label: 'Shoulder Flexion',       src: VB('ShoulderFlexion.mp4') },
-    bb_wall_stretch:        { label: 'Wall Biceps Stretch',    src: VB('WallStretch.mp4') },
-    bb_ext_rotation:        { label: 'External Rotation',      src: VB('ExternalRotation.mp4') },
-    bb_sleeper_stretch:     { label: 'Sleeper Stretch',        src: VB('SleeperStretch.mp4') },
-    glute_bridge:           { label: 'Glute Bridge',           src: VS('Crab_Press.mp4') },
-    hip_hinge:              { label: 'Hip Hinge',              src: VQ('StiffDeadlift.mp4') },
-    side_clamshell:         { label: 'Side Clamshell',         src: VS('Cross_Arm_Stretch.mp4') },
-    hamstring_squeeze:      { label: 'Hamstring Squeeze',      src: VQ('HamstringSupine.mp4') },
-    qd_wall_squat:          { label: 'Wall Squat',             src: VQ('WallSquat.mp4') },
-    qd_stiff_deadlift:      { label: 'Stiff-Leg Deadlift',     src: VQ('StiffDeadlift.mp4') },
-    qd_quad_stretch_stand:  { label: 'Standing Quad Stretch',  src: VQ('QuadStretchStanding.mp4') },
-    qd_quad_stretch_side:   { label: 'Side-Lying Quad Stretch', src: VQ('QuadStretchSide.mp4') },
-    qd_hamstring_supine:    { label: 'Supine Hamstring Stretch', src: VQ('HamstringSupine.mp4') },
+    // Shoulder / Deltoid (public/videos)
+    doorway_stretch:        { label: 'Doorway Stretch',          src: V('DoorWay_Stretch.mp4') },
+    seated_cross_arm:       { label: 'Seated Cross-Arm Stretch', src: V('Seated_Cross_Arm_Stretch.mp4') },
+    standing_sleeper:       { label: 'Standing Sleeper Stretch', src: V('Standing_Sleeper_Stretch.mp4') },
+    hand_behind_back:       { label: 'Hand Behind Back Stretch', src: V('Hand_Behind_Back_Stretch.mp4') },
+    standing_chest:         { label: 'Standing Chest Stretch',   src: V('Standing_Chest_Stretch.mp4') },
+    crab_press:             { label: 'Crab Press',               src: V('Crab_Press.mp4') },
+    side_lying_er:          { label: 'Side-Lying ER',            src: V('Side_Lying_External_Rotation.mp4') },
+    post_shoulder:          { label: 'Posterior Shoulder',       src: V('Posterior_Shoulder_Stretch.mp4') },
+    wand_rotation:          { label: 'Wand Rotation',            src: V('Wand_Rotation.mp4') },
+    // Biceps / elbow (Videos/Bicep)
+    bb_flex_ext:            { label: 'Biceps Flex / Extend',     src: VB('Flexion and Extension.mp4') },
+    bb_shoulder_flex:       { label: 'Shoulder Flexion',         src: VB('Single Shoulder Flexion.mp4') },
+    bb_wall_stretch:        { label: 'Wall Biceps Stretch',      src: VB('Biceps Stretch.mp4') },
+    bb_ext_rotation:        { label: 'External Rotation',        src: VB('Reclining External Rotation.mp4') },
+    bb_sleeper_stretch:     { label: 'Sleeper Stretch',          src: VB('Sleeper Stretch.mp4') },
+    // Glute / hip / hamstring (public/videos)
+    glute_bridge:           { label: 'Glute Bridge',             src: V('Glute_Bridge_Exercise.mp4') },
+    hip_hinge:              { label: 'Hip Hinge',                src: V('Hip_Hinge_Exercise.mp4') },
+    side_clamshell:         { label: 'Side Clamshell',           src: V('Glute_Bridge_Exercise.mp4') },
+    hamstring_squeeze:      { label: 'Hamstring Squeeze',        src: V('Hamstring_Squeeze.mp4') },
+    // Quad (Videos/QuadRecipts)
+    qd_wall_squat:          { label: 'Wall Squat',                src: VQ('Wall Squat.mp4') },
+    qd_stiff_deadlift:      { label: 'Stiff-Leg Deadlift',        src: VQ('Stiff-legged Deadlift.mp4') },
+    qd_quad_stretch_stand:  { label: 'Standing Quad Stretch',     src: VQ('Quad stretch (standing).mp4') },
+    qd_quad_stretch_side:   { label: 'Side-Lying Quad Stretch',   src: VQ('Quad stretch (lying on side).mp4') },
+    qd_hamstring_supine:    { label: 'Supine Hamstring Stretch',  src: VQ('Hamstring stretch (lying down).mp4') },
   }
 })()
 
@@ -57,6 +66,14 @@ interface Props {
 }
 
 export function PersonalProgramView({ open, onClose }: Props) {
+  // Hide the 3D canvas chrome while this modal is open.
+  useEffect(() => {
+    if (!open) return
+    const { pushModal, popModal } = useAtlasStore.getState()
+    pushModal()
+    return () => popModal()
+  }, [open])
+
   const [program,  setProgram]  = useState<PersonalProgram | null>(null)
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState<string | null>(null)

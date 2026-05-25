@@ -51,6 +51,7 @@ import {
 import { loadROMHistory } from '../../lib/movement/romHistory'
 import { computeActivation } from '../../lib/movement/muscleActivation'
 import { MuscleActivationViewer } from './MuscleActivationViewer'
+import { useAtlasStore } from '../../store/atlasStore'
 
 // ── Smoothing buffer ──────────────────────────────────────────────────────────
 const SMOOTH_FRAMES = 8
@@ -75,6 +76,17 @@ interface Props {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId, onClose }: Props) {
+  // Hide the 3D canvas chrome AND make absolutely sure the AI Coach's
+  // speech queue is silenced whenever the user exits this overlay.
+  useEffect(() => {
+    const { pushModal, popModal } = useAtlasStore.getState()
+    pushModal()
+    return () => {
+      popModal()
+      try { window.speechSynthesis?.cancel() } catch { /* ignore */ }
+    }
+  }, [])
+
   const biofeedbackKey = exerciseId ? EXERCISE_TO_BIOFEEDBACK[exerciseId] : null
   const def: BiofeedbackDef | null = biofeedbackKey ? BIOFEEDBACK_DEFS[biofeedbackKey] ?? null : null
 
@@ -1326,23 +1338,39 @@ function ActivationOverlay({
   hasDef:          boolean
   targetMuscleId?: string
 }) {
-  if (!hasDef) return null
-  const activations = computeActivation(snapshot)
+  // Render whenever we know at least the target muscle id - even without a
+  // biofeedback def we can still pre-glow the targeted muscle so the user
+  // sees WHAT they are working before MediaPipe locks in.
+  if (!hasDef && !targetMuscleId) return null
+  const activations = hasDef ? computeActivation(snapshot) : []
   const top = activations.slice(0, 4)
   return (
-    <div className="w-full md:w-56 flex-shrink-0 flex flex-col border-r border-slate-700 bg-slate-950/60 p-3">
-      <div className="text-[10px] uppercase tracking-wider text-cyan-300 font-semibold mb-1.5">
-        Muscle activation
+    <div className="w-full md:w-80 flex-shrink-0 flex flex-col border-r border-slate-700 bg-slate-950/60 p-3">
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="text-[10px] uppercase tracking-wider text-cyan-300 font-semibold">
+          Muscle activation
+        </div>
+        {targetMuscleId && (
+          <div className="text-[9px] uppercase tracking-wider text-orange-400 font-semibold">
+            Target: {targetMuscleId.replace(/_/g, ' ')}
+          </div>
+        )}
       </div>
-      {/* 3D anatomical viewer - faded body + pulsing target muscle */}
-      <div className="flex-1 min-h-[220px] rounded-md bg-gradient-to-b from-slate-900/60 to-slate-950 ring-1 ring-slate-800 overflow-hidden">
+      {/* 3D anatomical viewer - faded body + pulsing target muscle. Tall and
+          contrasty so the pulse reads from across the room. */}
+      <div className="flex-1 min-h-[360px] rounded-md bg-gradient-to-b from-slate-900 to-black ring-1 ring-orange-500/30 overflow-hidden relative">
         <MuscleActivationViewer activations={activations} targetMuscleId={targetMuscleId} />
+        {/* Soft halo pulse around the frame - independent of the WebGL
+            canvas so the user notices the activity even before the muscle
+            mesh renders. */}
+        <div className="pointer-events-none absolute inset-0 ring-2 ring-orange-500/0 animate-pulse"
+             style={{ boxShadow: 'inset 0 0 30px rgba(249, 115, 22, 0.18)' }} />
       </div>
       <div className="mt-1.5 space-y-0.5">
         {top.length === 0 && (
-          <div className="text-[10px] text-slate-500 italic">
+          <div className="text-[10px] text-slate-400 italic">
             {targetMuscleId
-              ? `Targeting ${targetMuscleId.replace(/_/g, ' ')} - move into position to engage...`
+              ? `Targeting ${targetMuscleId.replace(/_/g, ' ')} - the highlighted muscle is the focus of this exercise.`
               : 'Move into position to engage muscles...'}
           </div>
         )}

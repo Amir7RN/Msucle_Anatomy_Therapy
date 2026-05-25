@@ -183,14 +183,10 @@ export function ViewerCanvas() {
         <SchematicMarkers />
       </Canvas>
 
-      {/* HTML/SVG schematic overlay — leader lines + label cards */}
-      <SchematicOverlay />
-
-      <ModelStatusBadge />
-      <HoverTooltip />
-      <InteractionHint />
+      {/* Chrome — hidden when a full-screen modal is open so the modal
+          is the visual focus and not competing with the schematic / badges. */}
+      <ChromeGate />
       <ScreenshotButton glRef={rendererRef} />
-      <ModelSwitchToggle />
       {/* CalibrationPanel hidden — muscle scaling is locked to baked values */}
     </div>
   )
@@ -328,3 +324,22 @@ function ModelSwitchToggle() {
     </div>
   )
 }
+
+// ChromeGate — gates the 3D scene's HTML chrome (schematic overlay, status
+// badges, interaction hint, model-switch toggle) on the modal-open count
+// from the atlas store. When a full-screen overlay is up the user shouldn't
+// see the schematic labels floating in front of the modal.
+function ChromeGate() {
+  const modalOpenCount = useAtlasStore((s) => s.modalOpenCount)
+  if (modalOpenCount > 0) return null
+  return (
+    <>
+      <SchematicOverlay />
+      <ModelStatusBadge />
+      <HoverTooltip />
+      <InteractionHint />
+      <ModelSwitchToggle />
+    </>
+  )
+}
+
