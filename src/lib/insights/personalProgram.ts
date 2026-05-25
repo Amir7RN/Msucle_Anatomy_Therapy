@@ -191,19 +191,22 @@ export async function generatePersonalProgram(): Promise<PersonalProgram> {
 
   if (!res.ok) {
     const txt = await res.text().catch(() => '')
-    throw new Error(`Claude API ${res.status}: ${txt.slice(0, 200)}`)
+    // Network/auth failure - fall back to local rule-based plan so the user
+    // always gets *something* useful instead of a dead-end error.
+    console.warn(`[personalProgram] Claude API ${res.status}: ${txt.slice(0, 200)} - falling back to offline plan`)
+    const program = buildFallbackProgram(records)
+    await savePersonalProgram(program)
+    return program
   }
   const data = await res.json()
   const text: string = data.content?.[0]?.text ?? ''
 
-  // Defensive JSON extraction — Claude sometimes wraps in ```json blocks.
-  const jsonStr = text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim()
-  let parsed: any
-  try {
-    parsed = JSON.parse(jsonStr)
-  } catch (e) {
-    console.error('[personalProgram] Claude returned non-JSON:', text)
-    throw new Error('Coach response was not valid JSON. Try again.')
+  const parsed = extractProgramJson(text)
+  if (!parsed) {
+    console.warn('[personalProgram] Claude returned non-JSON, falling back to offline plan. Raw:', text.slice(0, 400))
+    const program = buildFallbackProgram(records)
+    await savePersonalProgram(program)
+    return program
   }
 
   const program: PersonalProgram = {
@@ -212,9 +215,197 @@ export async function generatePersonalProgram(): Promise<PersonalProgram> {
     summary:     parsed.summary ?? '',
     weeks:       Array.isArray(parsed.weeks) ? parsed.weeks : [],
   }
+  // If Claude produced an empty/garbage skeleton, still fall back so the
+  // user gets a usable calendar.
+  if (program.weeks.length === 0) {
+    const fb = buildFallbackProgram(records)
+    program.weeks   = fb.weeks
+    program.title   = program.title  || fb.title
+    program.summary = program.summary || fb.summary
+  }
 
   await savePersonalProgram(program)
   return program
+}
+
+// --- Robust JSON extraction ------------------------------------------------
+// Claude Haiku sometimes:
+//   - wraps the JSON in ```json fences
+//   - prefaces it with "Here is your program:" or similar prose
+//   - appends a trailing comment after the closing brace
+//   - emits trailing commas inside arrays/objects (invalid JSON but common)
+//
+// We walk the text, find the first balanced { ... }, repair common issues,
+// and try parse. Returns null if everything fails.
+function extractProgramJson(raw: string): any | null {
+  if (!raw) return null
+  // Strip any markdown code-fence wrappers anywhere in the string.
+  let txt = raw.replace(/```(?:json)?/gi, '').trim()
+  // Find first balanced {...} block.
+  const block = firstBalancedObject(txt)
+  if (!block) return null
+  // First try as-is.
+  try { return JSON.parse(block) } catch {}
+  // Repair pass 1: remove trailing commas before } or ].
+  const repaired = block.replace(/,(\s*[}\]])/g, '$1')
+  try { return JSON.parse(repaired) } catch {}
+  // Repair pass 2: drop // line comments and block comments.
+  const noComments = repaired
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '')
+  try { return JSON.parse(noComments) } catch {}
+  return null
+}
+
+function firstBalancedObject(s: string): string | null {
+  const start = s.indexOf('{')
+  if (start < 0) return null
+  let depth = 0
+  let inStr: '"' | "'" | null = null
+  let esc = false
+  for (let i = start; i < s.length; i += 1) {
+    const ch = s[i]
+    if (inStr) {
+      if (esc)              esc = false
+      else if (ch === '\\') esc = true
+      else if (ch === inStr) inStr = null
+      continue
+    }
+    if (ch === '"' || ch === "'") { inStr = ch as any; continue }
+    if (ch === '{') depth += 1
+    else if (ch === '}') {
+      depth -= 1
+      if (depth === 0) return s.slice(start, i + 1)
+    }
+  }
+  return null
+}
+
+// --- Offline fallback program ----------------------------------------------
+// Rule-based plan built purely from the user's ROM history (or a generic
+// starter plan if they have none). Used when the Claude call fails or
+// returns un-parseable text. Guarantees the user always gets a 4-week plan.
+function buildFallbackProgram(records: ROMRecord[]): PersonalProgram {
+  // Aggregate by joint/region using the same per-joint best as buildSnapshot.
+  const key = (r: ROMRecord) => `${r.movementId}__${r.side}`
+  const best = new Map<string, ROMRecord>()
+  for (const r of records) {
+    const k = key(r)
+    const cur = best.get(k)
+    if (!cur || r.angle > cur.angle) best.set(k, r)
+  }
+  // Build a deficit list - lower ratio first.
+  const deficits = Array.from(best.values()).map((r) => {
+    const mv = JOINT_MOVEMENTS[r.movementId]
+    const ratio = mv?.reference.ideal ? r.angle / mv.reference.ideal : 1
+    return { rec: r, mv, ratio }
+  }).filter((d) => d.mv).sort((a, b) => a.ratio - b.ratio)
+
+  // Pick a session bias from the weakest joint groups we see.
+  const focusJoints = new Set<string>()
+  for (const d of deficits.slice(0, 4)) focusJoints.add(d.mv!.joint)
+  if (focusJoints.size === 0) {
+    // No data - give a balanced full-body starter.
+    focusJoints.add('shoulder').add('hip').add('trunk')
+  }
+
+  // Exercise pool per joint group (mirrors the EXERCISE_LIBRARY whitelist).
+  const POOLS: Record<string, Array<{ id: string; name: string; muscle: string; rx: string }>> = {
+    shoulder: [
+      { id: 'standing_chest',   name: 'Standing Chest Stretch',    muscle: 'deltoid',          rx: '3 sets of 30-second hold each side' },
+      { id: 'doorway_stretch',  name: 'Doorway Stretch',           muscle: 'pectoralis_major', rx: '3 sets of 30-second hold' },
+      { id: 'wand_rotation',    name: 'Wand Rotation',             muscle: 'infraspinatus',    rx: '2 sets of 10 reps each side' },
+      { id: 'crab_press',       name: 'Crab Press',                muscle: 'deltoid_posterior', rx: '2 sets of 8 reps' },
+    ],
+    elbow: [
+      { id: 'bb_flex_ext',      name: 'Biceps Flex / Extend',      muscle: 'biceps_brachii',   rx: '2 sets of 12 reps each side' },
+      { id: 'bb_wall_stretch',  name: 'Wall Biceps Stretch',       muscle: 'biceps_brachii',   rx: '3 sets of 30-second hold each side' },
+    ],
+    hip: [
+      { id: 'glute_bridge',     name: 'Glute Bridge',              muscle: 'gluteus_maximus',  rx: '3 sets of 12 reps' },
+      { id: 'hip_hinge',        name: 'Hip Hinge',                 muscle: 'gluteus_maximus',  rx: '2 sets of 10 reps' },
+      { id: 'side_clamshell',   name: 'Side Clamshell',            muscle: 'gluteus_medius',   rx: '2 sets of 12 reps each side' },
+    ],
+    knee: [
+      { id: 'qd_wall_squat',          name: 'Wall Squat',                 muscle: 'rectus_femoris',  rx: '3 sets of 30-second hold' },
+      { id: 'qd_quad_stretch_stand',  name: 'Standing Quad Stretch',      muscle: 'rectus_femoris',  rx: '3 sets of 30-second each side' },
+      { id: 'qd_hamstring_supine',    name: 'Supine Hamstring Stretch',   muscle: 'biceps_femoris',  rx: '3 sets of 30-second each side' },
+    ],
+    ankle: [
+      { id: 'qd_stiff_deadlift', name: 'Stiff-Leg Deadlift',        muscle: 'gastrocnemius',   rx: '2 sets of 10 reps' },
+    ],
+    trunk: [
+      { id: 'hip_hinge',         name: 'Hip Hinge',                 muscle: 'erector_spinae',  rx: '2 sets of 10 reps' },
+      { id: 'glute_bridge',      name: 'Glute Bridge',              muscle: 'erector_spinae',  rx: '3 sets of 12 reps' },
+    ],
+    cervical: [
+      { id: 'wand_rotation',     name: 'Gentle Neck Rotations',     muscle: 'sternocleidomastoid', rx: '2 sets of 6 reps each side' },
+    ],
+  }
+
+  // Build days: 4 active + 3 rest, rotating across focusJoints.
+  const focusList = Array.from(focusJoints)
+  const buildDay = (dayNum: number, weekNum: number, joint: string): ProgramDay => {
+    const pool = POOLS[joint] ?? POOLS.shoulder
+    // Week 2..4 progress: lengthen holds / add a rep.
+    const holdSuffix = weekNum === 1 ? ''
+                     : weekNum === 2 ? ' (add 5 s to holds)'
+                     : weekNum === 3 ? ' (add a set)'
+                     :                  ' (slow tempo, controlled)'
+    const exercises: ProgramExercise[] = pool.slice(0, 4).map((p) => ({
+      name:         p.name,
+      exerciseId:   p.id,
+      muscleId:     p.muscle,
+      prescription: p.rx + holdSuffix,
+      rationale:    `Targets ${joint} mobility based on your assessment focus.`,
+    }))
+    return {
+      dayNum,
+      type:  'active',
+      theme: `${joint.charAt(0).toUpperCase() + joint.slice(1)} mobility`,
+      sessions: [{
+        title:       `${joint.charAt(0).toUpperCase() + joint.slice(1)} session`,
+        durationMin: 12,
+        exercises,
+      }],
+    }
+  }
+  const restDay = (dayNum: number): ProgramDay => ({ dayNum, type: 'rest', sessions: [] })
+
+  const weeks: ProgramWeek[] = [1, 2, 3, 4].map((wk) => {
+    const days: ProgramDay[] = []
+    let activeCount = 0
+    for (let d = 1; d <= 7; d += 1) {
+      // Pattern: active, active, rest, active, rest, active, rest
+      const pattern = [true, true, false, true, false, true, false]
+      if (pattern[d - 1]) {
+        const joint = focusList[activeCount % focusList.length]
+        days.push(buildDay(d, wk, joint))
+        activeCount += 1
+      } else {
+        days.push(restDay(d))
+      }
+    }
+    return {
+      weekNum: wk,
+      focus:   wk === 1 ? `Baseline mobility - focus on ${focusList.join(', ')}.`
+              : wk === 2 ? 'Build - slightly longer holds, same movements.'
+              : wk === 3 ? 'Extend - add a set where the motion feels easy.'
+              :            'Refine - slow tempo, full-range control.',
+      days,
+    }
+  })
+
+  const summary = deficits.length > 0
+    ? `Offline plan based on your latest assessments - emphasis on ${focusList.join(', ')} where your measured ROM was lowest.`
+    : 'Offline starter plan - run a Full-Body Assessment first so I can tailor this to your measured ROM.'
+
+  return {
+    generatedAt: new Date().toISOString(),
+    title:       'Your 4-week Mobility Program',
+    summary,
+    weeks,
+  }
 }
 
 // ─── Persistence ─────────────────────────────────────────────────────────────

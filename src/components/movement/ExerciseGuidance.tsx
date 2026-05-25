@@ -49,8 +49,8 @@ import {
   type JointSample,
 } from '../../lib/movement/directionalCue'
 import { loadROMHistory } from '../../lib/movement/romHistory'
-import { computeActivation, activationRegionColors } from '../../lib/movement/muscleActivation'
-import { BodySilhouette } from '../insights/BodySilhouette'
+import { computeActivation } from '../../lib/movement/muscleActivation'
+import { MuscleActivationViewer } from './MuscleActivationViewer'
 
 // ── Smoothing buffer ──────────────────────────────────────────────────────────
 const SMOOTH_FRAMES = 8
@@ -401,10 +401,12 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
             compute every frame.                                         */}
         <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
 
-        {/* Live muscle activation overlay — body silhouette tinted by which
-            muscles are firing for the current pose. Educational + the kind
-            of demoable wow that screenshots well. */}
-        <ActivationOverlay snapshot={snapshot} hasDef={!!def} />
+        {/* Live muscle activation overlay - re-uses the main atlas's
+            BodyParts3D GLB; only the target / actively-firing muscles are
+            rendered in red, with a pulse keyed to activation intensity.
+            The rest of the body is a faint translucent shell so the user
+            sees clearly where the load is going. */}
+        <ActivationOverlay snapshot={snapshot} hasDef={!!def} targetMuscleId={muscleId} />
 
         {/* Performance tracker — fills the previously-empty area */}
         <PerformanceTracker
@@ -1317,22 +1319,32 @@ function ReferenceVideo({
 //  ActivationOverlay — body silhouette tinted by per-muscle firing intensity
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ActivationOverlay({ snapshot, hasDef }: { snapshot: FormSnapshot | null; hasDef: boolean }) {
+function ActivationOverlay({
+  snapshot, hasDef, targetMuscleId,
+}: {
+  snapshot:        FormSnapshot | null
+  hasDef:          boolean
+  targetMuscleId?: string
+}) {
   if (!hasDef) return null
   const activations = computeActivation(snapshot)
-  const colors = activationRegionColors(activations)
   const top = activations.slice(0, 4)
   return (
-    <div className="w-full md:w-48 flex-shrink-0 flex flex-col border-r border-slate-700 bg-slate-950/60 p-3">
+    <div className="w-full md:w-56 flex-shrink-0 flex flex-col border-r border-slate-700 bg-slate-950/60 p-3">
       <div className="text-[10px] uppercase tracking-wider text-cyan-300 font-semibold mb-1.5">
         Muscle activation
       </div>
-      <div className="flex-1 min-h-0 flex items-center justify-center">
-        <BodySilhouette regionColors={colors} width={132} height={264} baseFill="#1e293b" outline="#334155" />
+      {/* 3D anatomical viewer - faded body + pulsing target muscle */}
+      <div className="flex-1 min-h-[220px] rounded-md bg-gradient-to-b from-slate-900/60 to-slate-950 ring-1 ring-slate-800 overflow-hidden">
+        <MuscleActivationViewer activations={activations} targetMuscleId={targetMuscleId} />
       </div>
-      <div className="mt-1 space-y-0.5">
+      <div className="mt-1.5 space-y-0.5">
         {top.length === 0 && (
-          <div className="text-[10px] text-slate-500 italic">Move into position to engage muscles…</div>
+          <div className="text-[10px] text-slate-500 italic">
+            {targetMuscleId
+              ? `Targeting ${targetMuscleId.replace(/_/g, ' ')} - move into position to engage...`
+              : 'Move into position to engage muscles...'}
+          </div>
         )}
         {top.map((a) => (
           <div key={a.muscleId} className="flex items-center justify-between text-[10px]">

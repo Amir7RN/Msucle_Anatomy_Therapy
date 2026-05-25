@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Activity, LogOut, LogIn, Sparkles, Scan } from 'lucide-react'
+import { Activity, LogOut, LogIn, Sparkles, Scan, Crosshair } from 'lucide-react'
 import { ActionButtons } from '../controls/ActionButtons'
 import { CameraPresetBar } from '../controls/CameraPresetBar'
 import { useAtlasStore } from '../../store/atlasStore'
@@ -7,6 +7,7 @@ import { useAuth } from '../../lib/auth/authContext'
 import { AuthModal } from '../auth/AuthModal'
 import { SymmetryReport } from '../insights/SymmetryReport'
 import { PersonalProgramView } from '../insights/PersonalProgramView'
+import { FullBodyAssessmentView } from '../assessment/FullBodyAssessmentView'
 
 export function AppHeader() {
   const modelStatus = useAtlasStore((s) => s.modelStatus)
@@ -16,6 +17,7 @@ export function AppHeader() {
   const [signingOut,  setSigningOut]  = useState(false)
   const [symOpen,     setSymOpen]     = useState(false)
   const [progOpen,    setProgOpen]    = useState(false)
+  const [batteryOpen, setBatteryOpen] = useState(false)
 
   async function handleSignOut() {
     setSigningOut(true)
@@ -52,6 +54,16 @@ export function AppHeader() {
             title="Toggle camera view presets"
           >
             📷 Views
+          </button>
+
+          {/* Full-Body Assessment - opens the AI-coach-led ROM battery */}
+          <button
+            onClick={() => setBatteryOpen(true)}
+            title="Run a guided full-body range-of-motion assessment"
+            className="flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded border border-emerald-400/40 text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+          >
+            <Crosshair size={11} />
+            Assessment
           </button>
 
           {/* Symmetry Heatmap — opens the L/R asymmetry report */}
@@ -136,6 +148,7 @@ export function AppHeader() {
       <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
       <SymmetryReport       open={symOpen}  onClose={() => setSymOpen(false)} />
       <PersonalProgramView open={progOpen} onClose={() => setProgOpen(false)} />
+      <FullBodyAssessmentView open={batteryOpen} onClose={() => setBatteryOpen(false)} />
     </header>
   )
 }

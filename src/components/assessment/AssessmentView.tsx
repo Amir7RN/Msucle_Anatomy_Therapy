@@ -206,22 +206,21 @@ function MovementRow({ muscleId, movement }: { muscleId: string; movement: Joint
         </button>
       </div>
 
-      {/* Progressive trend chart - full width, with dots + area + target line */}
+      {/* Progressive trend sparkline - kept compact so a single value
+          doesn't dominate the panel. */}
       {records.length >= 1 && (
-        <div className="mt-2">
+        <div className="mt-1.5">
           <TrendChart records={records} reference={movement.reference.ideal} />
-          <div className="mt-1 flex items-center justify-between text-[10px]">
-            <span className="text-slate-500">
-              <span className="text-slate-400">{records.length}</span> session{records.length === 1 ? '' : 's'}
+          <div className="mt-0.5 flex items-center justify-between text-[9px] text-slate-500">
+            <span>
+              {records.length} session{records.length === 1 ? '' : 's'}
               {records.length >= 2 && (
-                <>
-                  {' · '}best <span className="text-emerald-300 tabular-nums">{Math.round(Math.max(...records.map((r) => r.angle)))}°</span>
-                </>
+                <> · best <span className="text-emerald-300 tabular-nums">{Math.round(Math.max(...records.map((r) => r.angle)))}°</span></>
               )}
             </span>
             {improvement !== null && (
               <span className={`font-semibold ${improvement >= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                {improvement >= 0 ? '▲ +' : '▼ '}{improvement}% vs. last session
+                {improvement >= 0 ? '▲ +' : '▼ '}{improvement}%
               </span>
             )}
           </div>
@@ -254,7 +253,9 @@ function pct(angle: number, ref: number) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function TrendChart({ records, reference }: { records: ROMRecord[]; reference: number }) {
-  const W = 280, H = 64, PL = 6, PR = 30, PT = 8, PB = 14   // pad-left/right/top/bottom
+  // Compact, low-profile sparkline - small enough that a single value
+  // doesn't dominate the muscle panel, big enough to read the trend.
+  const W = 260, H = 34, PL = 4, PR = 26, PT = 4, PB = 8
   const innerW = W - PL - PR
   const innerH = H - PT - PB
   // Cap the visible series at the last 12 records so older trends don't
@@ -297,7 +298,7 @@ function TrendChart({ records, reference }: { records: ROMRecord[]; reference: n
         y1={refY} y2={refY}
         stroke="#64748b" strokeWidth="0.8" strokeDasharray="3 3"
       />
-      <text x={W - PR + 2} y={refY + 3} fontSize="9" fill="#64748b" fontFamily="ui-monospace,monospace">
+      <text x={W - PR + 2} y={refY + 2.5} fontSize="7" fill="#64748b" fontFamily="ui-monospace,monospace">
         {Math.round(reference)}°
       </text>
 
@@ -305,23 +306,23 @@ function TrendChart({ records, reference }: { records: ROMRecord[]; reference: n
       {n >= 2 && <path d={area} fill="url(#rom-area)" />}
 
       {/* Trend line */}
-      {n >= 2 && <path d={path} fill="none" stroke="#fb923c" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />}
+      {n >= 2 && <path d={path} fill="none" stroke="#fb923c" strokeWidth="1.2" strokeLinejoin="round" strokeLinecap="round" />}
 
       {/* Per-session dots */}
       {xs.map((x, i) => (
         <circle
           key={i}
-          cx={x} cy={ys[i]} r={i === n - 1 ? 3 : 2}
+          cx={x} cy={ys[i]} r={i === n - 1 ? 2 : 1.4}
           fill={i === n - 1 ? (lastIsGood ? '#34d399' : '#fb923c') : '#fb923c'}
-          stroke="#0f172a" strokeWidth="0.8"
+          stroke="#0f172a" strokeWidth="0.6"
         />
       ))}
 
       {/* Latest-value annotation */}
       <text
-        x={lastX + 5}
-        y={Math.max(10, lastY - 4)}
-        fontSize="10" fontWeight="600"
+        x={Math.min(lastX + 4, W - PR - 2)}
+        y={Math.max(8, lastY - 3)}
+        fontSize="8" fontWeight="600"
         fill={lastIsGood ? '#34d399' : '#fb923c'}
         fontFamily="ui-monospace,monospace"
       >
@@ -335,13 +336,24 @@ function TrendChart({ records, reference }: { records: ROMRecord[]; reference: n
 //  Assessment session modal — calibration → measurement → result
 // ─────────────────────────────────────────────────────────────────────────────
 
-function AssessmentSession({
-  muscleId, movement, side, onClose,
+export function AssessmentSession({
+  muscleId, movement, side, onClose, onSaved, extraMuscleIds, autoCloseOnDone,
 }: {
   muscleId: string
   movement: JointMovement
   side: 'L' | 'R'
   onClose: () => void
+  /** Called once the result is persisted. Used by FullBodyAssessmentView to
+   *  advance to the next movement in the battery. */
+  onSaved?: (rec: ROMRecord) => void
+  /** Mirror-write the same ROM record under these extra muscleIds, so a
+   *  whole-segment battery run shows up under each related muscle's
+   *  per-joint history (e.g. shoulder_flexion -> deltoid, pectoralis_major,
+   *  latissimus_dorsi). */
+  extraMuscleIds?: string[]
+  /** When true, the result phase auto-closes after a short delay (battery
+   *  use). Default false (interactive single-session use). */
+  autoCloseOnDone?: boolean
 }) {
   const [phase, setPhase]     = useState<Phase>('calibrate')
   const [progress, setProgress] = useState(0)
@@ -447,10 +459,28 @@ function AssessmentSession({
           ts:         Date.now(),
         }
         saveROMRecord(result)
+        // Mirror-write under every related muscleId so the same measurement
+        // shows in each muscle's per-joint history. Used by the full-body
+        // battery so a single shoulder_flexion test fills the deltoid /
+        // pectoralis_major / latissimus_dorsi panels at once.
+        if (extraMuscleIds && extraMuscleIds.length > 0) {
+          const seen = new Set([muscleId])
+          for (const extra of extraMuscleIds) {
+            if (seen.has(extra)) continue
+            seen.add(extra)
+            saveROMRecord({ ...result, muscleId: extra })
+          }
+        }
+        onSaved?.(result)
         setPhase('result')
         ttsRef.current.speak(
           `Peak angle ${Math.round(peakRef.current)} degrees, ${pct(peakRef.current, movement.reference.ideal)} percent of normal.`,
         )
+        if (autoCloseOnDone) {
+          // Give the user ~3.5 s to see the dial + hear the TTS before
+          // moving on. The battery's onClose handler advances to next.
+          window.setTimeout(() => { onClose() }, 3500)
+        }
         return
       }
       raf = requestAnimationFrame(tick)
