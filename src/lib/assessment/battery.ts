@@ -135,6 +135,11 @@ export interface BatteryItem {
   extraMuscleIds: string[]
   /** Segment the item belongs to (for grouping in the progress UI). */
   segmentId: SegmentId
+  /** When true, the coach uses a SHORT cue ("Now repeat with your right
+   *  side") instead of the full intro+howTo. Set on the second-of-pair
+   *  during full-body battery runs so the user isn't re-lectured on a
+   *  motion they just did on the other side. */
+  brief: boolean
 }
 
 /** Build an ordered queue of measurements for the selected segments. */
@@ -158,11 +163,13 @@ export function buildBattery(selected: SegmentId[]): BatteryItem[] {
       const primary = seg.primaryMuscle[movId] ?? movementToMuscles.get(movId)?.[0] ?? 'unknown'
       const extras  = (movementToMuscles.get(movId) ?? []).filter((x) => x !== primary)
       if (mv.side === 'either') {
-        // Run both sides for paired movements.
-        out.push({ movement: mv, side: 'L', muscleId: primary, extraMuscleIds: extras, segmentId: seg.id })
-        out.push({ movement: mv, side: 'R', muscleId: primary, extraMuscleIds: extras, segmentId: seg.id })
+        // Run both sides for paired movements. LEFT first, FULL coaching;
+        // RIGHT second, BRIEF coaching (so the user doesn't hear the same
+        // explanation twice).
+        out.push({ movement: mv, side: 'L', muscleId: primary, extraMuscleIds: extras, segmentId: seg.id, brief: false })
+        out.push({ movement: mv, side: 'R', muscleId: primary, extraMuscleIds: extras, segmentId: seg.id, brief: true })
       } else if (mv.side === 'L' || mv.side === 'R') {
-        out.push({ movement: mv, side: mv.side, muscleId: primary, extraMuscleIds: extras, segmentId: seg.id })
+        out.push({ movement: mv, side: mv.side, muscleId: primary, extraMuscleIds: extras, segmentId: seg.id, brief: false })
       }
     }
   }

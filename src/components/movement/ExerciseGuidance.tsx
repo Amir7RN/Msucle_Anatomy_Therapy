@@ -436,7 +436,7 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
 
           {/* AI Coach — replaces static "Setup" text */}
           {def
-            ? <AiCoach def={def} snapshot={snapshot} lmsRef={lmsRef} muscleId={muscleId} />
+            ? <AiCoach def={def} snapshot={snapshot} lmsRef={lmsRef} muscleId={muscleId} repCount={repCount} repTarget={repTarget} />
             : (
               <div className="p-3 border-b border-slate-700 flex items-start gap-2">
                 <Info size={14} className="text-slate-400 mt-0.5 flex-shrink-0" />
@@ -514,12 +514,17 @@ function AiCoach({
   snapshot,
   lmsRef,
   muscleId,
+  repCount,
+  repTarget,
 }: {
   def:      BiofeedbackDef
   snapshot: FormSnapshot | null
   lmsRef:   React.MutableRefObject<LandmarkSet | null>
   /** For ROM-calibrated coaching — pulls the user's measured peak from history. */
   muscleId?: string
+  /** Drives the rep-milestone TTS callouts. */
+  repCount:  number
+  repTarget: number
 }) {
   /* ── User-specific safe ceilings (from past assessments) ────────────────
      For each joint label we coach (e.g. "Elbow Flexion"), find the user's
@@ -636,6 +641,28 @@ function AiCoach({
     )
     return () => clearTimeout(t)
   }, [def.title, speakQueued])
+
+  // ── Rep-milestone voice cues ────────────────────────────────────────────
+  // Speak progress to the user every couple of reps so the experience feels
+  // like a human coach counting along. Throttled to one announcement per
+  // milestone-rep so it doesn't talk over directional cues.
+  const lastRepCalloutAt = useRef<number>(-1)
+  useEffect(() => {
+    if (!def) return
+    if (repCount <= 0) return
+    if (lastRepCalloutAt.current === repCount) return
+    const isMilestone = (repCount % 3 === 0) || (repTarget - repCount <= 2)
+    if (!isMilestone) return
+    lastRepCalloutAt.current = repCount
+    let line: string
+    if (repCount >= repTarget)        line = `Done. ${repCount} reps - nice work.`
+    else if (repCount === 1)          line = `One down. ${repTarget - 1} to go.`
+    else if (repCount === repTarget - 1) line = `Last one - finish strong.`
+    else if (repCount === Math.floor(repTarget / 2)) line = `Halfway. ${repTarget - repCount} more.`
+    else                              line = `${repCount} of ${repTarget}. Keep that form.`
+    speakQueued(line)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repCount])
 
   // ── Live directional cue engine ────────────────────────────────────────
   // For every smoothed FormSnapshot we generate a short, angle-precise cue
@@ -796,7 +823,14 @@ function AiCoach({
     setSending(true)
     voiceIn.stop()
 
-    const systemPrompt = `You are a warm, expert movement coach guiding a user through the "${def.title}" exercise. You have real-time pose tracking AND the user's prior ROM assessment.
+    const systemPrompt = `You are a warm, expert HUMAN movement coach (think trusted personal trainer) guiding a user through the "${def.title}" exercise. You have real-time pose tracking AND the user's prior ROM assessment.
+
+COACHING STYLE - be human, not robotic:
+1. The FIRST time you speak, EXPLAIN HOW TO START THE EXERCISE in plain language - what stance to take, where to put feet/hands, what to feel for. Assume the user has not watched the reference video.
+2. Narrate rep progress like a friend at the gym - say things like "3 down, 7 to go", "halfway there", "last 3, finish strong". Not every rep, but every 2-3 reps and at meaningful milestones.
+3. Call out HOLDS - if it is a stretch, tell the user "hold here for 3 seconds, then ease off" and count down the hold.
+4. When form is GOOD, give specific positive feedback. When form is OFF, give one specific micro-fix.
+5. Keep replies to ONE or TWO short sentences max. The user is moving and cannot process paragraphs.
 
 ${buildStepContext()}
 

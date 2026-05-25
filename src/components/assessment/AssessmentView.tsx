@@ -337,23 +337,19 @@ function TrendChart({ records, reference }: { records: ROMRecord[]; reference: n
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function AssessmentSession({
-  muscleId, movement, side, onClose, onSaved, extraMuscleIds, autoCloseOnDone,
+  muscleId, movement, side, onClose, onSaved, extraMuscleIds, autoCloseOnDone, briefMode,
 }: {
   muscleId: string
   movement: JointMovement
   side: 'L' | 'R'
   onClose: () => void
-  /** Called once the result is persisted. Used by FullBodyAssessmentView to
-   *  advance to the next movement in the battery. */
   onSaved?: (rec: ROMRecord) => void
-  /** Mirror-write the same ROM record under these extra muscleIds, so a
-   *  whole-segment battery run shows up under each related muscle's
-   *  per-joint history (e.g. shoulder_flexion -> deltoid, pectoralis_major,
-   *  latissimus_dorsi). */
   extraMuscleIds?: string[]
-  /** When true, the result phase auto-closes after a short delay (battery
-   *  use). Default false (interactive single-session use). */
   autoCloseOnDone?: boolean
+  /** Brief coaching mode - used on the SECOND-of-pair side in a full-body
+   *  battery. Skips the long intro + howTo and just says
+   *  "Now repeat the same motion with your right side." Default false. */
+  briefMode?: boolean
 }) {
   const [phase, setPhase]     = useState<Phase>('calibrate')
   const [progress, setProgress] = useState(0)
@@ -426,6 +422,18 @@ export function AssessmentSession({
   // moment they come back.  When it exceeds TRACKING_LOST_MS we bounce
   // back to calibration with a warning.
   const trackingLostSince = useRef<number | null>(null)
+  // Neutral-pose baseline - average of the user's measured angle during the
+  // last second of calibration. Subtracted from every subsequent angle so
+  // a movement whose neutral resting value is non-zero (e.g. trunk
+  // extension, cervical extension) doesn't "max out" the dial just by
+  // standing still. Captured frame-by-frame during the calibrate phase.
+  const baselineSamples  = useRef<number[]>([])
+  const baselineAngle    = useRef<number>(0)
+  // True once "Neutral pose detected" speech has finished playing. The
+  // 3-second calibration countdown only starts AFTER speech ends, so the
+  // user actually has 3 full seconds to hold the pose (previously the
+  // timer started immediately and the speech overlapped with the count).
+  const calibSpeechDone  = useRef<boolean>(false)
 
   // Hold timer for the measurement phase
   useEffect(() => {
@@ -537,15 +545,46 @@ export function AssessmentSession({
         neutralOkStreak.current += 1
         if (neutralOkStreak.current >= NEUTRAL_FRAMES_REQUIRED) {
           if (calibStartedAt.current === null) {
-            calibStartedAt.current = now
+            // DON'T start the 3-second timer yet - first speak the cue and
+            // wait for it to finish so the user actually has the full
+            // 3 seconds to settle.
+            calibSpeechDone.current = false
+            baselineSamples.current = []
             if (now - lastNeutralCueAt.current > 4000) {
-              ttsRef.current.speak('Neutral pose detected. Hold for three seconds.')
+              ttsRef.current.speak('Neutral pose detected. Hold for three seconds.', () => {
+                calibSpeechDone.current = true
+                calibStartedAt.current  = performance.now()
+              })
               lastNeutralCueAt.current = now
+            } else {
+              // No speech this cycle (rate-limited cue) - start immediately.
+              calibSpeechDone.current = true
+              calibStartedAt.current  = now
             }
           }
+          // Collect a baseline sample on every frame while we wait for the
+          // speech + 3-second hold. We'll subtract this from peak so the
+          // resting value doesn't count as ROM.
+          {
+            const baseAng = movement.measure(lms, side)
+            if (baseAng !== null) baselineSamples.current.push(baseAng)
+            if (baselineSamples.current.length > 60) baselineSamples.current.shift()
+          }
+          if (calibStartedAt.current === null) {
+            // Still waiting for speech to finish - hold progress at 0.
+            setCalibProgress(0)
+          } else {
           const elapsed = now - calibStartedAt.current
           setCalibProgress(Math.min(1, elapsed / CALIB_MS))
           if (elapsed >= CALIB_MS) {
+            // Settle the baseline value - median of collected samples is more
+            // robust to a single noisy frame than a mean.
+            if (baselineSamples.current.length > 0) {
+              const sorted = [...baselineSamples.current].sort((a, b) => a - b)
+              baselineAngle.current = sorted[Math.floor(sorted.length / 2)]
+            } else {
+              baselineAngle.current = 0
+            }
             // Calibration complete -> announce + explain in plain language,
             // then switch to measurement. ONE-TIME ONLY per session.
             phaseRef.current = 'measure'
@@ -568,34 +607,46 @@ export function AssessmentSession({
             // begin TTS completes; the timer effect respects that.
             measureReadyAt.current = null
             const explanation = movement.howTo || movement.cue
-            // If the movement applies to either side, name the side up front
-            // so the user knows whether to use their left or right limb. (For
-            // movements that are inherently L or R the cue already encodes it.)
-            const sideCue = movement.side === 'either'
-              ? `Use your ${side === 'L' ? 'left' : 'right'} side.`
-              : ''
-            ttsRef.current.speak('Great. Locked in.', () => {
-              const speakExplanation = () => {
-                ttsRef.current.speak(explanation, () => {
+            const sideName    = side === 'L' ? 'left' : 'right'
+            // Brief mode (battery right-side after left): skip the full
+            // explanation and just say "Now repeat with your right side."
+            if (briefMode) {
+              ttsRef.current.speak('Great. Locked in.', () => {
+                ttsRef.current.speak(`Now repeat the same motion with your ${sideName} side.`, () => {
                   ttsRef.current.speak('Begin in three... two... one... GO!', () => {
-                    // ONLY now do we start the measurement clock.
                     measureReadyAt.current = performance.now()
                   })
                 })
-              }
-              if (sideCue) {
-                ttsRef.current.speak(sideCue, speakExplanation)
-              } else {
-                speakExplanation()
-              }
-            })
+              })
+            } else {
+              const sideCue = movement.side === 'either'
+                ? `Use your ${sideName} side.`
+                : ''
+              ttsRef.current.speak('Great. Locked in.', () => {
+                const speakExplanation = () => {
+                  ttsRef.current.speak(explanation, () => {
+                    ttsRef.current.speak('Begin in three... two... one... GO!', () => {
+                      measureReadyAt.current = performance.now()
+                    })
+                  })
+                }
+                if (sideCue) {
+                  ttsRef.current.speak(sideCue, speakExplanation)
+                } else {
+                  speakExplanation()
+                }
+              })
+            }
           }
         }
+          }
       } else {
         // Pose broke — reset both the streak counter AND the calibration
         // timer so the user must sustain a TRUE neutral hold from zero.
         neutralOkStreak.current = 0
         calibStartedAt.current = null
+        calibSpeechDone.current = false
+        baselineSamples.current = []
         setCalibProgress(0)
       }
       return
@@ -652,16 +703,22 @@ export function AssessmentSession({
     ) {
       ang = movement.measure(lastValidLms.current, side)
     }
-    liveRef.current = ang
-    if (ang !== null) {
+    // Subtract baseline so a non-zero resting angle doesn't count as ROM.
+    let adjusted = ang
+    if (adjusted !== null) adjusted = Math.max(0, adjusted - baselineAngle.current)
+    liveRef.current = adjusted
+    if (adjusted !== null) {
       measuredFrames.current += 1
-      // Update live state IMMEDIATELY so the dial reflects every new frame
-      // — the requestAnimationFrame loop also pushes peak/progress, but
-      // pushing live here gives sub-frame responsiveness for the inner ring.
-      setLive(ang)
-      if (ang > peakRef.current) peakRef.current = ang
+      setLive(adjusted)
+      // Peak tracking is GATED on measureReadyAt - we only start scoring
+      // peaks after the AI coach has actually said "GO". Previously the
+      // peak began updating during the explanation, so a user moving
+      // experimentally during the cue would lock in a wrong peak.
+      if (measureReadyAt.current !== null && adjusted > peakRef.current) {
+        peakRef.current = adjusted
+      }
     }
-  }, [movement, side, muscleId])
+  }, [movement, side, muscleId, briefMode])
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-black text-white">

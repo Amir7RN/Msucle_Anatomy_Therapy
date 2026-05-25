@@ -17,7 +17,7 @@ import {
   type SymmetryScore,
 } from '../../lib/insights/symmetry'
 import { useROMVersion } from '../../hooks/useROMVersion'
-import { BodySilhouette } from './BodySilhouette'
+import { SymmetryHumanoid } from './SymmetryHumanoid'
 
 interface Props {
   open:    boolean
@@ -129,7 +129,7 @@ export function SymmetryReport({ open, onClose }: Props) {
             <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-6">
               {/* Body silhouette — heatmap */}
               <div className="flex flex-col items-center">
-                <BodySilhouette regionColors={colors} width={260} height={520} />
+                <SymmetryHumanoid regionColors={colors} />
                 <div className="mt-3 flex items-center justify-center gap-3 text-[10px] text-slate-400">
                   <LegendDot color="#34d399" label="Balanced" />
                   <LegendDot color="#fbbf24" label="Watch" />

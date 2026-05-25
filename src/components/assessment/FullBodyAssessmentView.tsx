@@ -286,6 +286,7 @@ function RunningPhase({
         side={item.side}
         extraMuscleIds={item.extraMuscleIds}
         autoCloseOnDone={true}
+        briefMode={item.brief}
         onSaved={() => { /* result already saved; UI advance happens via onClose */ }}
         onClose={onAdvance}
       />

@@ -141,15 +141,19 @@ function ActivationModel({ lookup }: { lookup: Map<string, number> }) {
         const mat = new THREE.MeshStandardMaterial({
           color:             new THREE.Color('#dc2626'),  // red-600 base
           emissive:          new THREE.Color('#f97316'),  // orange-500
-          emissiveIntensity: 0.6,                          // pulses in frame loop
+          emissiveIntensity: 1.0,                          // pulses in frame loop
           roughness:         0.5,
           metalness:         0.0,
           transparent:       true,
-          opacity:           0.92,
-          depthWrite:        true,
+          opacity:           1.0,
+          // Disable depth-test so the pulse always wins over the faded
+          // skin shell - the glow used to be occluded by skin meshes that
+          // happened to render after it, producing a dim/no-pulse result.
+          depthTest:         false,
+          depthWrite:        false,
         })
         obj.material = mat
-        obj.renderOrder = 2
+        obj.renderOrder = 999     // composite last - always on top
         targeted.push({ mesh: obj, mat, intensity })
       } else {
         // Everything else is the faded skin shell.
@@ -201,6 +205,15 @@ function ActivationModel({ lookup }: { lookup: Map<string, number> }) {
 function matchStem(muscleId: string): string | null {
   if (!muscleId) return null
   let s = muscleId.toUpperCase()
+  // Strip the MUSC_ mesh-name prefix when present so a prop value of
+  // "MUSC_DELTOID_L" still glows the deltoid in the GLB.
+  if (s.startsWith('MUSC_')) s = s.slice(5)
+  // Strip _L / _R side suffix so both sides of the body light up for a
+  // single-sided exercise target (the body is symmetrical for these
+  // visuals; the camera view shows both sides anyway).
+  if (s.endsWith('_L') || s.endsWith('_R')) s = s.slice(0, -2)
+  // Strip sub-region suffixes so deltoid_anterior, _lateral, _posterior
+  // all collapse to DELTOID.
   for (const suf of ['_ANTERIOR', '_LATERAL', '_POSTERIOR', '_UPPER', '_MIDDLE', '_LOWER']) {
     if (s.endsWith(suf)) s = s.slice(0, -suf.length)
   }

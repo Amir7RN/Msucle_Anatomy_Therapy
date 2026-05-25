@@ -6,8 +6,11 @@ import { ViewerCanvas } from './components/viewer/ViewerCanvas'
 import { MovementScreen } from './components/movement/MovementScreen'
 import { useAtlasStore } from './store/atlasStore'
 import type { CameraPresetKey } from './lib/cameraUtils'
-import { Activity, MessageCircle, Box, Info, X } from 'lucide-react'
+import { Activity, MessageCircle, Box, Info, X, Sparkles, Scan } from 'lucide-react'
 import { LandingPage } from './components/landing/LandingPage'
+import { FullBodyAssessmentView } from './components/assessment/FullBodyAssessmentView'
+import { PersonalProgramView } from './components/insights/PersonalProgramView'
+import { SymmetryReport } from './components/insights/SymmetryReport'
 
 /**
  * Root application component.
@@ -118,6 +121,12 @@ function AtlasApp() {
   // ── Mobile panel state ──────────────────────────────────────────────────────
   // 'none' = canvas only, 'chat' = AI Diagnosis overlay, 'details' = muscle details
   const [mobilePanel, setMobilePanel] = useState<'none' | 'chat' | 'details'>('none')
+  // Modal state for mobile bottom-nav tabs - separate from the AppHeader's
+  // own copies so the bottom-nav buttons work on mobile where the header
+  // buttons are off-screen.
+  const [mobileBatteryOpen, setMobileBatteryOpen] = useState(false)
+  const [mobileProgramOpen, setMobileProgramOpen] = useState(false)
+  const [mobileSymOpen,     setMobileSymOpen]     = useState(false)
 
   // Stop TTS when the chat panel is closed on mobile
   useEffect(() => {
@@ -187,30 +196,49 @@ function AtlasApp() {
       {/* ── Mobile bottom navigation bar ─────────────────────────────────────── */}
       <nav className="flex md:hidden items-stretch border-t border-slate-700 bg-slate-900 flex-shrink-0">
         <MobileNavTab
-          icon={<MessageCircle size={20} />}
+          icon={<MessageCircle size={18} />}
           label="AI Chat"
           active={mobilePanel === 'chat'}
           onClick={() => setMobilePanel(mobilePanel === 'chat' ? 'none' : 'chat')}
         />
         <MobileNavTab
-          icon={<Box size={20} />}
-          label="3D Model"
+          icon={<Box size={18} />}
+          label="3D"
           active={mobilePanel === 'none'}
           onClick={() => setMobilePanel('none')}
         />
         <MobileNavTab
-          icon={<Activity size={20} />}
-          label="Movement"
+          icon={<Activity size={18} />}
+          label="Assess"
           active={false}
-          onClick={() => { setMobilePanel('none'); useAtlasStore.getState().toggleMovement() }}
+          onClick={() => { setMobilePanel('none'); setMobileBatteryOpen(true) }}
         />
         <MobileNavTab
-          icon={<Info size={20} />}
-          label="Details"
+          icon={<Sparkles size={18} />}
+          label="Program"
+          active={false}
+          onClick={() => { setMobilePanel('none'); setMobileProgramOpen(true) }}
+        />
+        <MobileNavTab
+          icon={<Scan size={18} />}
+          label="Symm"
+          active={false}
+          onClick={() => { setMobilePanel('none'); setMobileSymOpen(true) }}
+        />
+        <MobileNavTab
+          icon={<Info size={18} />}
+          label="Info"
           active={mobilePanel === 'details'}
           onClick={() => setMobilePanel(mobilePanel === 'details' ? 'none' : 'details')}
         />
       </nav>
+
+      {/* Modals reachable from the mobile bottom-nav tabs above. Mounted on
+          the AtlasApp directly so they overlay even on screens where the
+          AppHeader's own copies are hidden. */}
+      <FullBodyAssessmentView open={mobileBatteryOpen} onClose={() => setMobileBatteryOpen(false)} />
+      <PersonalProgramView open={mobileProgramOpen} onClose={() => setMobileProgramOpen(false)} />
+      <SymmetryReport open={mobileSymOpen} onClose={() => setMobileSymOpen(false)} />
 
       {/* Phone-camera Movement Assessment */}
       <MovementScreenMount />
