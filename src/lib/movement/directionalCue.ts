@@ -72,7 +72,7 @@ export function generateCue(s: JointSample): CueOutput | null {
   if (s.measuredPeak !== undefined && cur >= s.measuredPeak - 2) {
     return {
       text: pick(
-        `Ease up — that's your limit today, around ${Math.round(s.measuredPeak)} degrees.`,
+        `Ease up - that's your safe limit today.`,
         `Hold there — you're at your safe peak. Don't push further.`,
         `Good range — back off slightly, you've reached your ceiling.`,
       ),
@@ -114,7 +114,7 @@ export function generateCue(s: JointSample): CueOutput | null {
     if (delta <= 5) {
       return {
         text: pick(
-          `Almost there — just a few more degrees.`,
+          `Almost there - just a touch more.`,
           `Great progress — push a little further.`,
           `Five more and you're in the zone.`,
         ),
@@ -124,10 +124,10 @@ export function generateCue(s: JointSample): CueOutput | null {
     }
     return {
       text: pick(
-        `Keep going — ${delta} more degrees to reach the target.`,
-        `${delta} degrees to go. Smooth and steady.`,
-        `You're at ${Math.round(cur)} degrees — aim for ${Math.round(mid)}.`,
-        `Bend ${delta} more degrees — you've got this.`,
+        `Keep going - little more.`,
+        `Close. Smooth and steady.`,
+        `You're getting there - keep reaching.`,
+        `Bend a touch more - you've got this.`,
       ),
       urgent: false,
       key:    `under-${delta}`,
@@ -141,7 +141,7 @@ export function generateCue(s: JointSample): CueOutput | null {
       return {
         text: pick(
           `Easy — ease back just a touch.`,
-          `Pull back a few degrees and you're set.`,
+          `Ease off just a hair and you're set.`,
           `You're slightly past — soften it.`,
         ),
         urgent: false,
@@ -150,8 +150,8 @@ export function generateCue(s: JointSample): CueOutput | null {
     }
     return {
       text: pick(
-        `Back off ${delta} degrees — you're past the target.`,
-        `Slow down — come back ${delta} degrees.`,
+        `Ease back a bit - you're past the target.`,
+        `Slow down - come back a little.`,
         `Too far. Bring it back toward ${Math.round(mid)}.`,
       ),
       urgent: false,
@@ -223,6 +223,6 @@ export function pickCueFromJoint(
   return cue
 }
 
-export function createCueStream(cooldownMs = 3000): CueStreamState {
+export function createCueStream(cooldownMs = 5000): CueStreamState {
   return { lastKey: null, lastSpokenAt: 0, cooldownMs }
 }

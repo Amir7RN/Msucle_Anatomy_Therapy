@@ -26,19 +26,24 @@ interface Props {
 // extends roughly y -1.4 ... +1.4 (head to feet) and x +-0.6 (arms by sides).
 // Positions in world units AFTER the body is centred + scaled 0.95x. The
 // scaled body spans roughly y -0.95 .. +0.95 (head at top, feet at bottom).
+// Joint positions in the body's normalised coordinate space.  Body height
+// is 2.0 (feet at y=-1.0, head crown at y=+1.0).  Anatomical fractions
+// here are based on standard human proportions (Vitruvian-ish):
+//   crown=1.00  neck=0.78  shoulder=0.72  hip=0.06  knee=-0.45  ankle=-0.93
+// Width: shoulders ~0.20, hips ~0.12, knees ~0.10, ankles ~0.10 (half-width).
 const JOINTS: Array<{ region: SymmetryRegion; pos: [number, number, number] }> = [
-  { region: 'neck',            pos: [ 0.00,  0.63, 0.08] },
-  { region: 'trunk',           pos: [ 0.00,  0.14, 0.10] },
-  { region: 'left_shoulder',   pos: [-0.24,  0.48, 0.06] },
-  { region: 'right_shoulder',  pos: [ 0.24,  0.48, 0.06] },
-  { region: 'left_elbow',      pos: [-0.34,  0.12, 0.04] },
-  { region: 'right_elbow',     pos: [ 0.34,  0.12, 0.04] },
-  { region: 'left_hip',        pos: [-0.13, -0.12, 0.06] },
-  { region: 'right_hip',       pos: [ 0.13, -0.12, 0.06] },
-  { region: 'left_knee',       pos: [-0.14, -0.53, 0.06] },
-  { region: 'right_knee',      pos: [ 0.14, -0.53, 0.06] },
-  { region: 'left_ankle',      pos: [-0.15, -0.88, 0.08] },
-  { region: 'right_ankle',     pos: [ 0.15, -0.88, 0.08] },
+  { region: 'neck',            pos: [ 0.00,  0.78, 0.05] },
+  { region: 'trunk',           pos: [ 0.00,  0.30, 0.10] },
+  { region: 'left_shoulder',   pos: [-0.22,  0.72, 0.06] },
+  { region: 'right_shoulder',  pos: [ 0.22,  0.72, 0.06] },
+  { region: 'left_elbow',      pos: [-0.32,  0.34, 0.06] },
+  { region: 'right_elbow',     pos: [ 0.32,  0.34, 0.06] },
+  { region: 'left_hip',        pos: [-0.12,  0.06, 0.06] },
+  { region: 'right_hip',       pos: [ 0.12,  0.06, 0.06] },
+  { region: 'left_knee',       pos: [-0.10, -0.45, 0.06] },
+  { region: 'right_knee',      pos: [ 0.10, -0.45, 0.06] },
+  { region: 'left_ankle',      pos: [-0.10, -0.93, 0.06] },
+  { region: 'right_ankle',     pos: [ 0.10, -0.93, 0.06] },
 ]
 
 useGLTF.preload(BODY_PATH, true, true)
@@ -50,7 +55,7 @@ export function SymmetryHumanoid({ regionColors }: Props) {
         gl={{ antialias: true, alpha: true, powerPreference: 'low-power' }}
         dpr={[1, 2]}
         style={{ background: 'transparent' }}
-        camera={{ position: [0, 0, 5.6], fov: 32, near: 0.1, far: 100 }}
+        camera={{ position: [0, 0, 4.6], fov: 30, near: 0.1, far: 100 }}
       >
         <ambientLight intensity={0.6} />
         <directionalLight position={[3, 5, 4]} intensity={0.7} />
@@ -70,17 +75,33 @@ export function SymmetryHumanoid({ regionColors }: Props) {
   )
 }
 
+// Body is normalised to a known fixed height (2.0 world units, feet at
+// y=-1.0, head at y=+1.0) so the hardcoded JOINTS positions below
+// reliably land on the right anatomical landmark regardless of what
+// coordinate system the source GLB uses.
+const BODY_TARGET_HEIGHT = 2.0
+const BODY_FEET_Y        = -1.0     // bottom of bbox lands here
+
 function Body() {
   const { scene } = useGLTF(BODY_PATH, true, true) as any
   const cloned = useMemo(() => {
     const c = scene.clone(true)
-    const box = new THREE.Box3().setFromObject(c)
-    const centre = box.getCenter(new THREE.Vector3())
-    // Modest scale + bbox-centre so the whole body fits the 440px panel
-    // height. Previously 1.4x overflowed the frame.
-    c.position.sub(centre)
-    c.scale.setScalar(0.95)
-    c.position.multiplyScalar(0.95)
+    // First pass: compute the raw bbox + size.
+    const box1   = new THREE.Box3().setFromObject(c)
+    const size   = box1.getSize(new THREE.Vector3())
+    // Scale so the body's HEIGHT (Y extent) becomes BODY_TARGET_HEIGHT.
+    const s = size.y > 0 ? BODY_TARGET_HEIGHT / size.y : 1
+    c.scale.setScalar(s)
+    // Recompute bbox after scaling.
+    const box2   = new THREE.Box3().setFromObject(c)
+    const centre = box2.getCenter(new THREE.Vector3())
+    const minY   = box2.min.y
+    // Place horizontal centre at x=0 and z=0, and shift so the FEET sit
+    // exactly at y = BODY_FEET_Y.  After this transform, joints can be
+    // placed at predictable Y values relative to the body.
+    c.position.x -= centre.x
+    c.position.z -= centre.z
+    c.position.y += BODY_FEET_Y - minY
     const skin = new THREE.MeshStandardMaterial({
       color:        '#d9b08c',
       roughness:    0.7,
@@ -105,11 +126,11 @@ function JointMarker({ position, color }: { position: [number, number, number]; 
   return (
     <group position={position}>
       <mesh renderOrder={998}>
-        <sphereGeometry args={[0.06, 24, 24]} />
-        <meshBasicMaterial color={color} transparent opacity={0.28} depthTest={false} />
+        <sphereGeometry args={[0.075, 24, 24]} />
+        <meshBasicMaterial color={color} transparent opacity={0.3} depthTest={false} />
       </mesh>
       <mesh renderOrder={999}>
-        <sphereGeometry args={[0.04, 24, 24]} />
+        <sphereGeometry args={[0.05, 24, 24]} />
         <meshBasicMaterial color={color} depthTest={false} />
       </mesh>
     </group>

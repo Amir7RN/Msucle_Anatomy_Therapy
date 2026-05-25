@@ -617,14 +617,22 @@ function AiCoach({
   }, [voiceIn.listening, voiceOut.speaking, voiceOut])
 
   // ── Speak helper: queue after current TTS ends ─────────────────────────
-  const speakQueued = useCallback((text: string, onEnd?: () => void) => {
+  // Queue-friendly speak. Default: if the coach is already speaking, IGNORE
+  // the new cue (don't cancel mid-sentence). This fixes the "AI cuts itself
+  // off every 3 seconds" experience the user complained about.  Pass
+  // {urgent:true} when a safety cue MUST land immediately.
+  const speakQueued = useCallback((text: string, onEnd?: () => void, opts?: { urgent?: boolean }) => {
     if (!text) return
-    // If speaking, cancel first so the new cue lands immediately.
-    // The 20 ms delay is just enough for Web Speech API to flush its
-    // current utterance buffer; previously we waited 80 ms which felt
-    // sluggish on every cue handoff.
-    if (voiceOutRef.current.speaking) voiceOutRef.current.cancel()
-    setTimeout(() => voiceOutRef.current.speak(text, onEnd), 20)
+    if (voiceOutRef.current.speaking && !opts?.urgent) {
+      // Drop the cue rather than cut off the current sentence.
+      return
+    }
+    if (voiceOutRef.current.speaking && opts?.urgent) {
+      voiceOutRef.current.cancel()
+      setTimeout(() => voiceOutRef.current.speak(text, onEnd), 20)
+      return
+    }
+    voiceOutRef.current.speak(text, onEnd)
   }, [])
 
   // ── First-cue on mount + step heartbeat ────────────────────────────────
