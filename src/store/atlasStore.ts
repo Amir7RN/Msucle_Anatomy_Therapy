@@ -71,6 +71,12 @@ interface AtlasState {
    *  diagnostic toggle, status badges) is hidden so the modal is the
    *  visual focus. */
   modalOpenCount:       number
+  /** When set to a non-null value, the AppHeader-mounted modal of
+   *  that kind opens. This lets buttons placed elsewhere in the UI
+   *  (e.g. on-canvas FeatureLauncher) trigger header-owned modals
+   *  without prop drilling. Consumers clear it back to null after
+   *  handling. */
+  featureModalToOpen:   null | 'battery' | 'program' | 'symmetry'
 
   // Muscle-overlay calibration onto the Meshy body — non-uniform scale
   muscleOverlayScaleX:  number
@@ -140,6 +146,7 @@ interface AtlasState {
   setMovementOpen:      (open: boolean) => void
   pushModal:            () => void
   popModal:             () => void
+  setFeatureModalToOpen: (key: null | 'battery' | 'program' | 'symmetry') => void
 
   setMuscleOverlayScaleX:  (v: number) => void
   setMuscleOverlayScaleY:  (v: number) => void
@@ -192,6 +199,7 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   triageOpen:            false,
   movementOpen:          false,
   modalOpenCount:        0,
+  featureModalToOpen:    null,
   // Baked calibration values — tuned so the 52-mesh muscles align with
   // the male-normal.glb ghost body without needing the slider panel open.
   muscleOverlayScaleX:   1.090,
@@ -345,6 +353,7 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   setMovementOpen:   (open) => set({ movementOpen: open }),
   pushModal:         () => set((s) => ({ modalOpenCount: s.modalOpenCount + 1 })),
   popModal:          () => set((s) => ({ modalOpenCount: Math.max(0, s.modalOpenCount - 1) })),
+  setFeatureModalToOpen: (key) => set({ featureModalToOpen: key }),
 
   setMuscleOverlayScaleX:  (v) => set({ muscleOverlayScaleX:  v }),
   setMuscleOverlayScaleY:  (v) => set({ muscleOverlayScaleY:  v }),

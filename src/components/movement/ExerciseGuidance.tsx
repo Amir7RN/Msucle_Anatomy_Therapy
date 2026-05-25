@@ -627,20 +627,57 @@ function AiCoach({
     setTimeout(() => voiceOutRef.current.speak(text, onEnd), 20)
   }, [])
 
-  // ── First-cue on mount ──────────────────────────────────────────────────
-  // The OLD behaviour spoke the full procedure step instruction here. That
-  // collided with the live AI-coach voice and produced the "two voices"
-  // problem the user reported.  We now do a single warm welcome and let the
-  // directional-cue stream take over for everything else.
+  // ── First-cue on mount + step heartbeat ────────────────────────────────
+  // 1. On mount, speak a warm intro PLUS the very first procedure step's
+  //    instruction so the user knows exactly how to get into position.
+  // 2. While the user has NOT yet started moving (no reps recorded, no
+  //    directional cue fired in the last 8 seconds), re-narrate the
+  //    current step every 12 seconds so the coach is never silently
+  //    sitting there. Once reps start counting we stop the heartbeat -
+  //    the directional cue engine + rep milestones take over.
+  const lastSpokenAtRef = useRef<number>(0)
+  // Wrap speakQueued so we also stamp the last-spoken time (used to
+  // throttle the heartbeat below).
+  const speakAndStamp = useCallback((text: string, onEnd?: () => void) => {
+    lastSpokenAtRef.current = performance.now()
+    speakQueued(text, onEnd)
+  }, [speakQueued])
+
   useEffect(() => {
     if (stepSpokenRef.current) return
     stepSpokenRef.current = true
-    const t = setTimeout(
-      () => speakQueued(`Live coach ready for ${def.title}. Start moving when you're set.`),
-      800,
-    )
+    const firstStepText = steps[0]?.instruction ?? `Start moving when you are set.`
+    const t = setTimeout(() => {
+      speakAndStamp(`Welcome. Let's do the ${def.title}. ${firstStepText}`)
+    }, 700)
     return () => clearTimeout(t)
-  }, [def.title, speakQueued])
+  }, [def.title, steps, speakAndStamp])
+
+  // Heartbeat - re-narrates current step every 12 s while idle so the
+  // coach feels alive instead of going silent for 30+ seconds.
+  useEffect(() => {
+    if (allDone) return
+    if (repCount > 0) return     // user is moving - directional cues take over
+    const id = window.setInterval(() => {
+      // Only speak if we haven't said anything in the last 8 s.
+      if (performance.now() - lastSpokenAtRef.current < 8000) return
+      // Skip if user is speaking
+      if (voiceIn.listening && voiceIn.interimTranscript) return
+      const idx  = stepIdxRef.current
+      const step = steps[idx]
+      if (!step) return
+      const hints = [
+        step.instruction,
+        `Step ${idx + 1} - ${step.instruction}`,
+        `Take it slow. ${step.instruction}`,
+        `When you are ready: ${step.instruction}`,
+      ]
+      const choice = hints[Math.floor((performance.now() / 12000) % hints.length)]
+      speakAndStamp(choice)
+    }, 4000)   // poll every 4 s; speak when the 8-s quiet window passes
+    return () => window.clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allDone, repCount, steps, speakAndStamp])
 
   // ── Rep-milestone voice cues ────────────────────────────────────────────
   // Speak progress to the user every couple of reps so the experience feels

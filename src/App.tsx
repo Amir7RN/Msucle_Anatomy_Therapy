@@ -11,6 +11,7 @@ import { LandingPage } from './components/landing/LandingPage'
 import { FullBodyAssessmentView } from './components/assessment/FullBodyAssessmentView'
 import { PersonalProgramView } from './components/insights/PersonalProgramView'
 import { SymmetryReport } from './components/insights/SymmetryReport'
+import { FeatureLauncher } from './components/layout/FeatureLauncher'
 
 /**
  * Root application component.
@@ -166,6 +167,7 @@ function AtlasApp() {
         <main className="flex-1 min-w-0 relative">
           <ViewerCanvas />
           <DiagnosticModeToggle />
+          <FeatureLauncher />
           {/* Movement launcher removed - the new 'Assessment' header button
               replaces it. Mobile still has access via the bottom-nav tab. */}
         </main>

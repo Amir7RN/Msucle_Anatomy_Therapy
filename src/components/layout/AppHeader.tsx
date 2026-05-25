@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Activity, LogOut, LogIn, Sparkles, Scan, Crosshair } from 'lucide-react'
 import { ActionButtons } from '../controls/ActionButtons'
 import { CameraPresetBar } from '../controls/CameraPresetBar'
@@ -18,6 +18,18 @@ export function AppHeader() {
   const [symOpen,     setSymOpen]     = useState(false)
   const [progOpen,    setProgOpen]    = useState(false)
   const [batteryOpen, setBatteryOpen] = useState(false)
+
+  // Open modals when the on-canvas FeatureLauncher (or other UI) fires
+  // a request via the atlas store.
+  const featureModalToOpen    = useAtlasStore((s) => s.featureModalToOpen)
+  const setFeatureModalToOpen = useAtlasStore((s) => s.setFeatureModalToOpen)
+  useEffect(() => {
+    if (!featureModalToOpen) return
+    if (featureModalToOpen === 'battery')  setBatteryOpen(true)
+    if (featureModalToOpen === 'program')  setProgOpen(true)
+    if (featureModalToOpen === 'symmetry') setSymOpen(true)
+    setFeatureModalToOpen(null)
+  }, [featureModalToOpen, setFeatureModalToOpen])
 
   async function handleSignOut() {
     setSigningOut(true)
@@ -56,35 +68,10 @@ export function AppHeader() {
             📷 Views
           </button>
 
-          {/* Full-Body Assessment - opens the AI-coach-led ROM battery */}
-          <button
-            onClick={() => setBatteryOpen(true)}
-            title="Run a guided full-body range-of-motion assessment"
-            className="flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded border border-emerald-400/40 text-emerald-400 hover:bg-emerald-500/10 transition-colors"
-          >
-            <Crosshair size={11} />
-            Assessment
-          </button>
-
-          {/* Symmetry Heatmap — opens the L/R asymmetry report */}
-          <button
-            onClick={() => setSymOpen(true)}
-            title="Open Symmetry Report — compare your left vs right ROM"
-            className="flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded border border-cyan-400/40 text-cyan-500 hover:bg-cyan-500/10 transition-colors"
-          >
-            <Scan size={11} />
-            Symmetry
-          </button>
-
-          {/* AI Personal Program — opens the 4-week plan */}
-          <button
-            onClick={() => setProgOpen(true)}
-            title="Open your AI-generated 4-week mobility program"
-            className="flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded border border-orange-400/40 text-orange-500 hover:bg-orange-500/10 transition-colors"
-          >
-            <Sparkles size={11} />
-            My Program
-          </button>
+          {/* The Assessment / Symmetry / My Program buttons used to live
+              here. They have been moved to the on-canvas FeatureLauncher
+              (top-right of the 3D viewport) where they read as primary
+              features rather than tiny header chips. */}
 
           <div className="flex items-center gap-2">
             <div

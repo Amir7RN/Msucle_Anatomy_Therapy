@@ -24,19 +24,21 @@ interface Props {
 // Hard-coded joint positions in the body's centred local space. After the
 // Body component centres the GLB on origin and scales it 1.4x, the body
 // extends roughly y -1.4 ... +1.4 (head to feet) and x +-0.6 (arms by sides).
+// Positions in world units AFTER the body is centred + scaled 0.95x. The
+// scaled body spans roughly y -0.95 .. +0.95 (head at top, feet at bottom).
 const JOINTS: Array<{ region: SymmetryRegion; pos: [number, number, number] }> = [
-  { region: 'neck',            pos: [ 0.00,  0.93, 0.10] },
-  { region: 'trunk',           pos: [ 0.00,  0.20, 0.12] },
-  { region: 'left_shoulder',   pos: [-0.36,  0.70, 0.06] },
-  { region: 'right_shoulder',  pos: [ 0.36,  0.70, 0.06] },
-  { region: 'left_elbow',      pos: [-0.50,  0.18, 0.04] },
-  { region: 'right_elbow',     pos: [ 0.50,  0.18, 0.04] },
-  { region: 'left_hip',        pos: [-0.18, -0.18, 0.06] },
-  { region: 'right_hip',       pos: [ 0.18, -0.18, 0.06] },
-  { region: 'left_knee',       pos: [-0.20, -0.78, 0.06] },
-  { region: 'right_knee',      pos: [ 0.20, -0.78, 0.06] },
-  { region: 'left_ankle',      pos: [-0.22, -1.30, 0.10] },
-  { region: 'right_ankle',     pos: [ 0.22, -1.30, 0.10] },
+  { region: 'neck',            pos: [ 0.00,  0.63, 0.08] },
+  { region: 'trunk',           pos: [ 0.00,  0.14, 0.10] },
+  { region: 'left_shoulder',   pos: [-0.24,  0.48, 0.06] },
+  { region: 'right_shoulder',  pos: [ 0.24,  0.48, 0.06] },
+  { region: 'left_elbow',      pos: [-0.34,  0.12, 0.04] },
+  { region: 'right_elbow',     pos: [ 0.34,  0.12, 0.04] },
+  { region: 'left_hip',        pos: [-0.13, -0.12, 0.06] },
+  { region: 'right_hip',       pos: [ 0.13, -0.12, 0.06] },
+  { region: 'left_knee',       pos: [-0.14, -0.53, 0.06] },
+  { region: 'right_knee',      pos: [ 0.14, -0.53, 0.06] },
+  { region: 'left_ankle',      pos: [-0.15, -0.88, 0.08] },
+  { region: 'right_ankle',     pos: [ 0.15, -0.88, 0.08] },
 ]
 
 useGLTF.preload(BODY_PATH, true, true)
@@ -48,7 +50,7 @@ export function SymmetryHumanoid({ regionColors }: Props) {
         gl={{ antialias: true, alpha: true, powerPreference: 'low-power' }}
         dpr={[1, 2]}
         style={{ background: 'transparent' }}
-        camera={{ position: [0, 0, 4.0], fov: 38, near: 0.1, far: 100 }}
+        camera={{ position: [0, 0, 5.6], fov: 32, near: 0.1, far: 100 }}
       >
         <ambientLight intensity={0.6} />
         <directionalLight position={[3, 5, 4]} intensity={0.7} />
@@ -74,9 +76,11 @@ function Body() {
     const c = scene.clone(true)
     const box = new THREE.Box3().setFromObject(c)
     const centre = box.getCenter(new THREE.Vector3())
+    // Modest scale + bbox-centre so the whole body fits the 440px panel
+    // height. Previously 1.4x overflowed the frame.
     c.position.sub(centre)
-    c.scale.setScalar(1.4)
-    c.position.multiplyScalar(1.4)
+    c.scale.setScalar(0.95)
+    c.position.multiplyScalar(0.95)
     const skin = new THREE.MeshStandardMaterial({
       color:        '#d9b08c',
       roughness:    0.7,
@@ -101,11 +105,11 @@ function JointMarker({ position, color }: { position: [number, number, number]; 
   return (
     <group position={position}>
       <mesh renderOrder={998}>
-        <sphereGeometry args={[0.085, 24, 24]} />
-        <meshBasicMaterial color={color} transparent opacity={0.25} depthTest={false} />
+        <sphereGeometry args={[0.06, 24, 24]} />
+        <meshBasicMaterial color={color} transparent opacity={0.28} depthTest={false} />
       </mesh>
       <mesh renderOrder={999}>
-        <sphereGeometry args={[0.055, 24, 24]} />
+        <sphereGeometry args={[0.04, 24, 24]} />
         <meshBasicMaterial color={color} depthTest={false} />
       </mesh>
     </group>
