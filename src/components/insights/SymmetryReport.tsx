@@ -24,6 +24,33 @@ interface Props {
   onClose: () => void
 }
 
+
+// Snapshot every WebGL canvas in `root` as a data URL and swap it for a
+// matching <img> just before html2canvas captures. Without this swap the
+// WebGL canvas reads as solid black in the exported PNG (html2canvas
+// cannot read the WebGL frame buffer). Returns a list of revert functions
+// to restore the originals after capture.
+function symmetryCanvasSnapshot(root: HTMLElement): Array<() => void> {
+  const revert: Array<() => void> = []
+  const canvases = root.querySelectorAll('canvas')
+  canvases.forEach((cv) => {
+    try {
+      const c = cv as HTMLCanvasElement
+      const dataUrl = c.toDataURL('image/png')
+      const img = document.createElement('img')
+      img.src = dataUrl
+      img.style.width  = c.style.width  || `${c.width}px`
+      img.style.height = c.style.height || `${c.height}px`
+      img.style.display = c.style.display || 'block'
+      const parent = c.parentElement
+      if (!parent) return
+      parent.replaceChild(img, c)
+      revert.push(() => { parent.replaceChild(c, img) })
+    } catch { /* tainted / non-2D - skip */ }
+  })
+  return revert
+}
+
 export function SymmetryReport({ open, onClose }: Props) {
   // Hide the 3D canvas chrome while this modal is open.
   useEffect(() => {
@@ -51,6 +78,9 @@ export function SymmetryReport({ open, onClose }: Props) {
     try {
       // Dynamic import keeps html2canvas out of the initial bundle.
       const { default: html2canvas } = await import('html2canvas')
+      // Snapshot every WebGL canvas in the modal first (the symmetry
+      // 3D viewer would otherwise capture as solid black).
+      const reverts = symmetryCanvasSnapshot(cardRef.current)
       const canvas = await html2canvas(cardRef.current, {
         backgroundColor: '#05070d',
         scale: 2,
@@ -60,6 +90,7 @@ export function SymmetryReport({ open, onClose }: Props) {
       link.download = `zevahealth-symmetry-${Date.now()}.png`
       link.href = canvas.toDataURL('image/png')
       link.click()
+      reverts.forEach((r: () => void) => r())
     } catch (e) {
       console.error('[SymmetryReport] export failed:', e)
     } finally {

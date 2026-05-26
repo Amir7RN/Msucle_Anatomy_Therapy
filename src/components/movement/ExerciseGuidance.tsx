@@ -1368,7 +1368,7 @@ function ReferenceVideo({
       onClick={toggle}
       className="relative cursor-pointer h-full overflow-hidden bg-black"
     >
-      <video
+      <video style={{ objectFit: "cover" }}
         ref={videoRef}
         src={src}
         preload="auto"
@@ -1424,7 +1424,7 @@ function ActivationOverlay({
   const activations = hasDef ? computeActivation(snapshot) : []
   const top = activations.slice(0, 4)
   return (
-    <div className="w-full md:w-80 flex-shrink-0 flex flex-col border-r border-slate-700 bg-slate-950/60 p-3">
+    <div className="w-full md:w-80 flex-shrink-0 flex flex-col md:border-r border-slate-700 bg-slate-950/60 p-3">
       <div className="flex items-center justify-between mb-1.5">
         <div className="text-[10px] uppercase tracking-wider text-cyan-300 font-semibold">
           Muscle activation
@@ -1437,7 +1437,7 @@ function ActivationOverlay({
       </div>
       {/* 3D anatomical viewer - faded body + pulsing target muscle. Tall and
           contrasty so the pulse reads from across the room. */}
-      <div className="flex-1 min-h-[360px] rounded-md bg-gradient-to-b from-slate-900 to-black ring-1 ring-orange-500/30 overflow-hidden relative">
+      <div className="flex-1 min-h-[200px] md:min-h-[360px] rounded-md bg-gradient-to-b from-slate-900 to-black ring-1 ring-orange-500/30 overflow-hidden relative">
         <MuscleActivationViewer activations={activations} targetMuscleId={targetMuscleId} />
         {/* Soft halo pulse around the frame - independent of the WebGL
             canvas so the user notices the activity even before the muscle

@@ -532,13 +532,26 @@ function measureAnklePlantarflexion(lms: LandmarkSet, side: 'L' | 'R'): number |
 // Sagittal plane. Head vector = midEar − midShoulder. Flexion (chin to
 // chest) reads positive; extension (chin up) reads as a separate movement.
 function headVector(lms: LandmarkSet): Vec3 | null {
-  if (!vis(lms, LM.L_EAR, LM.R_EAR, LM.L_SHOULDER, LM.R_SHOULDER)) return null
-  const le = lmVec(lms[LM.L_EAR]), re = lmVec(lms[LM.R_EAR])
+  // Require shoulders. For the head end, prefer the ear-midpoint when both
+  // ears are visible; fall back to NOSE when the user looks up/down and
+  // their ears go partially out of frame (this used to make cervical
+  // extension fail to register because the ears vanished from the camera
+  // when the chin tipped back).
+  if (!vis(lms, LM.L_SHOULDER, LM.R_SHOULDER)) return null
   const ls = lmVec(lms[LM.L_SHOULDER]), rs = lmVec(lms[LM.R_SHOULDER])
-  if (!le || !re || !ls || !rs) return null
-  const midEar = midpoint(le, re)
-  const midSh  = midpoint(ls, rs)
-  return sub(midEar, midSh)
+  if (!ls || !rs) return null
+  const midSh = midpoint(ls, rs)
+  // Preferred: ear midpoint
+  if (vis(lms, LM.L_EAR, LM.R_EAR)) {
+    const le = lmVec(lms[LM.L_EAR])
+    const re = lmVec(lms[LM.R_EAR])
+    if (le && re) return sub(midpoint(le, re), midSh)
+  }
+  // Fallback: nose. Less stable around the rotation axis but always
+  // visible when the head is in frame.
+  const nose = lmVec(lms[LM.NOSE])
+  if (nose) return sub(nose, midSh)
+  return null
 }
 
 function measureCervicalFlexion(lms: LandmarkSet, _side: 'L' | 'R'): number | null {
@@ -663,7 +676,7 @@ const LMS_NECK  = [LM.NOSE, LM.L_EAR, LM.R_EAR, LM.L_SHOULDER, LM.R_SHOULDER]
 export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   shoulder_abduction:  {
     id: 'shoulder_abduction', joint: 'shoulder', label: 'Shoulder Abduction',
-    side: 'either', reference: { min: 150, ideal: 180 },
+    side: 'either', reference: { min: 160, ideal: 180 },
     cue: 'Raise your arm straight out to the side, all the way overhead.',
     intro: 'Next test: how far you can lift your arm out to the side. Stand tall with arms at your sides. I will let you know when to start.',
     howTo: 'When I say go, slowly raise your arm straight out to the side — like making a snow angel — all the way up until it reaches the ceiling. Keep your elbow straight.',
@@ -672,7 +685,7 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   },
   shoulder_flexion: {
     id: 'shoulder_flexion', joint: 'shoulder', label: 'Shoulder Flexion',
-    side: 'either', reference: { min: 150, ideal: 180 },
+    side: 'either', reference: { min: 160, ideal: 180 },
     cue: 'Raise your arm straight forward and overhead.',
     intro: 'Next test: how far you can lift your arm forward overhead. Stand tall with arms at your sides.',
     howTo: 'When I say go, slowly raise your arm straight forward in front of you and continue all the way up overhead, like reaching toward the ceiling. Keep your elbow straight and your back tall.',
@@ -681,7 +694,7 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   },
   shoulder_external_rotation: {
     id: 'shoulder_external_rotation', joint: 'shoulder', label: 'Shoulder External Rotation',
-    side: 'either', reference: { min: 70, ideal: 90 },
+    side: 'either', reference: { min: 75, ideal: 90 },
     cue: 'Rotate your forearm up and back.',
     intro: 'Next test: how far you can rotate your shoulder outward. Bring your elbow up to shoulder height with your forearm pointing straight forward, palm down.',
     howTo: 'Keeping your elbow at shoulder height, slowly rotate your forearm UP toward the ceiling — like you are waving. Your hand should end up pointing toward the sky.',
@@ -690,7 +703,7 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   },
   elbow_flexion: {
     id: 'elbow_flexion', joint: 'elbow', label: 'Elbow Flexion',
-    side: 'either', reference: { min: 130, ideal: 150 },
+    side: 'either', reference: { min: 140, ideal: 150 },
     cue: 'Bend your elbow as far as you can.',
     intro: 'Next test: how far you can bend your elbow. Stand with your arm hanging at your side, palm facing forward.',
     howTo: 'Slowly bend your elbow, bringing your hand toward your shoulder, until you cannot go any further.',
@@ -708,7 +721,7 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   },
   hip_abduction: {
     id: 'hip_abduction', joint: 'hip', label: 'Hip Abduction',
-    side: 'either', reference: { min: 35, ideal: 45 },
+    side: 'either', reference: { min: 35, ideal: 40 },
     cue: 'Lift one leg out to the side.',
     intro: 'Next test: how far you can lift your leg out to the side. Stand tall, feet together. Use a wall for balance if needed.',
     howTo: 'Keeping your leg straight, slowly lift one foot out to the side, away from your body, as far as you comfortably can. Do not lean.',
@@ -717,7 +730,7 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   },
   knee_flexion: {
     id: 'knee_flexion', joint: 'knee', label: 'Knee Flexion',
-    side: 'either', reference: { min: 110, ideal: 135 },
+    side: 'either', reference: { min: 120, ideal: 135 },
     cue: 'Bend your knee back, heel toward your glute.',
     intro: 'Next test: how far you can bend your knee. Stand tall on one leg.',
     howTo: 'Slowly bend your other knee, bringing your heel up behind you toward your glute, as far as you can.',
@@ -726,7 +739,7 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   },
   cervical_rotation_left: {
     id: 'cervical_rotation_left', joint: 'cervical', label: 'Neck Rotation Left',
-    side: 'L', reference: { min: 60, ideal: 80 },
+    side: 'L', reference: { min: 60, ideal: 70 },
     cue: 'Turn your head to the left.',
     intro: 'Next test: how far you can turn your head to the left. Sit or stand tall, facing the camera.',
     howTo: 'Keeping your shoulders still and your chin level, slowly turn your head to the LEFT as far as feels comfortable, like checking your blind spot.',
@@ -735,7 +748,7 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   },
   cervical_rotation_right: {
     id: 'cervical_rotation_right', joint: 'cervical', label: 'Neck Rotation Right',
-    side: 'R', reference: { min: 60, ideal: 80 },
+    side: 'R', reference: { min: 60, ideal: 70 },
     cue: 'Turn your head to the right.',
     intro: 'Next test: how far you can turn your head to the right. Sit or stand tall, facing the camera.',
     howTo: 'Keeping your shoulders still and your chin level, slowly turn your head to the RIGHT as far as feels comfortable.',
@@ -744,7 +757,7 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   },
   trunk_flexion: {
     id: 'trunk_flexion', joint: 'trunk', label: 'Trunk Forward Flexion',
-    side: 'either', reference: { min: 60, ideal: 80 },
+    side: 'either', reference: { min: 60, ideal: 70 },
     cue: 'Hinge forward toward the floor.',
     intro: 'Next test: how far you can bend forward. Stand tall with feet hip-width apart, knees soft.',
     howTo: 'Keeping your knees mostly straight, slowly hinge forward at your hips — let your hands reach down toward the floor. Stop at the first feeling of stretch.',
@@ -754,7 +767,7 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   // ── New goniometric movements (added in the biomechanics overhaul) ──────
   shoulder_extension: {
     id: 'shoulder_extension', joint: 'shoulder', label: 'Shoulder Extension',
-    side: 'either', reference: { min: 40, ideal: 50 },
+    side: 'either', reference: { min: 50, ideal: 60 },
     cue: 'Reach your arm backward.',
     intro: 'Next test: how far you can reach your arm behind you. Stand tall, arms at your sides.',
     howTo: 'Keeping your arm straight, slowly swing it BEHIND you, as far back as feels comfortable. Do not arch your back.',
@@ -763,7 +776,7 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   },
   shoulder_adduction: {
     id: 'shoulder_adduction', joint: 'shoulder', label: 'Shoulder Adduction',
-    side: 'either', reference: { min: 30, ideal: 45 },
+    side: 'either', reference: { min: 30, ideal: 40 },
     cue: 'Bring your arm across the front of your body.',
     intro: 'Next test: how far you can pull your arm across your chest.',
     howTo: 'Raise your arm to shoulder height in front of you, then slowly sweep it across the front of your body toward the opposite shoulder.',
@@ -772,7 +785,7 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   },
   shoulder_internal_rotation: {
     id: 'shoulder_internal_rotation', joint: 'shoulder', label: 'Shoulder Internal Rotation',
-    side: 'either', reference: { min: 60, ideal: 70 },
+    side: 'either', reference: { min: 75, ideal: 90 },
     cue: 'Rotate your forearm across your stomach.',
     intro: 'Next test: how far you can rotate your shoulder inward. Keep your upper arm pinned at your side.',
     howTo: 'With your elbow tucked at your side and bent 90 degrees, slowly rotate your forearm INWARD across the front of your stomach — like closing a swinging door.',
@@ -781,7 +794,7 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   },
   hip_extension: {
     id: 'hip_extension', joint: 'hip', label: 'Hip Extension',
-    side: 'either', reference: { min: 20, ideal: 30 },
+    side: 'either', reference: { min: 15, ideal: 20 },
     cue: 'Lift one straight leg backward.',
     intro: 'Next test: how far you can lift your leg behind you. Stand tall facing the camera.',
     howTo: 'Keeping your leg straight, slowly lift one foot BEHIND you. Do not arch your lower back. Use a wall for balance if needed.',
@@ -790,7 +803,7 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   },
   hip_adduction: {
     id: 'hip_adduction', joint: 'hip', label: 'Hip Adduction',
-    side: 'either', reference: { min: 20, ideal: 30 },
+    side: 'either', reference: { min: 15, ideal: 20 },
     cue: 'Bring your leg across the front of your body.',
     intro: 'Next test: how far you can swing your leg across your body.',
     howTo: 'Stand on one leg. Slowly swing the other leg across the front of your body to the opposite side, like crossing your legs while standing.',
@@ -799,7 +812,7 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   },
   hip_rotation: {
     id: 'hip_rotation', joint: 'hip', label: 'Hip Rotation',
-    side: 'either', reference: { min: 30, ideal: 45 },
+    side: 'either', reference: { min: 35, ideal: 45 },
     cue: 'Rotate your foot in then out.',
     intro: 'Next test: hip rotation. Sit on a chair with your hip and knee both bent 90 degrees.',
     howTo: 'Keeping your knees still and pointing forward, slowly swing one foot OUTWARD away from the other foot, then back IN across the other foot.',
@@ -826,7 +839,7 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   },
   cervical_flexion: {
     id: 'cervical_flexion', joint: 'cervical', label: 'Neck Flexion',
-    side: 'either', reference: { min: 40, ideal: 50 },
+    side: 'either', reference: { min: 50, ideal: 60 },
     cue: 'Chin toward your chest.',
     intro: 'Next test: how far you can bring your chin toward your chest. Sit or stand tall.',
     howTo: 'Keeping your shoulders still, slowly nod your head forward and bring your chin down toward your chest, as far as feels comfortable.',
@@ -844,7 +857,7 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   },
   cervical_lateral_flexion_left: {
     id: 'cervical_lateral_flexion_left', joint: 'cervical', label: 'Neck Side-Bend Left',
-    side: 'L', reference: { min: 35, ideal: 45 },
+    side: 'L', reference: { min: 40, ideal: 45 },
     cue: 'Left ear toward left shoulder.',
     intro: 'Next test: how far you can tilt your head sideways to the left. Sit or stand tall.',
     howTo: 'Keeping your shoulders level and DOWN, slowly tilt your head to the LEFT, bringing your left ear toward your left shoulder. Do not lift your shoulder.',
@@ -853,7 +866,7 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   },
   cervical_lateral_flexion_right: {
     id: 'cervical_lateral_flexion_right', joint: 'cervical', label: 'Neck Side-Bend Right',
-    side: 'R', reference: { min: 35, ideal: 45 },
+    side: 'R', reference: { min: 40, ideal: 45 },
     cue: 'Right ear toward right shoulder.',
     intro: 'Next test: how far you can tilt your head sideways to the right.',
     howTo: 'Keeping your shoulders level and DOWN, slowly tilt your head to the RIGHT, bringing your right ear toward your right shoulder.',
@@ -862,7 +875,7 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   },
   trunk_extension: {
     id: 'trunk_extension', joint: 'trunk', label: 'Trunk Extension',
-    side: 'either', reference: { min: 20, ideal: 30 },
+    side: 'either', reference: { min: 30, ideal: 40 },
     cue: 'Lean backward.',
     intro: 'Next test: how far you can lean backward. Stand tall, feet hip-width apart, hands on your hips.',
     howTo: 'Keeping your knees straight and hands on hips, slowly lean BACKWARD from your hips, as far as feels comfortable. Stop if you feel pinching.',
@@ -871,7 +884,7 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   },
   trunk_lateral_flexion_left: {
     id: 'trunk_lateral_flexion_left', joint: 'trunk', label: 'Trunk Side-Bend Left',
-    side: 'L', reference: { min: 25, ideal: 35 },
+    side: 'L', reference: { min: 30, ideal: 35 },
     cue: 'Side-bend to the left.',
     intro: 'Next test: how far you can bend sideways to your left. Stand tall, feet hip-width apart, arms at your sides.',
     howTo: 'Keeping your hips facing forward, slowly slide your LEFT hand DOWN the outside of your left thigh, bending sideways. Do not lean forward.',
@@ -880,7 +893,7 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   },
   trunk_lateral_flexion_right: {
     id: 'trunk_lateral_flexion_right', joint: 'trunk', label: 'Trunk Side-Bend Right',
-    side: 'R', reference: { min: 25, ideal: 35 },
+    side: 'R', reference: { min: 30, ideal: 35 },
     cue: 'Side-bend to the right.',
     intro: 'Next test: how far you can bend sideways to your right.',
     howTo: 'Keeping your hips facing forward, slowly slide your RIGHT hand DOWN the outside of your right thigh, bending sideways.',
@@ -889,7 +902,7 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   },
   trunk_rotation_left: {
     id: 'trunk_rotation_left', joint: 'trunk', label: 'Trunk Rotation Left',
-    side: 'L', reference: { min: 35, ideal: 45 },
+    side: 'L', reference: { min: 35, ideal: 40 },
     cue: 'Rotate your shoulders left.',
     intro: 'Next test: how far you can rotate your upper body to the left. Stand tall with feet planted, hips facing forward.',
     howTo: 'Keeping your hips facing forward, slowly twist your shoulders and chest to the LEFT as far as you can. Let your arms come along naturally.',
@@ -898,7 +911,7 @@ export const JOINT_MOVEMENTS: Record<string, JointMovement> = {
   },
   trunk_rotation_right: {
     id: 'trunk_rotation_right', joint: 'trunk', label: 'Trunk Rotation Right',
-    side: 'R', reference: { min: 35, ideal: 45 },
+    side: 'R', reference: { min: 35, ideal: 40 },
     cue: 'Rotate your shoulders right.',
     intro: 'Next test: how far you can rotate your upper body to the right.',
     howTo: 'Keeping your hips facing forward, slowly twist your shoulders and chest to the RIGHT as far as you can.',

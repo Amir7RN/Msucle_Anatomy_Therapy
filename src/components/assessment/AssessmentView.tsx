@@ -434,6 +434,10 @@ export function AssessmentSession({
   // user actually has 3 full seconds to hold the pose (previously the
   // timer started immediately and the speech overlapped with the count).
   const calibSpeechDone  = useRef<boolean>(false)
+  // True once the camera-ready "stand still" cue (spoken on CameraView onReady)
+  // has actually finished playing. Until then we refuse to start the neutral-
+  // pose-detected -> 3-second-hold chain so the two speeches don't trample.
+  const cameraIntroDone  = useRef<boolean>(false)
 
   // Hold timer for the measurement phase
   useEffect(() => {
@@ -550,7 +554,13 @@ export function AssessmentSession({
             // 3 seconds to settle.
             calibSpeechDone.current = false
             baselineSamples.current = []
-            if (now - lastNeutralCueAt.current > 4000) {
+            // Don't fire the "Neutral pose detected" cue until the camera
+            // intro has actually finished speaking, otherwise the two
+            // speeches overlap and both come out chopped.
+            if (!cameraIntroDone.current) {
+              // Hold here - just keep the streak alive, but don't speak
+              // or start the timer yet.
+            } else if (now - lastNeutralCueAt.current > 4000) {
               ttsRef.current.speak('Neutral pose detected. Hold for three seconds.', () => {
                 calibSpeechDone.current = true
                 calibStartedAt.current  = performance.now()
@@ -741,13 +751,19 @@ export function AssessmentSession({
                 onLandmarks={handleLandmarks}
                 onReady={() => {
                   setCameraReady(true)
-                  ttsRef.current.speak(
+                  cameraIntroDone.current = false
+                  const introLine =
                     movement.segment === 'lower_body'
                       ? 'Stand tall with knees straight, feet under your hips. Hold the neutral pose for three seconds.'
                       : movement.segment === 'neck'
                       ? 'Face the camera with both ears visible. Hold for three seconds.'
-                      : 'Stand still, arms hanging by your sides, palms touching your thighs. Hold the neutral pose for three seconds.',
-                  )
+                      : 'Stand still, arms hanging by your sides, palms touching your thighs. Hold the neutral pose for three seconds.'
+                  // Use the onEnd callback so the neutral-pose-detected cue
+                  // below is only scheduled AFTER this intro fully plays. No
+                  // more "Face the camera...neutral pose detec-Hold for-".
+                  ttsRef.current.speak(introLine, () => {
+                    cameraIntroDone.current = true
+                  })
                 }}
                 onError={(m) => { setError(m) }}
               />

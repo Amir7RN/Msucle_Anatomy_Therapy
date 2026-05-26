@@ -32,18 +32,18 @@ interface Props {
 //   crown=1.00  neck=0.78  shoulder=0.72  hip=0.06  knee=-0.45  ankle=-0.93
 // Width: shoulders ~0.20, hips ~0.12, knees ~0.10, ankles ~0.10 (half-width).
 const JOINTS: Array<{ region: SymmetryRegion; pos: [number, number, number] }> = [
-  { region: 'neck',            pos: [ 0.00,  0.78, 0.05] },
-  { region: 'trunk',           pos: [ 0.00,  0.30, 0.10] },
-  { region: 'left_shoulder',   pos: [-0.22,  0.72, 0.06] },
-  { region: 'right_shoulder',  pos: [ 0.22,  0.72, 0.06] },
-  { region: 'left_elbow',      pos: [-0.32,  0.34, 0.06] },
-  { region: 'right_elbow',     pos: [ 0.32,  0.34, 0.06] },
-  { region: 'left_hip',        pos: [-0.12,  0.06, 0.06] },
-  { region: 'right_hip',       pos: [ 0.12,  0.06, 0.06] },
-  { region: 'left_knee',       pos: [-0.10, -0.45, 0.06] },
-  { region: 'right_knee',      pos: [ 0.10, -0.45, 0.06] },
-  { region: 'left_ankle',      pos: [-0.10, -0.93, 0.06] },
-  { region: 'right_ankle',     pos: [ 0.10, -0.93, 0.06] },
+  { region: 'neck',            pos: [ 0.00,  0.74, 0.05] },
+  { region: 'trunk',           pos: [ 0.00,  0.28, 0.10] },
+  { region: 'left_shoulder',   pos: [-0.22,  0.62, 0.06] },
+  { region: 'right_shoulder',  pos: [ 0.22,  0.62, 0.06] },
+  { region: 'left_elbow',      pos: [-0.30,  0.26, 0.06] },
+  { region: 'right_elbow',     pos: [ 0.30,  0.26, 0.06] },
+  { region: 'left_hip',        pos: [-0.11,  0.02, 0.06] },
+  { region: 'right_hip',       pos: [ 0.11,  0.02, 0.06] },
+  { region: 'left_knee',       pos: [-0.09, -0.46, 0.06] },
+  { region: 'right_knee',      pos: [ 0.09, -0.46, 0.06] },
+  { region: 'left_ankle',      pos: [-0.09, -0.88, 0.06] },
+  { region: 'right_ankle',     pos: [ 0.09, -0.88, 0.06] },
 ]
 
 useGLTF.preload(BODY_PATH, true, true)
@@ -52,7 +52,7 @@ export function SymmetryHumanoid({ regionColors }: Props) {
   return (
     <div className="w-full h-[440px] rounded-md bg-gradient-to-b from-slate-900 to-black ring-1 ring-slate-800 overflow-hidden">
       <Canvas
-        gl={{ antialias: true, alpha: true, powerPreference: 'low-power' }}
+        gl={{ antialias: true, alpha: true, powerPreference: 'low-power', preserveDrawingBuffer: true }}
         dpr={[1, 2]}
         style={{ background: 'transparent' }}
         camera={{ position: [0, 0, 4.6], fov: 30, near: 0.1, far: 100 }}
