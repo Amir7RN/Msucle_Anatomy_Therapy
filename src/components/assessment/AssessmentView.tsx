@@ -750,9 +750,20 @@ export function AssessmentSession({
                 onReady={() => {
                   setCameraReady(true)
                   cameraIntroDone.current = false
-                  // Prefer the per-movement neutral pose + camera orientation
-                  // (from human_joint_neutral_camera.json). Falls back to
-                  // segment-generic copy if a movement doesn't have one.
+                  // BRIEF MODE: the user just did this exact motion on the
+                  // OTHER side. Don't re-lecture them - acknowledge the side
+                  // switch and let them set up.
+                  if (briefMode) {
+                    const sideName = side === 'L' ? 'left' : 'right'
+                    ttsRef.current.speak(
+                      `Now switch to your ${sideName} side and hold the same neutral pose for three seconds.`,
+                      () => { cameraIntroDone.current = true },
+                    )
+                    return
+                  }
+                  // FULL MODE: speak the per-movement neutral pose + camera
+                  // orientation from human_joint_neutral_camera.json. Falls
+                  // back to segment-generic copy if not available.
                   const np = movement.neutralPose
                   const co = movement.cameraOrientation
                   const fallback =
@@ -764,8 +775,6 @@ export function AssessmentSession({
                   const introLine = np && co
                     ? `Next test: ${movement.label}. ${np} ${co} Hold this position for three seconds.`
                     : `${fallback} Hold the neutral pose for three seconds.`
-                  // Use the onEnd callback so neutral-pose detection cannot
-                  // fire while the intro is still playing.
                   ttsRef.current.speak(introLine, () => {
                     cameraIntroDone.current = true
                   })
