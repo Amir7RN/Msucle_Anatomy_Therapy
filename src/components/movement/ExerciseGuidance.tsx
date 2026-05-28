@@ -305,17 +305,17 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
         </button>
       </header>
 
-      {/* Body: top row (camera + reference video) | bottom scrollable (AI coach) */}
-      <div className="flex flex-col flex-1 min-h-0 overflow-y-auto md:overflow-hidden">
+      {/* Body: top row (camera + reference video) | bottom fixed metrics grid */}
+      <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
 
         {/* ── TOP ROW: camera (left) + reference video auto-playing (right) ──
             Taller than before (was 45vh) so the actual analysis surface gets
             most of the screen.  The bottom row holds the PerformanceTracker
             and AI Coach, which previously left a large black gap. */}
-        <div className="flex flex-col md:flex-row flex-shrink-0 h-auto md:h-[58vh] border-b border-slate-700">
+        <div className="flex flex-row flex-shrink-0 h-[48vh] md:h-[58vh] border-b border-slate-700">
 
           {/* Camera — left half */}
-          <div className="relative bg-black flex-1 min-w-0 h-[36vh] md:h-auto border-b md:border-b-0 md:border-r border-slate-700">
+          <div className="relative bg-black flex-1 min-w-0 border-r border-slate-700">
             <CameraView
               active
               onLandmarks={handleLandmarks}
@@ -397,7 +397,7 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
           </div>
 
           {/* Reference video — right half, auto-plays on mount, loops 10× */}
-          <div className="flex-1 min-w-0 relative h-[28vh] md:h-auto bg-black">
+          <div className="flex-1 min-w-0 relative bg-black">
             <ReferenceVideo src={videoSrc} label={exerciseLabel} autoPlay loops={10} />
             <div className="absolute top-1.5 left-1.5 text-[9px] font-semibold text-slate-400 bg-black/60 px-1.5 py-0.5 rounded">
               REFERENCE
@@ -411,7 +411,7 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
             Previously the left half was empty/black — now it shows live
             quantitative feedback derived from the angle data we already
             compute every frame.                                         */}
-        <div className="flex flex-col md:flex-row md:flex-1 md:min-h-0 md:overflow-hidden">
+        <div className="grid grid-cols-2 grid-rows-2 md:flex md:flex-row md:flex-1 flex-1 min-h-0 overflow-hidden">
 
         {/* Live muscle activation overlay - re-uses the main atlas's
             BodyParts3D GLB; only the target / actively-firing muscles are
@@ -432,7 +432,7 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
         />
 
         {/* AI coach — right rail */}
-        <div className="w-full md:w-80 flex flex-col bg-slate-900 md:border-l border-t md:border-t-0 border-slate-700 flex-shrink-0 overflow-y-auto md:flex-none min-h-[260px] md:min-h-0">
+        <div className="w-full md:w-80 flex flex-col bg-slate-900 border-l border-slate-700 flex-shrink-0 overflow-y-auto md:flex-none min-h-0 md:min-h-0 text-[10px] md:text-xs">
 
           {/* AI Coach — replaces static "Setup" text */}
           {def
@@ -1170,7 +1170,7 @@ function PerformanceTracker({
     // No angle rules for this exercise — show a placeholder so the area
     // isn't blank.
     return (
-      <div className="flex flex-1 items-center justify-center bg-slate-900/40 p-6 text-center min-h-[260px] md:min-h-0 w-full md:flex-1">
+      <div className="flex flex-1 items-center justify-center bg-slate-900/40 p-6 text-center min-h-0 md:min-h-0 w-full md:flex-1 col-span-1 overflow-hidden">
         <div className="text-xs text-slate-500 leading-relaxed max-w-sm">
           Live performance metrics aren't available for this exercise yet.
           Match your motion to the reference clip on the right; the AI coach
@@ -1424,7 +1424,7 @@ function ActivationOverlay({
   const activations = hasDef ? computeActivation(snapshot) : []
   const top = activations.slice(0, 4)
   return (
-    <div className="w-full md:w-80 flex-shrink-0 flex flex-col md:border-r border-slate-700 bg-slate-950/60 p-3">
+    <div className="w-full md:w-80 flex-shrink-0 flex flex-col border-r border-slate-700 bg-slate-950/60 p-2 md:p-3 min-h-0 overflow-hidden">
       <div className="flex items-center justify-between mb-1.5">
         <div className="text-[10px] uppercase tracking-wider text-cyan-300 font-semibold">
           Muscle activation
@@ -1437,7 +1437,7 @@ function ActivationOverlay({
       </div>
       {/* 3D anatomical viewer - faded body + pulsing target muscle. Tall and
           contrasty so the pulse reads from across the room. */}
-      <div className="flex-1 min-h-[280px] md:min-h-[360px] rounded-md bg-gradient-to-b from-slate-900 to-black ring-1 ring-orange-500/30 overflow-hidden relative">
+      <div className="flex-1 min-h-0 md:min-h-[360px] rounded-md bg-gradient-to-b from-slate-900 to-black ring-1 ring-orange-500/30 overflow-hidden relative">
         <MuscleActivationViewer activations={activations} targetMuscleId={targetMuscleId} />
         {/* Soft halo pulse around the frame - independent of the WebGL
             canvas so the user notices the activity even before the muscle
