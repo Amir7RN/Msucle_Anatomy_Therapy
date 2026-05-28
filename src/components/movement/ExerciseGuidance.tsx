@@ -405,13 +405,78 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
           </div>
         </div>
 
+        {/* ── MOBILE METRICS (md:hidden) ─────────────────────────────
+            Replaces the desktop bottom row on phones.  No scrolling: two
+            equal-height rows of two compact tiles each, plus a rep-history
+            bar at the bottom.  AI Coach is OMITTED here on purpose - the
+            user is exercising hands-free with the phone propped up.       */}
+        <div className="flex md:hidden flex-col flex-1 min-h-0 bg-slate-950/70">
+          <div className="flex flex-row flex-1 min-h-0 border-b border-slate-800">
+            {/* Form Score - compact gauge, just the dial + reps line */}
+            <div className="flex-1 min-w-0 flex flex-col items-center justify-center border-r border-slate-800 p-2">
+              <div className="text-[9px] uppercase tracking-wider text-cyan-300 font-semibold mb-1">Form</div>
+              {def
+                ? <FormScoreGauge score={formScore} />
+                : <div className="text-[9px] text-slate-500 italic text-center">No live metric</div>}
+              <div className="mt-1 flex items-center gap-1 text-[9px] text-slate-300">
+                <span className="rounded bg-slate-800 px-1.5 py-0.5">
+                  <span className="text-orange-300 font-bold tabular-nums">{repCount}</span>
+                  <span className="text-slate-500">/{repTarget}</span>
+                </span>
+                <span className="rounded bg-slate-800 px-1.5 py-0.5 text-emerald-300 font-bold tabular-nums">
+                  {bestHoldSec.toFixed(1)}s
+                </span>
+              </div>
+            </div>
+            {/* Muscle Activation - JUST the 3D body, no header/label/target text */}
+            <div className="flex-1 min-w-0 relative bg-gradient-to-b from-slate-900 to-black overflow-hidden">
+              <MuscleActivationViewer
+                activations={def ? computeActivation(snapshot) : []}
+                targetMuscleId={muscleId}
+              />
+            </div>
+          </div>
+          {/* Rep history - compact horizontal bar chart spanning full width */}
+          <div className="flex flex-col flex-1 min-h-0 p-2">
+            <div className="text-[9px] uppercase tracking-wider text-cyan-300 font-semibold mb-1">Rep History</div>
+            {repScores.length === 0 ? (
+              <div className="text-[9px] text-slate-500 italic flex-1 flex items-center">
+                Complete a rep to start tracking…
+              </div>
+            ) : (
+              <div className="flex items-end gap-1 flex-1 min-h-0">
+                {Array.from({ length: 10 }).map((_, i) => {
+                  const score = repScores[i]
+                  const height = score != null ? Math.max(6, score) : 6
+                  const colour =
+                    score == null ? '#1e293b'
+                    : score >= 75 ? '#34d399'
+                    : score >= 50 ? '#fbbf24'
+                    :               '#f87171'
+                  return (
+                    <div key={i} className="flex flex-col items-center justify-end flex-1 h-full">
+                      <span className="text-[8px] text-slate-500 mb-0.5 tabular-nums">
+                        {score != null ? score : ''}
+                      </span>
+                      <div
+                        className="w-full rounded-sm"
+                        style={{ height: `${height}%`, backgroundColor: colour }}
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* ── BOTTOM ROW ───────────────────────────────────────────────
             Left:  PerformanceTracker (Form Score · Joint Accuracy · Reps)
             Right: AI Coach panel (chat + step state + voice)
             Previously the left half was empty/black — now it shows live
             quantitative feedback derived from the angle data we already
             compute every frame.                                         */}
-        <div className="grid grid-cols-2 grid-rows-2 md:flex md:flex-row md:flex-1 flex-1 min-h-0 overflow-hidden">
+        <div className="hidden md:flex md:flex-row md:flex-1 md:min-h-0 md:overflow-hidden">
 
         {/* Live muscle activation overlay - re-uses the main atlas's
             BodyParts3D GLB; only the target / actively-firing muscles are
@@ -431,24 +496,26 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
           hasDef={!!def}
         />
 
-        {/* AI coach — right rail */}
-        <div className="w-full md:w-80 flex flex-col bg-slate-900 border-l border-slate-700 flex-shrink-0 overflow-y-auto md:flex-none min-h-0 md:min-h-0 text-[10px] md:text-xs">
-
-          {/* AI Coach — replaces static "Setup" text */}
+        {/* AI coach rail.  display:none on mobile (just the chat UI is
+            hidden) - the AiCoach React component STAYS MOUNTED so its
+            TTS welcome, step heartbeat, live directional cues, and
+            rep-milestone callouts all keep firing.  User hears the coach
+            speak on mobile while keeping the screen free for the camera +
+            metrics. */}
+        <div className="hidden md:flex w-full md:w-80 flex-col bg-slate-900 border-l border-slate-700 flex-shrink-0 overflow-y-auto md:flex-none min-h-0 text-xs">
           {def
             ? <AiCoach def={def} snapshot={snapshot} lmsRef={lmsRef} muscleId={muscleId} repCount={repCount} repTarget={repTarget} />
             : (
               <div className="p-3 border-b border-slate-700 flex items-start gap-2">
                 <Info size={14} className="text-slate-400 mt-0.5 flex-shrink-0" />
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  No angle detection for this exercise yet — use the camera to compare your form with the reference video.
+                  No angle detection for this exercise yet - use the camera to compare your form with the reference video.
                 </p>
               </div>
             )
           }
-
         </div>
-        </div>{/* end bottom row */}
+        </div>{/* end desktop bottom row */}
       </div>{/* end outer flex-col body */}
     </div>
   )
