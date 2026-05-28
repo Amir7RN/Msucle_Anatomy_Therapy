@@ -530,15 +530,13 @@ export function AssessmentSession({
     const phaseNow = phaseRef.current
 
     if (phaseNow === 'calibrate') {
-      // Fire the plain-language intro ONCE per movement so the user knows
-      // what is coming before we start chasing neutral-pose lock. Without
-      // this the system jumps straight to "Neutral pose detected. Hold for
-      // three seconds." which is confusing if the user has not been told
-      // what test is about to happen.
-      if (introSpokenForId.current !== movement.id && movement.intro) {
-        introSpokenForId.current = movement.id
-        ttsRef.current.speak(movement.intro)
-      }
+      // The per-movement intro is now spoken inside the CameraView onReady
+      // handler (above) which combines neutralPose + cameraOrientation +
+      // movement label and uses an onEnd callback to gate
+      // cameraIntroDone.  Speaking movement.intro AGAIN here would race
+      // that cue.  We mark introSpokenForId so any external code that
+      // checks it sees the intro as already covered.
+      introSpokenForId.current = movement.id
       // Verify this is a TRUE neutral pose.  Per-check status drives the
       // overlay so the user knows which item to fix.
       const status = verifyNeutralPose(lms, movement.segment)
@@ -752,15 +750,22 @@ export function AssessmentSession({
                 onReady={() => {
                   setCameraReady(true)
                   cameraIntroDone.current = false
-                  const introLine =
+                  // Prefer the per-movement neutral pose + camera orientation
+                  // (from human_joint_neutral_camera.json). Falls back to
+                  // segment-generic copy if a movement doesn't have one.
+                  const np = movement.neutralPose
+                  const co = movement.cameraOrientation
+                  const fallback =
                     movement.segment === 'lower_body'
-                      ? 'Stand tall with knees straight, feet under your hips. Hold the neutral pose for three seconds.'
+                      ? 'Stand tall with knees straight, feet under your hips.'
                       : movement.segment === 'neck'
-                      ? 'Face the camera with both ears visible. Hold for three seconds.'
-                      : 'Stand still, arms hanging by your sides, palms touching your thighs. Hold the neutral pose for three seconds.'
-                  // Use the onEnd callback so the neutral-pose-detected cue
-                  // below is only scheduled AFTER this intro fully plays. No
-                  // more "Face the camera...neutral pose detec-Hold for-".
+                      ? 'Face the camera with both ears visible.'
+                      : 'Stand still, arms hanging by your sides.'
+                  const introLine = np && co
+                    ? `Next test: ${movement.label}. ${np} ${co} Hold this position for three seconds.`
+                    : `${fallback} Hold the neutral pose for three seconds.`
+                  // Use the onEnd callback so neutral-pose detection cannot
+                  // fire while the intro is still playing.
                   ttsRef.current.speak(introLine, () => {
                     cameraIntroDone.current = true
                   })
