@@ -32,6 +32,10 @@ interface Props {
   onLandmarks: (lms: LandmarkSet) => void
   onReady?:    () => void
   onError?:    (message: string) => void
+  /** When true, request the WIDEST possible field of view and force the
+   *  camera's minimum optical/digital zoom after the stream starts.  Used by
+   *  the walking (gait) test so a whole left-to-right walk fits in frame. */
+  maxFov?:     boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -138,7 +142,7 @@ function smoothLandmarks(current: LandmarkSet, prev: LandmarkSet | null): Landma
   })
 }
 
-export function CameraView({ active, onLandmarks, onReady, onError }: Props) {
+export function CameraView({ active, onLandmarks, onReady, onError, maxFov }: Props) {
   const videoRef    = useRef<HTMLVideoElement | null>(null)
   const canvasRef   = useRef<HTMLCanvasElement | null>(null)
   const rafRef      = useRef<number | null>(null)
@@ -200,6 +204,24 @@ export function CameraView({ active, onLandmarks, onReady, onError }: Props) {
         console.error('[camera] video.play() rejected:', e)
         onError?.(`Video could not start: ${(e as Error).message ?? e}`)
         return
+      }
+
+      // Widest-FOV mode (gait test): drive optical/digital zoom to its minimum
+      // so the whole walking path fits. getCapabilities()/zoom are experimental
+      // and only present on some mobile browsers — wrapped so it's a silent
+      // no-op everywhere else.
+      if (maxFov) {
+        try {
+          const track = stream.getVideoTracks()[0]
+          const caps = (track?.getCapabilities?.() ?? {}) as MediaTrackCapabilities & { zoom?: { min: number; max: number } }
+          const advanced: MediaTrackConstraintSet[] = []
+          if (caps.zoom && typeof caps.zoom.min === 'number') {
+            advanced.push({ zoom: caps.zoom.min } as MediaTrackConstraintSet)
+          }
+          if (advanced.length) await track.applyConstraints({ advanced })
+        } catch (e) {
+          console.warn('[camera] min-zoom apply failed (non-fatal):', e)
+        }
       }
 
       // ── Step 2: pose model load (separate try so we know which step failed)

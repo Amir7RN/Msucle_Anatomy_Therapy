@@ -32,7 +32,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, X, Footprints, Download, RefreshCw, ChevronRight, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { CameraView } from '../movement/CameraView'
 import { useVoiceOutput } from '../../hooks/useVoice'
-import { LM } from '../../lib/movement/landmarks'
+import { LM, jointAngleDeg } from '../../lib/movement/landmarks'
 import type { LandmarkSet } from '../../lib/movement/landmarks'
 import { disposeDetector } from '../../lib/movement/poseDetector'
 import {
@@ -49,13 +49,26 @@ interface Props {
 type Phase = 'calibrate' | 'walk' | 'result'
 type Leg   = 'out' | 'back'
 
-/** Steps to take in each direction. 8 keeps a typical room walk inside the
- *  frame of a stationary phone. */
+/** Target steps per lap — used only as a fallback cap; a lap really ends when
+ *  the walker reaches the far guide line. */
 const STEPS_PER_LEG = 8
+/** Hard cap so a missed line-crossing still advances the test. */
+const STEPS_MAX_PER_LEG = 14
 /** Frames of sustained good pose required before lock-in (~0.6 s @ 30 fps). */
 const NEUTRAL_FRAMES_REQUIRED = 18
 /** Safety cap per leg so an under-count still advances the test. */
 const LEG_TIMEOUT_MS = 32000
+
+// Guide lines, in SCREEN space (0 = left edge, 1 = right edge of the mirrored
+// video the user sees).  Inset from the edges so the whole body still fits when
+// the walker stands on a line.  The walk runs line-to-line, maximising the
+// captured distance (≈ a full frame width → ~8 steps when zoomed out).
+const SCREEN_L = 0.18
+const SCREEN_R = 0.82
+const ON_LINE_TOL = 0.13   // how close (screen units) counts as "on the line"
+/** Knee straighter than this (hip–knee–ankle angle, deg) passes the neutral
+ *  straight-knee check. */
+const KNEE_STRAIGHT_MIN = 150
 
 interface PoseCheck { name: string; ok: boolean; hint: string }
 interface PoseStatus { ok: boolean; checks: PoseCheck[] }
@@ -64,52 +77,58 @@ interface PoseStatus { ok: boolean; checks: PoseCheck[] }
 //  Picky natural-pose verification for the walking test
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Hip-centre x in SCREEN space (the mirrored video flips landmark x). */
+function screenXOf(lms: LandmarkSet): number {
+  const cx = ((lms[LM.L_HIP]?.x ?? 0.5) + (lms[LM.R_HIP]?.x ?? 0.5)) / 2
+  return 1 - cx
+}
+
+/** Nearest guide line (screen x) to the walker, and which side it is. */
+function nearestLine(screenX: number): { x: number; side: 'left' | 'right' } {
+  return screenX < 0.5 ? { x: SCREEN_L, side: 'left' } : { x: SCREEN_R, side: 'right' }
+}
+
 function verifyGaitPose(lms: LandmarkSet, motion: number): PoseStatus {
   const vis = (i: number) => lms[i]?.visibility ?? 0
   const checks: PoseCheck[] = []
 
-  // Only the LOWER body matters for ankle / shank / hip measurement — we do
-  // NOT require the head or shoulders to be in frame.
+  // Only the LOWER body matters — head / shoulders are NOT required.
   // 1. Lower body present: hips + knees.
   const bodyOk =
-    vis(LM.L_HIP) > 0.5 && vis(LM.R_HIP) > 0.5 &&
-    vis(LM.L_KNEE) > 0.45 && vis(LM.R_KNEE) > 0.45
+    vis(LM.L_HIP) > 0.4 && vis(LM.R_HIP) > 0.4 &&
+    vis(LM.L_KNEE) > 0.4 && vis(LM.R_KNEE) > 0.4
   checks.push({
     name: 'Lower body in frame',
     ok: bodyOk,
-    hint: 'Step back until your hips and both knees are visible.',
+    hint: 'Make sure your hips and both knees are in view.',
   })
 
-  // 2. BOTH ankles clearly visible — the headline requirement.
-  const anklesOk = vis(LM.L_ANKLE) > 0.45 && vis(LM.R_ANKLE) > 0.45
+  // 2. Both ankles tracked (side-on, the far one may be partly occluded → lenient).
+  const anklesOk = vis(LM.L_ANKLE) > 0.3 && vis(LM.R_ANKLE) > 0.3
   checks.push({
     name: 'Both ankles visible',
     ok: anklesOk,
-    hint: 'I need to see BOTH of your feet — step back so your ankles are in view.',
+    hint: 'I need to see both of your feet — adjust so your ankles are in view.',
   })
 
-  // Lowest tracked foot point in the frame.
-  const footCandidates = [LM.L_ANKLE, LM.R_ANKLE, LM.L_FOOT_IDX, LM.R_FOOT_IDX]
-    .map((i) => (vis(i) > 0.4 ? lms[i].y : null))
-    .filter((v): v is number => v != null)
-  const footY = footCandidates.length ? Math.max(...footCandidates) : 1
-
-  // 3. Margin below the feet → far enough back that the walk stays in frame
-  //    (the "step backward from mid-frame" requirement).
-  const marginOk = footY < 0.90
+  // 3. Standing on a start line (all the way to one side, not the middle).
+  const sx = screenXOf(lms)
+  const line = nearestLine(sx)
+  const onLine = Math.abs(sx - line.x) < ON_LINE_TOL
   checks.push({
-    name: 'Far enough back',
-    ok: marginOk,
-    hint: 'Step backward — I need a little space below your feet so I can follow your whole walk.',
+    name: `On the ${line.side} start line`,
+    ok: onLine,
+    hint: 'Walk all the way to one end and stand on the glowing line.',
   })
 
-  // 4. Centred horizontally.
-  const cx = ((lms[LM.L_HIP]?.x ?? 0.5) + (lms[LM.R_HIP]?.x ?? 0.5)) / 2
-  const centeredOk = cx > 0.3 && cx < 0.7
+  // 4. Knees straight (neutral) — hip–knee–ankle close to straight.
+  const lKnee = jointAngleDeg(lms[LM.L_HIP], lms[LM.L_KNEE], lms[LM.L_ANKLE])
+  const rKnee = jointAngleDeg(lms[LM.R_HIP], lms[LM.R_KNEE], lms[LM.R_ANKLE])
+  const kneesOk = lKnee > KNEE_STRAIGHT_MIN && rKnee > KNEE_STRAIGHT_MIN
   checks.push({
-    name: 'Centred in frame',
-    ok: centeredOk,
-    hint: cx <= 0.3 ? 'Move to your left to centre yourself.' : 'Move to your right to centre yourself.',
+    name: 'Knees straight',
+    ok: kneesOk,
+    hint: 'Stand tall with both knees straight so I can read your true neutral.',
   })
 
   // 5. Standing still.
@@ -142,6 +161,9 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
   // On-screen caption mirroring whatever the coach is saying, so the cues are
   // readable even when device audio / speech synthesis is unavailable.
   const [caption, setCaption] = useState('')
+  // Which guide line to glow: the nearest line during calibrate, the target
+  // line during the walk.
+  const [glowSide, setGlowSide] = useState<'left' | 'right'>('left')
 
   const tts = useVoiceOutput()
   const ttsRef = useRef(tts)
