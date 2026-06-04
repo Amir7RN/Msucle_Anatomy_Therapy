@@ -21,8 +21,9 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { X, Play, ChevronRight, Sparkles, RotateCcw, Activity, CheckCircle2 } from 'lucide-react'
+import { X, Play, ChevronRight, Sparkles, RotateCcw, Activity, CheckCircle2, Footprints } from 'lucide-react'
 import { AssessmentSession } from './AssessmentView'
+import { GaitAssessmentSession } from './GaitAssessmentSession'
 import {
   SEGMENTS, buildBattery, estimateBatteryMinutes,
   type SegmentId, type BatteryItem,
@@ -38,7 +39,7 @@ interface Props {
   onClose: () => void
 }
 
-type Phase = 'choose' | 'running' | 'summary'
+type Phase = 'choose' | 'running' | 'summary' | 'gait'
 
 export function FullBodyAssessmentView({ open, onClose }: Props) {
   const [phase, setPhase]       = useState<Phase>('choose')
@@ -100,6 +101,14 @@ export function FullBodyAssessmentView({ open, onClose }: Props) {
           onToggle={toggleSegment}
           onClose={onClose}
           onStart={startBattery}
+          onStartGait={() => setPhase('gait')}
+        />
+      )}
+
+      {phase === 'gait' && (
+        <GaitAssessmentSession
+          open={true}
+          onClose={() => setPhase('choose')}
         />
       )}
 
@@ -131,12 +140,13 @@ export function FullBodyAssessmentView({ open, onClose }: Props) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ChoosePhase({
-  selected, onToggle, onClose, onStart,
+  selected, onToggle, onClose, onStart, onStartGait,
 }: {
   selected: Set<SegmentId>
   onToggle: (id: SegmentId) => void
   onClose:  () => void
   onStart:  () => void
+  onStartGait: () => void
 }) {
   const allIds = SEGMENTS.map((s) => s.id)
   const allSelected = allIds.every((i) => selected.has(i))
@@ -209,6 +219,33 @@ function ChoosePhase({
 
       {renderGroup('upper', 'Upper limb')}
       {renderGroup('lower', 'Lower limb')}
+
+      {/* Dynamic / walking ankle test — distinct from the static ROM battery
+          above. Launches its own AI-coached out-and-back walk and produces a
+          downloadable CSV + plot. Built for the Dephy sagittal-ankle use-case. */}
+      <div className="space-y-2">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-300">
+          Dynamic gait
+        </div>
+        <button
+          onClick={onStartGait}
+          className="group flex w-full items-center gap-3 rounded-lg border border-cyan-500/40 bg-cyan-500/5 p-3 text-left transition-colors hover:border-cyan-400 hover:bg-cyan-500/10"
+        >
+          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-cyan-500/15 text-cyan-300">
+            <Footprints size={18} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-cyan-100">Ankle Dynamics</span>
+              <span className="rounded bg-cyan-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-cyan-300">New</span>
+            </span>
+            <span className="mt-0.5 block text-[10px] text-slate-400">
+              Walk 8 steps out &amp; back · measures both ankle angles + speed · exports CSV &amp; plot
+            </span>
+          </span>
+          <ChevronRight size={16} className="flex-shrink-0 text-cyan-400/70 group-hover:text-cyan-300" />
+        </button>
+      </div>
 
       <div className="flex items-center justify-end gap-2 border-t border-slate-700 pt-3">
         <button
