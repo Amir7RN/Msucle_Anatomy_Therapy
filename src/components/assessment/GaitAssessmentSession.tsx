@@ -14,18 +14,18 @@
  *
  * Coaching design (the bit the brief cares about most)
  * ────────────────────────────────────────────────────
- *   1. The coach NEVER talks over herself.  Every scripted line is chained
- *      through the previous utterance's onEnd callback, so "natural pose
- *      detected" → instructions → "three, two, one, GO" play in full sequence.
- *      Live step numbers are spoken ONLY when the synth is idle (sayIfIdle), so
- *      counting never chops a sentence in half.
- *   2. Natural-pose detection is deliberately PICKY: it requires the whole
- *      body — and specifically BOTH ankles — in frame with margin above the
- *      head and below the feet, the user centred and standing still for ~0.6 s.
+ *   1. The coach NEVER talks over herself.  Each scripted line is shown as an
+ *      on-screen caption AND spoken, and the next line only starts once the
+ *      previous one ends.  Live step numbers are spoken ONLY when the synth is
+ *      idle (sayIfIdle), so counting never chops a sentence in half.
+ *   2. The flow is TIMER-DRIVEN, not dependent on speech callbacks (see
+ *      speakStep): if device audio / speech synthesis is muted or blocked, the
+ *      captions still show and the assessment still advances instead of getting
+ *      stuck. Audio is a best-effort enhancement on top of the visual flow.
+ *   3. Natural-pose detection only needs the LOWER body — hips, knees and
+ *      specifically BOTH ankles — in frame, the user centred and standing still.
  *      Until then it gives a specific, single fix ("step back so I can see your
  *      feet", "move to the centre", "hold still").
- *   3. Only after the pose is locked AND the lock-in speech has finished does
- *      the 3-2-1-GO countdown run and recording begin.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -68,16 +68,16 @@ function verifyGaitPose(lms: LandmarkSet, motion: number): PoseStatus {
   const vis = (i: number) => lms[i]?.visibility ?? 0
   const checks: PoseCheck[] = []
 
-  // 1. Whole body present.
+  // Only the LOWER body matters for ankle / shank / hip measurement — we do
+  // NOT require the head or shoulders to be in frame.
+  // 1. Lower body present: hips + knees.
   const bodyOk =
-    vis(LM.NOSE) > 0.5 &&
-    vis(LM.L_SHOULDER) > 0.6 && vis(LM.R_SHOULDER) > 0.6 &&
     vis(LM.L_HIP) > 0.5 && vis(LM.R_HIP) > 0.5 &&
     vis(LM.L_KNEE) > 0.45 && vis(LM.R_KNEE) > 0.45
   checks.push({
-    name: 'Whole body in frame',
+    name: 'Lower body in frame',
     ok: bodyOk,
-    hint: 'Step back until your head, hips and knees are all visible.',
+    hint: 'Step back until your hips and both knees are visible.',
   })
 
   // 2. BOTH ankles clearly visible — the headline requirement.
@@ -88,23 +88,19 @@ function verifyGaitPose(lms: LandmarkSet, motion: number): PoseStatus {
     hint: 'I need to see BOTH of your feet — step back so your ankles are in view.',
   })
 
-  // Vertical extent of the body in the frame.
-  const headY = lms[LM.NOSE]?.y ?? 0
+  // Lowest tracked foot point in the frame.
   const footCandidates = [LM.L_ANKLE, LM.R_ANKLE, LM.L_FOOT_IDX, LM.R_FOOT_IDX]
     .map((i) => (vis(i) > 0.4 ? lms[i].y : null))
     .filter((v): v is number => v != null)
   const footY = footCandidates.length ? Math.max(...footCandidates) : 1
 
-  // 3. Margin above head AND below feet → far enough back that the walk stays
-  //    in frame (the "step backward from mid-frame" requirement).
-  const marginOk = headY > 0.10 && footY < 0.90
-  const tooClose = footY >= 0.90 || headY <= 0.10
+  // 3. Margin below the feet → far enough back that the walk stays in frame
+  //    (the "step backward from mid-frame" requirement).
+  const marginOk = footY < 0.90
   checks.push({
     name: 'Far enough back',
     ok: marginOk,
-    hint: tooClose
-      ? 'Step backward — I need space above your head and below your feet.'
-      : 'Step backward so your whole body has room in the frame.',
+    hint: 'Step backward — I need a little space below your feet so I can follow your whole walk.',
   })
 
   // 4. Centred horizontally.
@@ -143,6 +139,9 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [trackingWarn, setTrackingWarn] = useState(false)
   const [summary, setSummary] = useState<GaitSummary | null>(null)
+  // On-screen caption mirroring whatever the coach is saying, so the cues are
+  // readable even when device audio / speech synthesis is unavailable.
+  const [caption, setCaption] = useState('')
 
   const tts = useVoiceOutput()
   const ttsRef = useRef(tts)
@@ -159,7 +158,6 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
 
   const introDoneRef    = useRef(false)   // positioning speech finished
   const lockSpeechStarted = useRef(false) // "natural pose detected" cue fired
-  const holdReady       = useRef(false)   // that cue has finished → start hold
   const countdownStarted = useRef(false)  // 3-2-1-GO chain has begun
   const neutralStreak   = useRef(0)
   const calibStartedAt  = useRef<number | null>(null)
@@ -175,7 +173,7 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
   const plotCanvasRef   = useRef<HTMLCanvasElement | null>(null)
   const stepCountRef    = useRef(0)
 
-  const CALIB_MS = 1500   // hold the locked pose this long before the countdown
+  const CALIB_MS = 2500   // hold the locked pose this long before the countdown
 
   // Reset everything when (re)opened.
   useEffect(() => {
@@ -185,9 +183,9 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
     setStepCount(0); setLiveL(null); setLiveR(null)
     setCalibProgress(0); setCalibStatus({ ok: false, checks: [] })
     setCameraReady(false); setError(null); setTrackingWarn(false); setSummary(null)
+    setCaption('')
     introDoneRef.current = false
     lockSpeechStarted.current = false
-    holdReady.current = false
     countdownStarted.current = false
     neutralStreak.current = 0
     calibStartedAt.current = null
@@ -206,9 +204,28 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
   /** Speak ONLY if the synth is idle — used for live step counts so we never
    *  chop an in-progress sentence (speak() internally cancels). */
   const sayIfIdle = (text: string) => {
+    setCaption(text)
     try {
       if (!window.speechSynthesis?.speaking) ttsRef.current.speak(text)
     } catch { /* */ }
+  }
+
+  /**
+   * Speak a scripted line, show it as a caption, and call `next` exactly once —
+   * whichever happens first: the utterance's onEnd OR a duration-based fallback
+   * timer.  This is what makes the flow robust: if speech synthesis is muted,
+   * blocked, or never fires onEnd (common on some browsers), the assessment
+   * still advances on the timer instead of getting stuck.
+   */
+  const speakStep = (text: string, next?: () => void) => {
+    setCaption(text)
+    let fired = false
+    const fire = () => { if (!fired) { fired = true; next?.() } }
+    try { ttsRef.current.speak(text, fire) } catch { /* */ }
+    // ~380 ms per word at the 0.85 speaking rate, floor 2.2 s, plus a little
+    // breathing room so a real onEnd usually wins the race when audio works.
+    const ms = Math.max(2200, text.split(/\s+/).length * 380)
+    window.setTimeout(fire, ms)
   }
 
   // Keep a ref of the live step total for finish().
@@ -228,16 +245,19 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
     const exc = s.left.excursion != null && s.right.excursion != null
       ? `Left ankle moved through ${s.left.excursion} degrees, right through ${s.right.excursion} degrees.`
       : 'Captured your ankle motion.'
-    ttsRef.current.speak(`All done. ${exc} You can download the chart and data below.`)
+    const msg = `All done. ${exc} You can download the chart and data below.`
+    setCaption(msg)
+    ttsRef.current.speak(msg)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Countdown then start the walk.
-  const startCountdownThenWalk = useCallback(() => {
-    ttsRef.current.speak(
+  // Countdown then start the walk. Timer-driven (see speakStep) so it always
+  // reaches "GO" even with no audio.
+  const startCountdownThenWalk = () => {
+    speakStep(
       'When I say go, walk straight forward, away from the camera, for eight steps.',
       () => {
-        ttsRef.current.speak('Ready. Three. Two. One. Go!', () => {
+        speakStep('Ready. Three. Two. One. Go!', () => {
           goAtRef.current = performance.now()
           legStartedAt.current = performance.now()
           stepsThisLeg.current = 0
@@ -249,8 +269,7 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
         })
       },
     )
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }
 
   // ── Stable per-frame landmark handler ───────────────────────────────────────
   const handleLandmarks = useCallback((lms: LandmarkSet) => {
@@ -285,35 +304,29 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
       if (status.ok) {
         neutralStreak.current += 1
         if (neutralStreak.current >= NEUTRAL_FRAMES_REQUIRED) {
-          // Fire the lock-in cue exactly once; the hold timer starts only when
-          // that utterance has finished (holdReady set in its onEnd).
-          if (!lockSpeechStarted.current) {
-            lockSpeechStarted.current = true
-            holdReady.current = false
-            ttsRef.current.speak('Great — natural pose detected. Hold still.', () => {
-              holdReady.current = true
-            })
-          }
-          if (holdReady.current) {
-            if (calibStartedAt.current === null) calibStartedAt.current = now
-            const elapsed = now - calibStartedAt.current
-            setCalibProgress(Math.min(1, elapsed / CALIB_MS))
-            if (elapsed >= CALIB_MS) {
-              neutralStreak.current = 0
-              countdownStarted.current = true
-              setCalibProgress(1)
-              startCountdownThenWalk()
+          // Start the hold timer immediately the first frame the pose is held
+          // long enough; narrate once in parallel. Progression is driven by the
+          // wall clock, NOT by the speech callback, so it can never get stuck.
+          if (calibStartedAt.current === null) {
+            calibStartedAt.current = now
+            if (!lockSpeechStarted.current) {
+              lockSpeechStarted.current = true
+              speakStep('Great — natural pose detected. Hold still.')
             }
-          } else {
-            setCalibProgress(0)
+          }
+          const elapsed = now - calibStartedAt.current
+          setCalibProgress(Math.min(1, elapsed / CALIB_MS))
+          if (elapsed >= CALIB_MS) {
+            neutralStreak.current = 0
+            countdownStarted.current = true
+            setCalibProgress(1)
+            startCountdownThenWalk()
           }
         }
       } else {
-        // Pose broke before lock-in completed — reset the whole chain so the
-        // user must re-settle from scratch.
+        // Pose broke before lock-in completed — reset so the user re-settles.
         neutralStreak.current = 0
         lockSpeechStarted.current = false
-        holdReady.current = false
         calibStartedAt.current = null
         setCalibProgress(0)
       }
@@ -369,9 +382,7 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
           stepsThisLeg.current = 0
           lastSpokenStep.current = 0
           legStartedAt.current = now
-          ttsRef.current.speak(
-            'Great. Now turn around and walk back toward the camera. Eight steps.',
-          )
+          speakStep('Great. Now turn around and walk back toward the camera. Eight steps.')
         } else {
           goAtRef.current = null   // stop recording
           finish()
@@ -406,12 +417,14 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
                 onReady={() => {
                   setCameraReady(true)
                   introDoneRef.current = false
-                  ttsRef.current.speak(
+                  // Timer-driven narration (see speakStep): always reaches the
+                  // end and unlocks pose detection even with no audio.
+                  speakStep(
                     'Welcome to the ankle dynamics walking test.',
-                    () => ttsRef.current.speak(
-                      'Prop your phone up against something stable, around knee height, with the camera facing your walking path. You can use the front or back camera, as long as your whole body stays inside the frame.',
-                      () => ttsRef.current.speak(
-                        'Now stand in the middle of the frame, then take a few steps backward, until I can see your whole body, from your head all the way down to both of your feet, with a little space above and below.',
+                    () => speakStep(
+                      'Prop your phone up against something stable, around knee height, with the camera facing your walking path. You can use the front or back camera — I only need to see your lower body.',
+                      () => speakStep(
+                        'Now stand in the middle of the frame, then take a few steps backward, until I can see your hips, your knees and both of your feet, with a little space below your feet.',
                         () => { introDoneRef.current = true },
                       ),
                     ),
@@ -433,11 +446,19 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
 
             {/* HUD */}
             <div className="pointer-events-none absolute inset-0 flex flex-col">
+              {/* Coach caption — mirrors the spoken cue so it's readable even
+                  with no audio. */}
+              {caption && (
+                <div className="absolute left-1/2 top-3 z-10 w-[min(560px,94vw)] -translate-x-1/2 rounded-lg border border-cyan-500/30 bg-black/80 px-4 py-2 text-center text-sm text-cyan-100 shadow-lg backdrop-blur">
+                  <span className="mr-1 text-[10px] font-bold uppercase tracking-wider text-cyan-400">Coach</span>
+                  {caption}
+                </div>
+              )}
               {phase === 'calibrate' && (
                 <div className="m-auto w-[min(440px,92vw)] rounded-lg bg-black/75 px-5 py-4 text-center backdrop-blur">
                   <div className="text-base font-semibold text-cyan-300">Get into position</div>
                   <div className="mt-1 text-xs text-slate-300">
-                    Stand back so your whole body — and both ankles — are in frame, then hold still.
+                    Stand back so your hips, knees and both ankles are in frame, then hold still.
                   </div>
                   {calibStatus.checks.length > 0 && (
                     <ul className="mt-3 space-y-1 text-left">
@@ -468,7 +489,7 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
                     <div className="mt-0.5 text-lg font-bold">{legLabel}</div>
                     {trackingWarn && (
                       <div className="mt-1 text-[11px] text-amber-300">
-                        Keep your whole body in the frame.
+                        Keep your feet in the frame.
                       </div>
                     )}
                   </div>
@@ -520,9 +541,9 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
               setStepCount(0); setLiveL(null); setLiveR(null)
               setCalibProgress(0); setCalibStatus({ ok: false, checks: [] })
               setTrackingWarn(false); setSummary(null)
+              setCaption('')
               introDoneRef.current = false
               lockSpeechStarted.current = false
-              holdReady.current = false
               countdownStarted.current = false
               neutralStreak.current = 0
               calibStartedAt.current = null
