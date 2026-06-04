@@ -36,10 +36,11 @@ import {
   computeAnatomicalFrame, worldVec, sub, scale, signedAngleInPlane,
 } from './anatomicalFrame'
 
-// Visibility floor for a foot to count this frame.  Lenient (0.35) because the
-// subject is far from the camera at the end of the walk — the heavy model still
-// localises the joints well below the 0.5 floor used for the still ROM tests.
-const FOOT_MIN_VIS = 0.35
+// Visibility floor for a foot to count this frame.  Very lenient because at a
+// wide FOV with the phone on the floor the subject is small/far and the
+// far-side leg is partly occluded — the heavy model still localises the joints
+// usefully well below the 0.5 floor used for the close-up still ROM tests.
+const FOOT_MIN_VIS = 0.25
 
 export interface GaitFrameMetrics {
   /** Left ankle joint angle (deg) or null when the foot isn't trackable. */
@@ -301,6 +302,7 @@ export function buildGaitCsv(samples: GaitSample[], summary: GaitSummary): strin
   const lines: string[] = []
   lines.push('# Dephy Ankle Dynamics — walking assessment')
   lines.push(`# generated,${new Date().toISOString()}`)
+  lines.push('# angles are RELATIVE TO STANDING NEUTRAL (deg): - = dorsiflexion, + = plantarflexion')
   lines.push('#')
   lines.push('# SUMMARY')
   lines.push('# metric,left,right')
@@ -377,7 +379,7 @@ export function renderGaitPlot(
 
   // ── Panel 1: ankle angle ──────────────────────────────────────────────────
   const p1 = { x: 60, y: 100, w: W - 120, h: 280 }
-  drawPanel(ctx, p1, 'Ankle angle (shank ↔ foot)', '°')
+  drawPanel(ctx, p1, 'Ankle angle relative to standing neutral', '° (− dorsiflex / + plantarflex)')
 
   const angVals = samples.flatMap((s) => [s.leftAnkle, s.rightAnkle]).filter((v): v is number => v != null)
   const aLo = angVals.length ? Math.min(...angVals) - 5 : 60

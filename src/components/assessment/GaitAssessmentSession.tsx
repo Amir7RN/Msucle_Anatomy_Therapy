@@ -22,10 +22,14 @@
  *      speakStep): if device audio / speech synthesis is muted or blocked, the
  *      captions still show and the assessment still advances instead of getting
  *      stuck. Audio is a best-effort enhancement on top of the visual flow.
- *   3. Natural-pose detection only needs the LOWER body — hips, knees and
- *      specifically BOTH ankles — in frame, the user centred and standing still.
- *      Until then it gives a specific, single fix ("step back so I can see your
- *      feet", "move to the centre", "hold still").
+ *   3. Geometry: the user props the phone on the floor side-on and walks the
+ *      full frame width between two on-screen guide lines (line-to-line, so a
+ *      whole ~8-step walk fits even at 173 cm). The camera is forced to its
+ *      widest FOV (maxFov). Lock-in only needs the LOWER body — hips, knees and
+ *      both ankles — on the start line, knees straight, standing still.
+ *   4. During the hold we capture a per-foot NEUTRAL baseline and subtract it,
+ *      so live + recorded ankle angles read relative to standing neutral
+ *      (≈0° at rest) instead of the raw ~90–110° shank↔foot joint angle.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -86,6 +90,13 @@ function screenXOf(lms: LandmarkSet): number {
 /** Nearest guide line (screen x) to the walker, and which side it is. */
 function nearestLine(screenX: number): { x: number; side: 'left' | 'right' } {
   return screenX < 0.5 ? { x: SCREEN_L, side: 'left' } : { x: SCREEN_R, side: 'right' }
+}
+
+/** Median of a number array (0 when empty). */
+function median(arr: number[]): number {
+  if (arr.length === 0) return 0
+  const s = [...arr].sort((a, b) => a - b)
+  return s[Math.floor(s.length / 2)]
 }
 
 function verifyGaitPose(lms: LandmarkSet, motion: number): PoseStatus {
@@ -195,7 +206,24 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
   const plotCanvasRef   = useRef<HTMLCanvasElement | null>(null)
   const stepCountRef    = useRef(0)
 
+  // Lateral-walk geometry (all in SCREEN space).
+  const startSideRef    = useRef<'left' | 'right'>('left')
+  const targetScreenX   = useRef(SCREEN_R)   // line the walker is heading to
+  const walkDirRef      = useRef(1)          // +1 = screen left→right, −1 = right→left
+  // Per-foot NEUTRAL baseline captured during the hold; subtracted from every
+  // subsequent angle so the live/recorded angle starts at ~0° (true neutral)
+  // instead of the raw ~90–110° shank↔foot joint angle.
+  const base            = useRef({
+    la: [] as number[], ra: [] as number[], ls: [] as number[], rs: [] as number[],
+    LA: 0, RA: 0, LS: 0, RS: 0, ready: false,
+  })
+  // Sticky last-good raw angles so a 1–2 frame detection dropout (common when
+  // the walker is small/far) doesn't punch holes in the trace.
+  const stickyL         = useRef<{ a: number | null; s: number | null; t: number }>({ a: null, s: null, t: 0 })
+  const stickyR         = useRef<{ a: number | null; s: number | null; t: number }>({ a: null, s: null, t: 0 })
+
   const CALIB_MS = 2500   // hold the locked pose this long before the countdown
+  const STICKY_MS = 400   // reuse last-good angle for up to this long on a dropout
 
   // Reset everything when (re)opened.
   useEffect(() => {
@@ -205,7 +233,7 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
     setStepCount(0); setLiveL(null); setLiveR(null)
     setCalibProgress(0); setCalibStatus({ ok: false, checks: [] })
     setCameraReady(false); setError(null); setTrackingWarn(false); setSummary(null)
-    setCaption('')
+    setCaption(''); setGlowSide('left')
     introDoneRef.current = false
     lockSpeechStarted.current = false
     countdownStarted.current = false
@@ -221,6 +249,12 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
     motionEma.current = 0
     lastSpokenStep.current = 0
     trackingLostAt.current = null
+    startSideRef.current = 'left'
+    targetScreenX.current = SCREEN_R
+    walkDirRef.current = 1
+    base.current = { la: [], ra: [], ls: [], rs: [], LA: 0, RA: 0, LS: 0, RS: 0, ready: false }
+    stickyL.current = { a: null, s: null, t: 0 }
+    stickyR.current = { a: null, s: null, t: 0 }
   }, [open])
 
   /** Speak ONLY if the synth is idle — used for live step counts so we never
@@ -276,8 +310,9 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
   // Countdown then start the walk. Timer-driven (see speakStep) so it always
   // reaches "GO" even with no audio.
   const startCountdownThenWalk = () => {
+    const toSide = startSideRef.current === 'left' ? 'right' : 'left'
     speakStep(
-      'When I say go, walk straight forward, away from the camera, for eight steps.',
+      `When I say go, walk to the line at the ${toSide} end of the frame, at your normal pace.`,
       () => {
         speakStep('Ready. Three. Two. One. Go!', () => {
           goAtRef.current = performance.now()
@@ -285,6 +320,8 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
           stepsThisLeg.current = 0
           legRef.current = 'out'
           setLeg('out')
+          // Glow the destination line now that the walk has started.
+          setGlowSide(targetScreenX.current === SCREEN_L ? 'left' : 'right')
           phaseRef.current = 'walk'
           setPhase('walk')
           sayIfIdle('Off you go.')
@@ -315,8 +352,14 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
       // pose checks can't re-fire the lock-in cue over the "three-two-one-GO".
       if (countdownStarted.current) { setCalibProgress(1); return }
 
+      // Glow whichever line the walker is nearest, so they know which way to go.
+      const sx = screenXOf(lms)
+      setGlowSide(nearestLine(sx).side)
+
       const status = verifyGaitPose(lms, motionEma.current)
       setCalibStatus(status)
+      // Show the neutral-relative live angle while settling (0 once baseline
+      // forms); before baseline we just show the raw read so the user sees life.
       setLiveL(m.leftAnkle != null ? Math.round(m.leftAnkle) : null)
       setLiveR(m.rightAnkle != null ? Math.round(m.rightAnkle) : null)
 
@@ -331,14 +374,40 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
           // wall clock, NOT by the speech callback, so it can never get stuck.
           if (calibStartedAt.current === null) {
             calibStartedAt.current = now
+            base.current.la = []; base.current.ra = []
+            base.current.ls = []; base.current.rs = []
             if (!lockSpeechStarted.current) {
               lockSpeechStarted.current = true
-              speakStep('Great — natural pose detected. Hold still.')
+              speakStep('Great — capturing your neutral. Stand still, knees straight.')
             }
           }
+          // Collect neutral-pose samples throughout the hold.
+          if (m.leftAnkle  != null) base.current.la.push(m.leftAnkle)
+          if (m.rightAnkle != null) base.current.ra.push(m.rightAnkle)
+          if (m.leftShank  != null) base.current.ls.push(m.leftShank)
+          if (m.rightShank != null) base.current.rs.push(m.rightShank)
+
           const elapsed = now - calibStartedAt.current
           setCalibProgress(Math.min(1, elapsed / CALIB_MS))
           if (elapsed >= CALIB_MS) {
+            // Lock the neutral baseline (median is robust to a stray frame).
+            base.current.LA = median(base.current.la)
+            base.current.RA = median(base.current.ra)
+            base.current.LS = median(base.current.ls)
+            base.current.RS = median(base.current.rs)
+            base.current.ready = true
+
+            // Lock the start side / walking direction from where they stand.
+            const startSide = nearestLine(screenXOf(lms)).side
+            startSideRef.current = startSide
+            const startX  = startSide === 'left' ? SCREEN_L : SCREEN_R
+            const finishX = startSide === 'left' ? SCREEN_R : SCREEN_L
+            targetScreenX.current = finishX
+            walkDirRef.current = finishX > startX ? 1 : -1
+            // Keep the START line glowing through the countdown; switch to the
+            // destination line at GO (in startCountdownThenWalk).
+            setGlowSide(startSide)
+
             neutralStreak.current = 0
             countdownStarted.current = true
             setCalibProgress(1)
@@ -360,21 +429,36 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
       if (goAtRef.current === null) return
       const t = (now - goAtRef.current) / 1000
 
-      // Record the frame.
+      // Sticky fallback: reuse the last-good raw angle for a short window so a
+      // brief detection dropout (small/far subject) doesn't blank the trace.
+      let rawLA = m.leftAnkle,  rawLS = m.leftShank
+      let rawRA = m.rightAnkle, rawRS = m.rightShank
+      if (rawLA != null) { stickyL.current = { a: rawLA, s: rawLS, t: now } }
+      else if (now - stickyL.current.t < STICKY_MS) { rawLA = stickyL.current.a; rawLS = stickyL.current.s }
+      if (rawRA != null) { stickyR.current = { a: rawRA, s: rawRS, t: now } }
+      else if (now - stickyR.current.t < STICKY_MS) { rawRA = stickyR.current.a; rawRS = stickyR.current.s }
+
+      // Subtract the neutral baseline → angle relative to standing neutral.
+      const relLA = rawLA != null ? rawLA - base.current.LA : null
+      const relRA = rawRA != null ? rawRA - base.current.RA : null
+      const relLS = rawLS != null ? rawLS - base.current.LS : null
+      const relRS = rawRS != null ? rawRS - base.current.RS : null
+
+      // Record the frame (neutral-relative).
       samples.current.push({
         t,
         leg: legRef.current,
-        leftAnkle:  m.leftAnkle,
-        rightAnkle: m.rightAnkle,
-        leftShank:  m.leftShank,
-        rightShank: m.rightShank,
+        leftAnkle:  relLA,
+        rightAnkle: relRA,
+        leftShank:  relLS,
+        rightShank: relRS,
         speed: null,
       })
-      setLiveL(m.leftAnkle != null ? Math.round(m.leftAnkle) : null)
-      setLiveR(m.rightAnkle != null ? Math.round(m.rightAnkle) : null)
+      setLiveL(relLA != null ? Math.round(relLA) : null)
+      setLiveR(relRA != null ? Math.round(relRA) : null)
 
       // Gentle tracking-lost banner (never aborts the walk).
-      if (m.leftAnkle === null && m.rightAnkle === null) {
+      if (relLA === null && relRA === null) {
         if (trackingLostAt.current === null) trackingLostAt.current = now
         if (now - trackingLostAt.current > 1200) setTrackingWarn(true)
       } else {
@@ -394,17 +478,28 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
         }
       }
 
-      // Leg / test progression.
+      // Lap ends when the walker REACHES the far guide line (primary), with a
+      // step-count cap and timeout as fallbacks.
+      const sx = screenXOf(lms)
+      const reachedLine = walkDirRef.current > 0
+        ? sx >= targetScreenX.current - 0.02
+        : sx <= targetScreenX.current + 0.02
       const timedOut = now - legStartedAt.current > LEG_TIMEOUT_MS
-      if (stepsThisLeg.current >= STEPS_PER_LEG || timedOut) {
+      const capped   = stepsThisLeg.current >= STEPS_MAX_PER_LEG
+      if (reachedLine || timedOut || capped) {
         if (legRef.current === 'out') {
-          // → turn and walk back
+          // → turn and walk back to the start line
           legRef.current = 'back'
           setLeg('back')
           stepsThisLeg.current = 0
           lastSpokenStep.current = 0
           legStartedAt.current = now
-          speakStep('Great. Now turn around and walk back toward the camera. Eight steps.')
+          // Reverse direction and target back to the start line.
+          const startX = startSideRef.current === 'left' ? SCREEN_L : SCREEN_R
+          targetScreenX.current = startX
+          walkDirRef.current = -walkDirRef.current
+          setGlowSide(startSideRef.current)
+          speakStep('Great. Now turn around and walk back to your start line.')
         } else {
           goAtRef.current = null   // stop recording
           finish()
@@ -416,7 +511,7 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
 
   if (!open) return null
 
-  const legLabel = leg === 'out' ? 'Walk AWAY from the camera' : 'Walk BACK toward the camera'
+  const legLabel = `Walk to the ${glowSide === 'left' ? 'LEFT' : 'RIGHT'} line`
 
   return (
     <div className="fixed inset-0 z-[95] flex flex-col bg-black text-white">
@@ -435,6 +530,7 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
             <div className="relative h-full w-full">
               <CameraView
                 active={true}
+                maxFov={true}
                 onLandmarks={handleLandmarks}
                 onReady={() => {
                   setCameraReady(true)
@@ -444,10 +540,13 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
                   speakStep(
                     'Welcome to the ankle dynamics walking test.',
                     () => speakStep(
-                      'Prop your phone up against something stable, around knee height, with the camera facing your walking path. You can use the front or back camera — I only need to see your lower body.',
+                      'Place your phone on the floor, leaning against a wall, so the camera looks across your walking path from the side. I only need to see your lower body — your hips, knees and feet.',
                       () => speakStep(
-                        'Now stand in the middle of the frame, then take a few steps backward, until I can see your hips, your knees and both of your feet, with a little space below your feet.',
-                        () => { introDoneRef.current = true },
+                        'You will see two vertical lines on the screen. Walk all the way to one end and stand side-on, with your feet on the glowing line.',
+                        () => speakStep(
+                          'Stand tall with your knees straight and hold still while I read your neutral.',
+                          () => { introDoneRef.current = true },
+                        ),
                       ),
                     ),
                   )
@@ -468,6 +567,12 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
 
             {/* HUD */}
             <div className="pointer-events-none absolute inset-0 flex flex-col">
+              {/* Start / finish guide lines, so the user knows exactly where to
+                  stand and which way to walk. The glowing line is the active one
+                  (where to stand during calibrate, the target during the walk). */}
+              <GuideLine screenX={SCREEN_L} side="left"  active={glowSide === 'left'}  phase={phase} startSide={startSideRef.current} />
+              <GuideLine screenX={SCREEN_R} side="right" active={glowSide === 'right'} phase={phase} startSide={startSideRef.current} />
+
               {/* Coach caption — mirrors the spoken cue so it's readable even
                   with no audio. */}
               {caption && (
@@ -480,7 +585,8 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
                 <div className="m-auto w-[min(440px,92vw)] rounded-lg bg-black/75 px-5 py-4 text-center backdrop-blur">
                   <div className="text-base font-semibold text-cyan-300">Get into position</div>
                   <div className="mt-1 text-xs text-slate-300">
-                    Stand back so your hips, knees and both ankles are in frame, then hold still.
+                    Phone on the floor against a wall, side-on. Stand on the glowing line at one
+                    end with knees straight, then hold still.
                   </div>
                   {calibStatus.checks.length > 0 && (
                     <ul className="mt-3 space-y-1 text-left">
@@ -519,9 +625,9 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
                   <div className="m-auto flex flex-col items-center">
                     <div className="text-[11px] uppercase tracking-widest text-slate-400">Steps</div>
                     <div className="text-7xl font-bold tabular-nums text-cyan-200">
-                      {Math.min(stepsThisLeg.current, STEPS_PER_LEG)}
-                      <span className="text-3xl text-slate-500"> / {STEPS_PER_LEG}</span>
+                      {stepCount}
                     </div>
+                    <div className="mt-1 text-[11px] text-slate-400">keep going until you reach the glowing line</div>
                     <div className="mt-4 flex gap-6 text-sm">
                       <div className="flex flex-col items-center">
                         <span className="text-[10px] uppercase text-orange-300">Left ankle</span>
@@ -563,7 +669,7 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
               setStepCount(0); setLiveL(null); setLiveR(null)
               setCalibProgress(0); setCalibStatus({ ok: false, checks: [] })
               setTrackingWarn(false); setSummary(null)
-              setCaption('')
+              setCaption(''); setGlowSide('left')
               introDoneRef.current = false
               lockSpeechStarted.current = false
               countdownStarted.current = false
@@ -577,11 +683,56 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
               prevHip.current = null
               motionEma.current = 0
               lastSpokenStep.current = 0
+              startSideRef.current = 'left'
+              targetScreenX.current = SCREEN_R
+              walkDirRef.current = 1
+              base.current = { la: [], ra: [], ls: [], rs: [], LA: 0, RA: 0, LS: 0, RS: 0, ready: false }
+              stickyL.current = { a: null, s: null, t: 0 }
+              stickyR.current = { a: null, s: null, t: 0 }
             }}
             onClose={onClose}
           />
         )}
       </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Guide line — vertical start/finish marker drawn over the camera feed
+// ─────────────────────────────────────────────────────────────────────────────
+
+function GuideLine({
+  screenX, side, active, phase, startSide,
+}: {
+  screenX:   number
+  side:      'left' | 'right'
+  active:    boolean
+  phase:     'calibrate' | 'walk' | 'result'
+  startSide: 'left' | 'right'
+}) {
+  const label =
+    phase === 'walk'
+      ? (active ? 'WALK HERE' : (side === startSide ? 'START' : 'FINISH'))
+      : (active ? 'STAND HERE' : '')
+  return (
+    <div
+      className="pointer-events-none absolute top-0 bottom-0 flex flex-col items-center justify-end pb-10"
+      style={{ left: `${screenX * 100}%`, transform: 'translateX(-50%)' }}
+    >
+      <div
+        className={active ? 'h-full w-[3px] bg-cyan-400' : 'h-full w-[2px] bg-slate-500/40'}
+        style={active ? { boxShadow: '0 0 14px 3px rgba(34,211,238,0.7)' } : undefined}
+      />
+      {label && (
+        <div
+          className={`absolute bottom-3 whitespace-nowrap rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+            active ? 'bg-cyan-400 text-slate-900' : 'bg-slate-700/80 text-slate-200'
+          }`}
+        >
+          {label}
+        </div>
+      )}
     </div>
   )
 }

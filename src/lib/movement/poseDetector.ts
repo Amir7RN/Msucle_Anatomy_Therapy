@@ -58,9 +58,13 @@ export async function ensureDetector(): Promise<PoseLandmarker> {
         baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
         runningMode: 'VIDEO',
         numPoses:    1,
-        minPoseDetectionConfidence: 0.5,
-        minPosePresenceConfidence:  0.5,
-        minTrackingConfidence:      0.5,
+        // Lowered from 0.5 → 0.35 so the detector keeps emitting/tracking a
+        // SMALL, FAR subject (wide-FOV walking test with the phone on the
+        // floor). Per-landmark visibility gating downstream still filters out
+        // genuinely unreliable joints, so close-up ROM tests are unaffected.
+        minPoseDetectionConfidence: 0.35,
+        minPosePresenceConfidence:  0.35,
+        minTrackingConfidence:      0.35,
       })
       console.log('[pose] detector ready (GPU delegate)')
     } catch (gpuErr) {
@@ -70,9 +74,10 @@ export async function ensureDetector(): Promise<PoseLandmarker> {
           baseOptions: { modelAssetPath: MODEL_URL, delegate: 'CPU' },
           runningMode: 'VIDEO',
           numPoses:    1,
-          minPoseDetectionConfidence: 0.5,
-          minPosePresenceConfidence:  0.5,
-          minTrackingConfidence:      0.5,
+          // See note in the GPU branch — lenient so far/small subjects keep tracking.
+          minPoseDetectionConfidence: 0.35,
+          minPosePresenceConfidence:  0.35,
+          minTrackingConfidence:      0.35,
         })
         console.log('[pose] detector ready (CPU delegate)')
       } catch (cpuErr) {
