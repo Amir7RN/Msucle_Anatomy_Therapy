@@ -66,6 +66,9 @@ function bumpVersion(): void {
   }
 }
 export function getROMVersion(): number { return romVersion }
+/** The currently active Supabase user id, or null for a guest session.  Shared
+ *  so other per-user local stores (e.g. gait history) can key the same way. */
+export function getActiveUserId(): string | null { return currentUserId }
 export function subscribeROM(cb: () => void): () => void {
   romSubscribers.add(cb)
   return () => { romSubscribers.delete(cb) }

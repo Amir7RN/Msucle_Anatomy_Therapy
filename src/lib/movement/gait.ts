@@ -15,26 +15,32 @@
  *     step length × cadence
  *
  * Everything here is pure / DOM-light so it is easy to reason about and test:
- *   - measureGaitFrame(lms)      → per-frame angles (both feet)
- *   - StepDetector               → online step counter over the ankle-sep signal
+ *   - measureGaitFrame(lms)      → per-frame angles (both feet) + step signals
+ *   - GaitStepMachine            → per-foot gait finite-state step counter
  *   - summariseGait(samples,…)   → headline metrics
  *   - buildGaitCsv(...)          → CSV string (summary header + per-frame rows)
  *   - renderGaitPlot(canvas,...) → draws the two-panel PNG plot
  *
- * Ankle angle convention
- * ──────────────────────
- * We report the 3-D joint angle KNEE–ANKLE–FOOT_INDEX (rotation-invariant via
- * MediaPipe world landmarks).  Standing neutral ≈ 90–100°.  It DROPS toward
- * dorsiflexion (toes pulled up, swing phase) and RISES toward plantarflexion
- * (push-off).  The headline clinical number is the EXCURSION (max − min), the
- * total sagittal sweep the ankle goes through each stride — normally ~25–35°.
+ * Ankle angle convention  (IMPORTANT — accuracy)
+ * ──────────────────────────────────────────────
+ * The walking test is filmed SIDE-ON (phone on the floor, person in profile),
+ * so the camera's image plane IS the sagittal plane.  That means a plain 2-D
+ * image-space angle is the correct ankle angle — and it avoids MediaPipe's
+ * very noisy depth (z), which previously made the 3-D angle jump around.
+ *
+ * We build two lines, exactly as a clinician would with a goniometer:
+ *     shank line  =  KNEE → ANKLE
+ *     foot  line  =  ANKLE → TOE (foot index)
+ * and take the angle between them in the image plane.  We then subtract the
+ * neutral standing value captured during calibration, so the reported angle is
+ * relative to neutral:  + = DORSIFLEXION (toes up), − = PLANTARFLEXION (toes
+ * down / push-off).  Excursion (max − min) is the total sagittal sweep per
+ * stride — normally ~25–35°.
  */
 
 import type { LandmarkSet } from './landmarks'
-import { LM, jointAngleDeg } from './landmarks'
-import {
-  computeAnatomicalFrame, worldVec, sub, scale, signedAngleInPlane,
-} from './anatomicalFrame'
+import { LM } from './landmarks'
+import { worldVec } from './anatomicalFrame'
 
 // Visibility floor for a foot to count this frame.  Very lenient because at a
 // wide FOV with the phone on the floor the subject is small/far and the
@@ -43,16 +49,22 @@ import {
 const FOOT_MIN_VIS = 0.25
 
 export interface GaitFrameMetrics {
-  /** Left ankle joint angle (deg) or null when the foot isn't trackable. */
+  /** Left ankle angle (deg, image-plane shank↔foot) or null when untrackable. */
   leftAnkle:  number | null
   rightAnkle: number | null
-  /** Shank inclination from vertical (deg, + = ankle ahead of knee). */
+  /** Shank inclination from vertical (deg, image plane). */
   leftShank:  number | null
   rightShank: number | null
-  /** Normalised ankle-to-ankle separation (image space) — drives step detect. */
+  /** Normalised ankle-to-ankle separation (image space) — legacy step signal. */
   ankleSep:   number
   /** World-space horizontal ankle separation (metres) — step-length proxy. */
   stepLenM:   number | null
+  /** Image-x of each ankle + hip centre, and leg length (image) — feed the
+   *  gait step machine. null when that foot isn't trackable. */
+  leftAnkleX:  number | null
+  rightAnkleX: number | null
+  hipX:        number
+  legLen:      number
   leftVis:    number
   rightVis:   number
 }
@@ -91,24 +103,38 @@ export interface AnkleStats {
 //  Per-frame measurement
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Angle (deg, 0..180) between 2-D vectors u and v. */
+function angle2D(ux: number, uy: number, vx: number, vy: number): number {
+  const du = Math.hypot(ux, uy), dv = Math.hypot(vx, vy)
+  if (du < 1e-6 || dv < 1e-6) return 0
+  const cos = Math.max(-1, Math.min(1, (ux * vx + uy * vy) / (du * dv)))
+  return (Math.acos(cos) * 180) / Math.PI
+}
+
+/**
+ * Image-plane ankle angle for one leg = angle between the shank line
+ * (knee→ankle) and the foot line (ankle→toe).  At neutral standing this is
+ * ~70–95°; it INCREASES with dorsiflexion (toe lifts toward shin) and
+ * DECREASES with plantarflexion (toe drops, push-off), independent of which
+ * way the walker faces.  Returns null if any of the three joints is missing.
+ */
+function ankleAngle2D(lms: LandmarkSet, knee: number, ankle: number, toe: number): number | null {
+  const k = lms[knee], a = lms[ankle], t = lms[toe]
+  if (!k || !a || !t) return null
+  // shank = knee→ankle, foot = ankle→toe
+  return angle2D(a.x - k.x, a.y - k.y, t.x - a.x, t.y - a.y)
+}
+
+/** Shank inclination from image-vertical (deg). Sign ignored — magnitude only,
+ *  so it doesn't flip between the out/back laps. */
 function shankInclination(lms: LandmarkSet, knee: number, ankle: number): number | null {
-  const frame = computeAnatomicalFrame(lms, 0.3)
-  const kn = worldVec(lms[knee])
-  const an = worldVec(lms[ankle])
-  if (frame && frame.is3D && kn && an) {
-    // Shank vector knee→ankle (points roughly down). Signed tilt from the
-    // body's "down" axis, in the sagittal plane (normal = lateral xAxis).
-    const shank = sub(an, kn)
-    const down  = scale(frame.yAxis, -1)
-    return signedAngleInPlane(shank, down, frame.xAxis)
-  }
-  // 2-D fallback: tilt of the shank from image-vertical.
   const k = lms[knee], a = lms[ankle]
   if (!k || !a) return null
   const dx = a.x - k.x
-  const dy = a.y - k.y // image y grows down → shank points down (dy>0)
-  if (Math.abs(dy) < 1e-4) return null
-  return (Math.atan2(dx, dy) * 180) / Math.PI
+  const dy = a.y - k.y
+  if (Math.abs(dy) < 1e-4 && Math.abs(dx) < 1e-4) return null
+  // angle of the shank from straight-down (vertical).
+  return Math.abs((Math.atan2(dx, dy) * 180) / Math.PI)
 }
 
 /**
@@ -127,18 +153,13 @@ export function measureGaitFrame(lms: LandmarkSet): GaitFrameMetrics {
     lms[LM.R_FOOT_IDX]?.visibility ?? 0,
   )
 
-  const leftAnkle = lVis >= FOOT_MIN_VIS
-    ? jointAngleDeg(lms[LM.L_KNEE], lms[LM.L_ANKLE], lms[LM.L_FOOT_IDX])
-    : null
-  const rightAnkle = rVis >= FOOT_MIN_VIS
-    ? jointAngleDeg(lms[LM.R_KNEE], lms[LM.R_ANKLE], lms[LM.R_FOOT_IDX])
-    : null
+  const leftAnkle  = lVis >= FOOT_MIN_VIS ? ankleAngle2D(lms, LM.L_KNEE, LM.L_ANKLE, LM.L_FOOT_IDX) : null
+  const rightAnkle = rVis >= FOOT_MIN_VIS ? ankleAngle2D(lms, LM.R_KNEE, LM.R_ANKLE, LM.R_FOOT_IDX) : null
 
   const leftShank  = lVis >= FOOT_MIN_VIS ? shankInclination(lms, LM.L_KNEE, LM.L_ANKLE) : null
   const rightShank = rVis >= FOOT_MIN_VIS ? shankInclination(lms, LM.R_KNEE, LM.R_ANKLE) : null
 
-  // Image-space ankle separation — robust step signal for both lateral and
-  // toward/away walking (feet are together at midstance, apart at toe-off).
+  // Image-space ankle separation — legacy step signal.
   const la = lms[LM.L_ANKLE], ra = lms[LM.R_ANKLE]
   const ankleSep = la && ra ? Math.hypot(la.x - ra.x, la.y - ra.y) : 0
 
@@ -148,73 +169,121 @@ export function measureGaitFrame(lms: LandmarkSet): GaitFrameMetrics {
   const laW = worldVec(la), raW = worldVec(ra)
   if (laW && raW) stepLenM = Math.hypot(laW.x - raW.x, laW.z - raW.z)
 
-  return { leftAnkle, rightAnkle, leftShank, rightShank, ankleSep, stepLenM, leftVis: lVis, rightVis: rVis }
+  // Step-machine inputs (image space).
+  const leftAnkleX  = (la && (la.visibility ?? 0) >= FOOT_MIN_VIS) ? la.x : null
+  const rightAnkleX = (ra && (ra.visibility ?? 0) >= FOOT_MIN_VIS) ? ra.x : null
+  const lh = lms[LM.L_HIP], rh = lms[LM.R_HIP]
+  const hipX = ((lh?.x ?? 0.5) + (rh?.x ?? 0.5)) / 2
+  const hipY = ((lh?.y ?? 0.5) + (rh?.y ?? 0.5)) / 2
+  const ankY = ((la?.y ?? hipY) + (ra?.y ?? hipY)) / 2
+  const legLen = Math.max(0.05, Math.abs(ankY - hipY))
+
+  return {
+    leftAnkle, rightAnkle, leftShank, rightShank, ankleSep, stepLenM,
+    leftAnkleX, rightAnkleX, hipX, legLen, leftVis: lVis, rightVis: rVis,
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Online step detector
+//  Gait step machine — per-foot finite-state step counter
 //
-//  Peak-picks the ankle-separation signal: each local maximum above a dynamic
-//  threshold (running mean + k·deviation), with a refractory window so a single
-//  noisy frame can't double-count.  One peak ≈ one step.
+//  Models real gait: each foot alternates SWING (moving forward) and STANCE
+//  (planted).  We track each foot's FORWARD position relative to the hips,
+//  oriented by the walking direction:
+//
+//      fwd = walkDir · (ankleX − hipX)
+//
+//  During swing fwd rises (the foot moves ahead of the body); at heel-strike it
+//  peaks; during stance it falls (the body advances past the planted foot).  A
+//  STEP is one heel-strike, and heel-strikes must ALTERNATE feet — exactly the
+//  "one leg swings and lands (1), the other toes-off, swings and lands (2)…"
+//  pattern.  A per-foot peak with enough prominence, alternation, and a
+//  refractory window makes the count robust to jitter.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export class StepDetector {
-  private mean = 0
-  private dev  = 0
-  private prev = 0
-  private rising = false
-  private lastStepT = -Infinity
-  private peakStepLens: number[] = []
-  private warm = 0
+interface FootState {
+  prev:    number
+  rising:  boolean
+  lastMin: number
+  init:    boolean
+}
 
-  /** Minimum seconds between steps (≈ 250 ms → max ~4 steps/s). */
-  static readonly REFRACTORY = 0.28
-  /** EMA smoothing for the adaptive baseline. */
-  static readonly ALPHA = 0.05
-  /** Peak must exceed mean by this × the running deviation. */
-  static readonly K = 0.6
+export class GaitStepMachine {
+  private L: FootState = { prev: 0, rising: false, lastMin: 0, init: false }
+  private R: FootState = { prev: 0, rising: false, lastMin: 0, init: false }
+  private lastFoot: 'L' | 'R' | null = null
+  private lastT = -Infinity
+  private steps = 0
+  private stepLens: number[] = []
+
+  /** Minimum seconds between successive heel strikes. */
+  static readonly REFRACTORY = 0.30
+  /** Peak prominence floor as a fraction of leg length (image), scale-invariant. */
+  static readonly PROM_FRACTION = 0.16
+  static readonly PROM_FLOOR = 0.012
+
+  reset(): void {
+    this.L = { prev: 0, rising: false, lastMin: 0, init: false }
+    this.R = { prev: 0, rising: false, lastMin: 0, init: false }
+    this.lastFoot = null
+    this.lastT = -Infinity
+  }
+
+  /** Per-foot peak (heel-strike) detector. Returns the peak value or null. */
+  private foot(s: FootState, f: number, prom: number): number | null {
+    if (!s.init) { s.prev = f; s.lastMin = f; s.init = true; return null }
+    let peak: number | null = null
+    if (f > s.prev) {
+      s.rising = true
+    } else if (f < s.prev && s.rising) {
+      s.rising = false
+      if (s.prev - s.lastMin >= prom) peak = s.prev   // a prominent local max
+      s.lastMin = s.prev                              // start a new descent
+    }
+    if (f < s.lastMin) s.lastMin = f
+    s.prev = f
+    return peak
+  }
 
   /**
-   * Push one frame. Returns true on the frame a new step is confirmed.
-   * @param sep      ankle separation (image space)
-   * @param t        seconds since GO
-   * @param stepLenM world step-length proxy this frame (metres | null)
+   * Push one frame. Returns the new step's foot, or null.
+   * @param lx,rx   ankle image-x (null if that foot isn't tracked → skipped)
+   * @param hipX    hip-centre image-x
+   * @param walkDir +1 if walking screen left→right, −1 otherwise
+   * @param t       seconds since GO
+   * @param legLen  leg length (image) for a scale-invariant prominence floor
+   * @param stepLenM world step-length proxy (metres | null)
    */
-  push(sep: number, t: number, stepLenM: number | null): boolean {
-    // Update adaptive baseline.
-    const d = Math.abs(sep - this.mean)
-    this.mean += StepDetector.ALPHA * (sep - this.mean)
-    this.dev  += StepDetector.ALPHA * (d - this.dev)
-    this.warm += 1
+  push(
+    lx: number | null, rx: number | null, hipX: number, walkDir: number,
+    t: number, legLen: number, stepLenM: number | null,
+  ): 'L' | 'R' | null {
+    const prom = Math.max(GaitStepMachine.PROM_FLOOR, GaitStepMachine.PROM_FRACTION * legLen)
+    const pL = lx != null ? this.foot(this.L, walkDir * (lx - hipX), prom) : null
+    const pR = rx != null ? this.foot(this.R, walkDir * (rx - hipX), prom) : null
 
-    const threshold = this.mean + StepDetector.K * this.dev
-    let detected = false
-
-    // Local-maximum detection: was rising, now falling, above threshold.
-    if (sep > this.prev) {
-      this.rising = true
-    } else if (sep < this.prev && this.rising) {
-      this.rising = false
-      // `this.prev` was the peak value.
-      if (
-        this.warm > 8 &&                         // let the baseline settle
-        this.prev > threshold &&
-        t - this.lastStepT >= StepDetector.REFRACTORY
-      ) {
-        detected = true
-        this.lastStepT = t
-        if (stepLenM != null && stepLenM > 0) this.peakStepLens.push(stepLenM)
-      }
+    // Resolve heel-strike events with alternation + refractory.
+    const candidates: Array<'L' | 'R'> = []
+    if (pL != null) candidates.push('L')
+    if (pR != null) candidates.push('R')
+    for (const foot of candidates) {
+      if (t - this.lastT < GaitStepMachine.REFRACTORY) continue
+      if (this.lastFoot !== null && foot === this.lastFoot) continue  // must alternate
+      this.steps += 1
+      this.lastFoot = foot
+      this.lastT = t
+      if (stepLenM != null && stepLenM > 0) this.stepLens.push(stepLenM)
+      return foot
     }
-    this.prev = sep
-    return detected
+    return null
   }
+
+  count(): number { return this.steps }
 
   /** Median peak step length (metres) across all detected steps, or null. */
   medianStepLength(): number | null {
-    if (this.peakStepLens.length === 0) return null
-    const s = [...this.peakStepLens].sort((a, b) => a - b)
+    if (this.stepLens.length === 0) return null
+    const s = [...this.stepLens].sort((a, b) => a - b)
     return s[Math.floor(s.length / 2)]
   }
 }
@@ -302,7 +371,7 @@ export function buildGaitCsv(samples: GaitSample[], summary: GaitSummary): strin
   const lines: string[] = []
   lines.push('# Dephy Ankle Dynamics — walking assessment')
   lines.push(`# generated,${new Date().toISOString()}`)
-  lines.push('# angles are RELATIVE TO STANDING NEUTRAL (deg): - = dorsiflexion, + = plantarflexion')
+  lines.push('# angles are RELATIVE TO STANDING NEUTRAL (deg): + = dorsiflexion, - = plantarflexion')
   lines.push('#')
   lines.push('# SUMMARY')
   lines.push('# metric,left,right')
@@ -379,28 +448,34 @@ export function renderGaitPlot(
 
   // ── Panel 1: ankle angle ──────────────────────────────────────────────────
   const p1 = { x: 60, y: 100, w: W - 120, h: 280 }
-  drawPanel(ctx, p1, 'Ankle angle relative to standing neutral', '° (− dorsiflex / + plantarflex)')
+  drawPanel(ctx, p1, 'Ankle angle during the walk  (sagittal plane)', 'degrees from standing neutral  ·  + dorsiflexion (toe up) / − plantarflexion (toe down)')
 
   const angVals = samples.flatMap((s) => [s.leftAnkle, s.rightAnkle]).filter((v): v is number => v != null)
-  const aLo = angVals.length ? Math.min(...angVals) - 5 : 60
-  const aHi = angVals.length ? Math.max(...angVals) + 5 : 140
+  const aLo = Math.min(-5, angVals.length ? Math.min(...angVals) - 5 : -25)
+  const aHi = Math.max(5, angVals.length ? Math.max(...angVals) + 5 : 25)
   drawYTicks(ctx, p1, aLo, aHi, 5)
   drawXTicks(ctx, p1, tMin, tMax)
+  drawZeroLine(ctx, p1, aLo, aHi, 'neutral (0°)')
   plotSeries(ctx, p1, samples, (s) => s.leftAnkle,  tMin, tSpan, aLo, aHi, COL.left)
   plotSeries(ctx, p1, samples, (s) => s.rightAnkle, tMin, tSpan, aLo, aHi, COL.right)
-  legend(ctx, p1.x + p1.w - 230, p1.y + 18, [
+  legend(ctx, p1.x + p1.w - 240, p1.y + 18, [
     ['Left ankle',  COL.left],
     ['Right ankle', COL.right],
   ])
 
   // ── Panel 2: angular speed proxy ───────────────────────────────────────────
   const p2 = { x: 60, y: 420, w: W - 120, h: 180 }
-  drawPanel(ctx, p2, 'Ankle angular speed (movement intensity)', '°/s')
+  drawPanel(ctx, p2, 'Ankle motion speed  (how fast the ankle is rotating)', 'degrees per second')
   const spVals = samples.map((s) => s.speed).filter((v): v is number => v != null)
   const sHi = spVals.length ? Math.max(...spVals) * 1.15 + 1 : 100
   drawYTicks(ctx, p2, 0, sHi, 4)
   drawXTicks(ctx, p2, tMin, tMax)
   plotSeries(ctx, p2, samples, (s) => s.speed, tMin, tSpan, 0, sHi, COL.speed)
+
+  // Shared x-axis label.
+  ctx.fillStyle = COL.sub
+  ctx.font = '13px ui-sans-serif, system-ui, sans-serif'
+  ctx.fillText('Time (seconds)', p2.x + p2.w / 2 - 40, p2.y + p2.h + 8)
 
   // ── Metrics strip ──────────────────────────────────────────────────────────
   const y0 = 640
@@ -471,6 +546,21 @@ function drawYTicks(ctx: CanvasRenderingContext2D, r: Rect, lo: number, hi: numb
     ctx.fillStyle = COL.axis
     ctx.fillText(String(Math.round(val)), r.x + 14, y + 4)
   }
+}
+
+/** Emphasised horizontal line at value 0 (neutral) with a label. */
+function drawZeroLine(ctx: CanvasRenderingContext2D, r: Rect, lo: number, hi: number, label: string) {
+  if (0 < lo || 0 > hi) return
+  const top = r.y + 48, bot = r.y + r.h - 30
+  const y = bot - ((0 - lo) / (hi - lo)) * (bot - top)
+  ctx.strokeStyle = COL.sub
+  ctx.lineWidth = 1.5
+  ctx.setLineDash([6, 4])
+  ctx.beginPath(); ctx.moveTo(r.x + 44, y); ctx.lineTo(r.x + r.w - 14, y); ctx.stroke()
+  ctx.setLineDash([])
+  ctx.fillStyle = COL.sub
+  ctx.font = '11px ui-sans-serif, system-ui, sans-serif'
+  ctx.fillText(label, r.x + 48, y - 4)
 }
 
 function drawXTicks(ctx: CanvasRenderingContext2D, r: Rect, tMin: number, tMax: number) {

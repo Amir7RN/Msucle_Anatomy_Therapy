@@ -40,10 +40,14 @@ import { LM, jointAngleDeg } from '../../lib/movement/landmarks'
 import type { LandmarkSet } from '../../lib/movement/landmarks'
 import { disposeDetector } from '../../lib/movement/poseDetector'
 import {
-  measureGaitFrame, StepDetector, summariseGait, fillInstantaneousSpeed,
+  measureGaitFrame, GaitStepMachine, summariseGait, fillInstantaneousSpeed,
   buildGaitCsv, renderGaitPlot, downloadText, downloadCanvasPng,
   type GaitSample, type GaitSummary,
 } from '../../lib/movement/gait'
+import {
+  saveGaitSession, loadGaitHistory, subscribeGait, getGaitVersion,
+  type GaitSessionRecord,
+} from '../../lib/movement/gaitHistory'
 
 interface Props {
   open:    boolean
@@ -197,7 +201,7 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
   const goAtRef         = useRef<number | null>(null)
   const legStartedAt    = useRef<number>(0)
   const stepsThisLeg    = useRef(0)
-  const detector        = useRef(new StepDetector())
+  const detector        = useRef(new GaitStepMachine())
   const samples         = useRef<GaitSample[]>([])
   const prevHip         = useRef<{ x: number; y: number } | null>(null)
   const motionEma       = useRef(0)
@@ -243,7 +247,7 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
     legStartedAt.current = 0
     stepsThisLeg.current = 0
     stepCountRef.current = 0
-    detector.current = new StepDetector()
+    detector.current = new GaitStepMachine()
     samples.current = []
     prevHip.current = null
     motionEma.current = 0
@@ -296,6 +300,8 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
     fillInstantaneousSpeed(samples.current, stepLen)
     const s = summariseGait(samples.current, total, stepLen)
     setSummary(s)
+    // Persist for this user so they can revisit it after signing in.
+    try { saveGaitSession(s, samples.current) } catch { /* storage */ }
     phaseRef.current = 'result'
     setPhase('result')
     const exc = s.left.excursion != null && s.right.excursion != null
@@ -466,8 +472,14 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
         setTrackingWarn(false)
       }
 
-      // Step detection.
-      if (detector.current.push(m.ankleSep, t, m.stepLenM)) {
+      // Step detection — per-foot gait finite-state machine. Convert ankle/hip
+      // x to SCREEN space (the video is mirrored) so they match walkDir.
+      const lxS = m.leftAnkleX  != null ? 1 - m.leftAnkleX  : null
+      const rxS = m.rightAnkleX != null ? 1 - m.rightAnkleX : null
+      const struck = detector.current.push(
+        lxS, rxS, 1 - m.hipX, walkDirRef.current, t, m.legLen, m.stepLenM,
+      )
+      if (struck) {
         stepsThisLeg.current += 1
         setStepCount((c) => c + 1)
         const n = stepsThisLeg.current
@@ -494,10 +506,12 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
           stepsThisLeg.current = 0
           lastSpokenStep.current = 0
           legStartedAt.current = now
-          // Reverse direction and target back to the start line.
+          // Reverse direction and target back to the start line. Reset the
+          // step machine so the 180° turn isn't mistaken for steps.
           const startX = startSideRef.current === 'left' ? SCREEN_L : SCREEN_R
           targetScreenX.current = startX
           walkDirRef.current = -walkDirRef.current
+          detector.current.reset()
           setGlowSide(startSideRef.current)
           speakStep('Great. Now turn around and walk back to your start line.')
         } else {
@@ -540,11 +554,11 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
                   speakStep(
                     'Welcome to the ankle dynamics walking test.',
                     () => speakStep(
-                      'Place your phone on the floor, leaning against a wall, so the camera looks across your walking path from the side. I only need to see your lower body — your hips, knees and feet.',
+                      'Place your phone on the floor, leaning against a wall, so the camera looks across your walking path. Stand side-on, in profile — I measure your ankle from the side view of your shin and foot, so your body should face along the walking line, not at the camera.',
                       () => speakStep(
-                        'You will see two vertical lines on the screen. Walk all the way to one end and stand side-on, with your feet on the glowing line.',
+                        'You will see two vertical lines. Walk all the way to one end and stand on the glowing line, still in profile, with both feet and ankles in view.',
                         () => speakStep(
-                          'Stand tall with your knees straight and hold still while I read your neutral.',
+                          'Stand tall with your knees straight and hold still for a moment while I read your neutral ankle position.',
                           () => { introDoneRef.current = true },
                         ),
                       ),
@@ -678,7 +692,7 @@ export function GaitAssessmentSession({ open, onClose }: Props) {
               goAtRef.current = null
               stepsThisLeg.current = 0
               stepCountRef.current = 0
-              detector.current = new StepDetector()
+              detector.current = new GaitStepMachine()
               samples.current = []
               prevHip.current = null
               motionEma.current = 0
@@ -753,6 +767,15 @@ function GaitResultView({
   const [pngUrl, setPngUrl] = useState<string | null>(null)
   const stamp = useMemo(() => new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-'), [])
 
+  // Past sessions (this user). saveGaitSession already ran in finish(), so the
+  // newest entry is included on mount; subscribe keeps it fresh.
+  const [history, setHistory] = useState<GaitSessionRecord[]>(() => loadGaitHistory())
+  useEffect(() => {
+    const unsub = subscribeGait(() => setHistory(loadGaitHistory()))
+    return unsub
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getGaitVersion()])
+
   // Render the plot once on mount.
   useEffect(() => {
     const canvas = canvasRef.current
@@ -784,9 +807,9 @@ function GaitResultView({
       </div>
 
       <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
-        {stat('Ankle excursion', summary.left.excursion, summary.right.excursion)}
-        {stat('Min angle', summary.left.min, summary.right.min)}
-        {stat('Max angle', summary.left.max, summary.right.max)}
+        {stat('Ankle excursion (total ROM)', summary.left.excursion, summary.right.excursion)}
+        {stat('Peak dorsiflexion (toe up)', summary.left.max, summary.right.max)}
+        {stat('Peak plantarflexion (toe down)', summary.left.min, summary.right.min)}
         {stat('Mean shank tilt', summary.left.meanShank, summary.right.meanShank)}
         <div className="rounded-md border border-slate-800 bg-slate-950/60 p-3">
           <div className="text-[10px] uppercase tracking-wider text-slate-400">Steps · cadence</div>
@@ -809,6 +832,41 @@ function GaitResultView({
       <div className="mt-4 overflow-hidden rounded-lg border border-slate-800">
         <canvas ref={canvasRef} className="block w-full" />
       </div>
+
+      {/* Past sessions — persisted per signed-in user (guest sessions are kept
+          separately on this device). */}
+      {history.length > 0 && (
+        <div className="mt-4">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-cyan-300">
+            Your previous sessions
+          </div>
+          <div className="mt-1 divide-y divide-slate-800 rounded-md border border-slate-800">
+            {history.slice(0, 8).map((h, i) => (
+              <div key={h.id} className="flex items-center gap-3 px-3 py-2 text-xs">
+                <span className="w-32 shrink-0 text-slate-300">
+                  {new Date(h.ts).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  {i === 0 && <span className="ml-1 text-[9px] text-emerald-400">(latest)</span>}
+                </span>
+                <span className="flex-1 text-slate-400 truncate">
+                  excursion <span className="text-orange-300">L {h.summary.left.excursion ?? '—'}°</span>{' '}
+                  <span className="text-cyan-300">R {h.summary.right.excursion ?? '—'}°</span>
+                  {' · '}{h.summary.steps} steps
+                  {h.summary.speedMps != null && <> · {h.summary.speedMps} m/s</>}
+                </span>
+                <button
+                  onClick={() => downloadText(
+                    `ankle-dynamics-${new Date(h.ts).toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`,
+                    buildGaitCsv(h.samples, h.summary),
+                  )}
+                  className="shrink-0 rounded bg-slate-800 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-700"
+                >
+                  CSV
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <p className="mt-3 text-[11px] text-slate-500">
         Sagittal-plane estimate from a single camera, intended as a quick screen — not a clinical goniometer.
