@@ -5,10 +5,10 @@
  * server needed.  Both peers join the same per-room channel and exchange the
  * SDP offer/answer and ICE candidates as broadcast messages.
  *
- * We use the project's existing Supabase client, so a remote assessment call
- * works as soon as VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are set (the same
- * credentials the app already uses for auth).  Broadcast doesn't touch the
- * database, so no tables or RLS policies are required.
+ * Also resolves ICE (STUN/TURN) servers.  Because the site is usually a STATIC
+ * deploy (env vars are baked at build time), TURN credentials can ALSO be set
+ * at RUNTIME from the call UI and saved in localStorage — so you can enable
+ * cross-network calls on the live site without rebuilding/redeploying.
  */
 
 import { supabase } from '../supabase'
@@ -24,7 +24,6 @@ export interface SignalMsg {
 }
 
 export interface Signaling {
-  /** Resolves once the channel is subscribed and safe to send on. */
   ready: Promise<void>
   send: (kind: SignalKind, data?: unknown) => void
   close: () => void
@@ -49,7 +48,7 @@ export function createSignaling(
 
   channel.on('broadcast', { event: 'signal' }, (payload) => {
     const m = payload.payload as SignalMsg
-    if (!m || m.from === self) return   // ignore our own echoes
+    if (!m || m.from === self) return
     onMessage(m)
   })
 
@@ -73,40 +72,79 @@ export function createSignaling(
   return { ready, send, close }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  TURN configuration — runtime (localStorage) overrides build-time env.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const TURN_KEY = 'muscleAtlas.turn.v1'
+
+export interface TurnConfig {
+  /** Metered free tier: your app subdomain, e.g. "myapp.metered.live". */
+  meteredDomain?: string
+  /** Metered free tier API key. */
+  meteredApiKey?: string
+  /** Any REST endpoint returning an iceServers JSON array. */
+  credentialUrl?: string
+  /** Static TURN (own coturn): comma-separated urls. */
+  turnUrl?: string
+  turnUser?: string
+  turnCred?: string
+}
+
+export function loadTurnConfig(): TurnConfig {
+  try {
+    const raw = localStorage.getItem(TURN_KEY)
+    return raw ? (JSON.parse(raw) as TurnConfig) : {}
+  } catch { return {} }
+}
+
+export function saveTurnConfig(cfg: TurnConfig): void {
+  try {
+    const clean: TurnConfig = {}
+    for (const [k, v] of Object.entries(cfg)) {
+      if (typeof v === 'string' && v.trim()) (clean as Record<string, string>)[k] = v.trim()
+    }
+    localStorage.setItem(TURN_KEY, JSON.stringify(clean))
+  } catch { /* quota / unavailable */ }
+}
+
+export function clearTurnConfig(): void {
+  try { localStorage.removeItem(TURN_KEY) } catch { /* */ }
+}
+
+/** Merge runtime (localStorage) + build-time (env), runtime taking precedence. */
+function resolveTurn(): { credentialUrl: string; turnUrl: string; turnUser?: string; turnCred?: string } {
+  const env = import.meta.env as Record<string, string | undefined>
+  const c = loadTurnConfig()
+  const meteredUrl = (domain?: string, key?: string) =>
+    domain && key ? `https://${domain}/api/v1/turn/credentials?apiKey=${key}` : ''
+  const credentialUrl =
+    c.credentialUrl ||
+    meteredUrl(c.meteredDomain, c.meteredApiKey) ||
+    env.VITE_TURN_CREDENTIAL_URL ||
+    meteredUrl(env.VITE_METERED_DOMAIN, env.VITE_METERED_API_KEY) ||
+    ''
+  const turnUrl  = c.turnUrl  || env.VITE_TURN_URL || ''
+  const turnUser = c.turnUser || env.VITE_TURN_USERNAME
+  const turnCred = c.turnCred || env.VITE_TURN_CREDENTIAL
+  return { credentialUrl, turnUrl, turnUser, turnCred }
+}
+
 /**
- * ICE servers.
- *
- * STUN alone only connects peers whose NATs are "easy"; across different
- * networks (or symmetric / carrier-grade NAT) a TURN RELAY is required —
- * otherwise the call fails even though both sides are online.  This is NOT a
- * "same network" limitation, just a missing relay.
- *
- * We resolve TURN credentials in priority order:
- *   1. VITE_TURN_CREDENTIAL_URL — a REST endpoint that returns an iceServers
- *      array (e.g. Metered's free Open Relay:
- *        https://YOURAPP.metered.live/api/v1/turn/credentials?apiKey=KEY).
- *      Or set VITE_METERED_DOMAIN + VITE_METERED_API_KEY and we build it.
- *   2. VITE_TURN_URL (+ USERNAME / CREDENTIAL) — your own coturn / static TURN.
- *   3. A best-effort public relay (may be rate-limited or down) so a zero-config
- *      demo still has a chance of connecting.
- *
- * Always async because option 1 fetches credentials.
+ * Resolve ICE servers.  STUN alone only connects "easy" NATs; across different
+ * networks a TURN RELAY is required.  Priority: REST credential endpoint →
+ * static TURN → best-effort public relay.  Async because the REST option
+ * fetches credentials.
  */
 export async function getIceServers(): Promise<RTCIceServer[]> {
-  const env = import.meta.env as Record<string, string | undefined>
   const base: RTCIceServer[] = [
     { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
   ]
+  const { credentialUrl, turnUrl, turnUser, turnCred } = resolveTurn()
 
-  // 1) Dynamic credentials from a REST endpoint (recommended — Metered free tier).
-  const restUrl =
-    env.VITE_TURN_CREDENTIAL_URL ||
-    (env.VITE_METERED_DOMAIN && env.VITE_METERED_API_KEY
-      ? `https://${env.VITE_METERED_DOMAIN}/api/v1/turn/credentials?apiKey=${env.VITE_METERED_API_KEY}`
-      : '')
-  if (restUrl) {
+  if (credentialUrl) {
     try {
-      const r = await fetch(restUrl)
+      const r = await fetch(credentialUrl)
       if (r.ok) {
         const list = (await r.json()) as RTCIceServer[]
         if (Array.isArray(list) && list.length) return [...base, ...list]
@@ -116,27 +154,25 @@ export async function getIceServers(): Promise<RTCIceServer[]> {
     }
   }
 
-  // 2) Static TURN from env (your own server).
-  if (env.VITE_TURN_URL) {
+  if (turnUrl) {
     base.push({
-      urls: env.VITE_TURN_URL.split(',').map((s) => s.trim()),
-      username: env.VITE_TURN_USERNAME,
-      credential: env.VITE_TURN_CREDENTIAL,
+      urls: turnUrl.split(',').map((s) => s.trim()),
+      username: turnUser,
+      credential: turnCred,
     })
     return base
   }
 
-  // 3) Best-effort public relay (no guarantee — for quick demos only).
+  // Best-effort public relay (often unavailable now — configure your own).
   base.push(
     { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
     { urls: 'turns:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
   )
   return base
 }
 
-/** True when a real TURN relay is configured (so cross-network calls work). */
+/** True when a real TURN relay is configured (runtime or env). */
 export function turnConfigured(): boolean {
-  const env = import.meta.env as Record<string, string | undefined>
-  return !!(env.VITE_TURN_CREDENTIAL_URL || (env.VITE_METERED_DOMAIN && env.VITE_METERED_API_KEY) || env.VITE_TURN_URL)
+  const { credentialUrl, turnUrl } = resolveTurn()
+  return !!(credentialUrl || turnUrl)
 }

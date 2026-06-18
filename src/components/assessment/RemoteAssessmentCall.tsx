@@ -33,7 +33,7 @@ import {
   GaitStepMachine, downloadText, type GaitSample, type GaitSummary,
 } from '../../lib/movement/gait'
 import { saveGaitSession } from '../../lib/movement/gaitHistory'
-import { createSignaling, getIceServers, turnConfigured, randomId, type Signaling, type SignalMsg } from '../../lib/call/signaling'
+import { createSignaling, getIceServers, turnConfigured, loadTurnConfig, saveTurnConfig, randomId, type Signaling, type SignalMsg } from '../../lib/call/signaling'
 import { buildAssessmentPdf, chartDataUrl, downloadDataUrl, type StaticCapture } from '../../lib/call/report'
 
 // Edge guide lines (fraction of frame width) shown over the host's view so the
@@ -133,6 +133,11 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [recSecs, setRecSecs] = useState(0)
   const [attempt, setAttempt] = useState(0)   // bump to re-run the connection
+  // Runtime TURN setup (host) — paste free Metered creds without rebuilding.
+  const [showTurn, setShowTurn] = useState(false)
+  const [turnDomain, setTurnDomain] = useState(() => loadTurnConfig().meteredDomain ?? '')
+  const [turnKey, setTurnKey] = useState(() => loadTurnConfig().meteredApiKey ?? '')
+  const [turnReady, setTurnReady] = useState(() => turnConfigured())
 
   const selfId = useMemo(() => randomId(8), [])
   const link = useMemo(() => buildCallLink(roomId), [roomId])
@@ -459,6 +464,13 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
     if (!summary || lastSamples.current.length < 2) return
     downloadDataUrl(`ankle-chart-${Date.now()}.png`, chartDataUrl(lastSamples.current, summary))
   }
+  function saveTurn() {
+    saveTurnConfig({ meteredDomain: turnDomain, meteredApiKey: turnKey })
+    setTurnReady(turnConfigured())
+    setShowTurn(false)
+    setError(null)
+    setAttempt((a) => a + 1)   // reconnect using the new relay
+  }
 
   const toggleMic = useCallback(() => {
     const s = localStream.current
@@ -636,6 +648,35 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
                   <Download size={13} /> Download recorded video
                 </a>
               )}
+
+              {/* Cross-network relay (TURN) — runtime setup, no rebuild needed */}
+              <div className={`rounded-lg border p-2.5 ${turnReady ? 'border-slate-800 bg-slate-900/60' : 'border-amber-500/40 bg-amber-500/5'}`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Cross-network relay (TURN)</span>
+                  <span className={`text-[10px] font-semibold ${turnReady ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {turnReady ? 'Ready' : 'Not set'}
+                  </span>
+                </div>
+                {!showTurn ? (
+                  <button onClick={() => setShowTurn(true)} className="mt-1.5 w-full rounded-md bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-100 hover:bg-slate-700">
+                    {turnReady ? 'Edit TURN credentials' : 'Set up free TURN (different networks)'}
+                  </button>
+                ) : (
+                  <div className="mt-2 space-y-1.5">
+                    <p className="text-[10px] leading-relaxed text-slate-400">
+                      Free at dashboard.metered.ca — copy your app subdomain + API key. Only you (host) need this; saved in this browser.
+                    </p>
+                    <input value={turnDomain} onChange={(e) => setTurnDomain(e.target.value)} placeholder="yourapp.metered.live"
+                      className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-100 outline-none focus:border-cyan-500" />
+                    <input value={turnKey} onChange={(e) => setTurnKey(e.target.value)} placeholder="API key"
+                      className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-100 outline-none focus:border-cyan-500" />
+                    <div className="flex gap-2">
+                      <button onClick={saveTurn} className="flex-1 rounded-md bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-400">Save &amp; reconnect</button>
+                      <button onClick={() => setShowTurn(false)} className="rounded-md bg-slate-800 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700">Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Report exports */}
               <div className="mt-auto space-y-2 border-t border-slate-800 pt-2">
