@@ -21,9 +21,11 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { X, Play, ChevronRight, Sparkles, RotateCcw, Activity, CheckCircle2, Footprints } from 'lucide-react'
+import { X, Play, ChevronRight, Sparkles, RotateCcw, Activity, CheckCircle2, Footprints, Video } from 'lucide-react'
 import { AssessmentSession } from './AssessmentView'
 import { GaitAssessmentSession } from './GaitAssessmentSession'
+import { RemoteAssessmentCall } from './RemoteAssessmentCall'
+import { randomId } from '../../lib/call/signaling'
 import {
   SEGMENTS, buildBattery, estimateBatteryMinutes,
   type SegmentId, type BatteryItem,
@@ -39,7 +41,7 @@ interface Props {
   onClose: () => void
 }
 
-type Phase = 'choose' | 'running' | 'summary' | 'gait'
+type Phase = 'choose' | 'running' | 'summary' | 'gait' | 'call'
 
 export function FullBodyAssessmentView({ open, onClose }: Props) {
   const [phase, setPhase]       = useState<Phase>('choose')
@@ -47,6 +49,7 @@ export function FullBodyAssessmentView({ open, onClose }: Props) {
   const [items, setItems]       = useState<BatteryItem[]>([])
   const [cursor, setCursor]     = useState(0)
   const [progOpen, setProgOpen] = useState(false)
+  const [callRoom, setCallRoom] = useState('')
 
   // Hide the 3D canvas chrome while this modal is open.
   useEffect(() => {
@@ -102,12 +105,22 @@ export function FullBodyAssessmentView({ open, onClose }: Props) {
           onClose={onClose}
           onStart={startBattery}
           onStartGait={() => setPhase('gait')}
+          onStartCall={() => { setCallRoom(randomId(6)); setPhase('call') }}
         />
       )}
 
       {phase === 'gait' && (
         <GaitAssessmentSession
           open={true}
+          onClose={() => setPhase('choose')}
+        />
+      )}
+
+      {phase === 'call' && callRoom && (
+        <RemoteAssessmentCall
+          open={true}
+          role="host"
+          roomId={callRoom}
           onClose={() => setPhase('choose')}
         />
       )}
@@ -140,13 +153,14 @@ export function FullBodyAssessmentView({ open, onClose }: Props) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ChoosePhase({
-  selected, onToggle, onClose, onStart, onStartGait,
+  selected, onToggle, onClose, onStart, onStartGait, onStartCall,
 }: {
   selected: Set<SegmentId>
   onToggle: (id: SegmentId) => void
   onClose:  () => void
   onStart:  () => void
   onStartGait: () => void
+  onStartCall: () => void
 }) {
   const allIds = SEGMENTS.map((s) => s.id)
   const allSelected = allIds.every((i) => selected.has(i))
@@ -244,6 +258,27 @@ function ChoosePhase({
             </span>
           </span>
           <ChevronRight size={16} className="flex-shrink-0 text-cyan-400/70 group-hover:text-cyan-300" />
+        </button>
+
+        {/* Practitioner-guided live call — you monitor a remote person's pose
+            from your screen and guide them by voice. They just open a link. */}
+        <button
+          onClick={onStartCall}
+          className="group flex w-full items-center gap-3 rounded-lg border border-violet-500/40 bg-violet-500/5 p-3 text-left transition-colors hover:border-violet-400 hover:bg-violet-500/10"
+        >
+          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-violet-500/15 text-violet-300">
+            <Video size={18} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-violet-100">Remote Assessment (Live Call)</span>
+              <span className="rounded bg-violet-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-violet-300">New</span>
+            </span>
+            <span className="mt-0.5 block text-[10px] text-slate-400">
+              Share a link · watch their live pose &amp; ankle angles · guide them by voice · record the walk
+            </span>
+          </span>
+          <ChevronRight size={16} className="flex-shrink-0 text-violet-400/70 group-hover:text-violet-300" />
         </button>
       </div>
 

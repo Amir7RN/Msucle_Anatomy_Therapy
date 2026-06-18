@@ -9,6 +9,7 @@ import type { CameraPresetKey } from './lib/cameraUtils'
 import { Activity, MessageCircle, Box, Info, X, Sparkles, Scan } from 'lucide-react'
 import { LandingPage } from './components/landing/LandingPage'
 import { FullBodyAssessmentView } from './components/assessment/FullBodyAssessmentView'
+import { RemoteAssessmentCall } from './components/assessment/RemoteAssessmentCall'
 import { PersonalProgramView } from './components/insights/PersonalProgramView'
 import { SymmetryReport } from './components/insights/SymmetryReport'
 import { FeatureLauncher } from './components/layout/FeatureLauncher'
@@ -129,6 +130,11 @@ function AtlasApp() {
   const [mobileProgramOpen, setMobileProgramOpen] = useState(false)
   const [mobileSymOpen,     setMobileSymOpen]     = useState(false)
 
+  // If the URL carries a ?call=<roomId>, this device is the CLIENT joining a
+  // practitioner's remote assessment — open the call straight away.
+  const [joinRoom] = useState(() => new URLSearchParams(window.location.search).get('call'))
+  const [clientCallOpen, setClientCallOpen] = useState(() => !!joinRoom)
+
   // Stop TTS when the chat panel is closed on mobile
   useEffect(() => {
     if (mobilePanel !== 'chat') {
@@ -241,6 +247,16 @@ function AtlasApp() {
       <FullBodyAssessmentView open={mobileBatteryOpen} onClose={() => setMobileBatteryOpen(false)} />
       <PersonalProgramView open={mobileProgramOpen} onClose={() => setMobileProgramOpen(false)} />
       <SymmetryReport open={mobileSymOpen} onClose={() => setMobileSymOpen(false)} />
+
+      {/* Client side of a practitioner-guided remote assessment (joined via link) */}
+      {joinRoom && (
+        <RemoteAssessmentCall
+          open={clientCallOpen}
+          role="client"
+          roomId={joinRoom}
+          onClose={() => setClientCallOpen(false)}
+        />
+      )}
 
       {/* Phone-camera Movement Assessment */}
       <MovementScreenMount />
