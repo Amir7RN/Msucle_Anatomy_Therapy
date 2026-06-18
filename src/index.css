@@ -129,4 +129,76 @@
     50%      { opacity: 1;    }
   }
   .mm-pulse-soft { animation: mm-pulse-soft 1.6s ease-in-out infinite; }
+
+  /* ── Bright landing theme helpers ───────────────────────────────────────── */
+
+  /* Slow, organic drift for the soft gradient "blobs" behind the hero. */
+  @keyframes zh-blob-a {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33%      { transform: translate(40px, -30px) scale(1.08); }
+    66%      { transform: translate(-30px, 25px) scale(0.96); }
+  }
+  @keyframes zh-blob-b {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33%      { transform: translate(-35px, 30px) scale(1.05); }
+    66%      { transform: translate(30px, -20px) scale(0.94); }
+  }
+  .zh-blob-a { animation: zh-blob-a 22s ease-in-out infinite; }
+  .zh-blob-b { animation: zh-blob-b 26s ease-in-out infinite; }
+
+  /* Animated gradient sweep used on the highlighted headline word + CTAs. */
+  @keyframes zh-gradient-pan {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+  .zh-gradient-text {
+    background-size: 220% auto;
+    animation: zh-gradient-pan 6s ease-in-out infinite;
+  }
+
+  /* Continuous marquee for the audience / trust strip. */
+  @keyframes zh-marquee {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+  .zh-marquee-track {
+    display: flex;
+    width: max-content;
+    animation: zh-marquee 28s linear infinite;
+  }
+  .zh-marquee-track:hover { animation-play-state: paused; }
+
+  /* Gentle float for hero accent chips / product frame. */
+  @keyframes zh-float {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-10px); }
+  }
+  .zh-float      { animation: zh-float 6s ease-in-out infinite; }
+  .zh-float-slow { animation: zh-float 9s ease-in-out infinite; }
+
+  /* Soft conic shimmer ring used on badges / icon tiles. */
+  @keyframes zh-spin-slow {
+    to { transform: rotate(360deg); }
+  }
+  .zh-spin-slow { animation: zh-spin-slow 14s linear infinite; }
+
+  /* Scroll-reveal: start hidden, .is-visible toggled by IntersectionObserver. */
+  .zh-reveal {
+    opacity: 0;
+    transform: translateY(28px);
+    transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: opacity, transform;
+  }
+  .zh-reveal.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .zh-blob-a, .zh-blob-b, .zh-gradient-text, .zh-marquee-track,
+    .zh-float, .zh-float-slow, .zh-spin-slow { animation: none; }
+    .zh-reveal { opacity: 1; transform: none; transition: none; }
+  }
 }
