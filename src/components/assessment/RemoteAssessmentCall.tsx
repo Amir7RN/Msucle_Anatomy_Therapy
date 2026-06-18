@@ -23,7 +23,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   X, Copy, Check, Mic, MicOff, Video, SwitchCamera, Circle, Square,
-  Download, Wifi, WifiOff, Footprints,
+  Download, Wifi, WifiOff, Footprints, Camera, FileText, Image as ImageIcon,
 } from 'lucide-react'
 import { ensureDetector, detectVideoFrame, disposeDetector } from '../../lib/movement/poseDetector'
 import { LM } from '../../lib/movement/landmarks'
@@ -34,6 +34,12 @@ import {
 } from '../../lib/movement/gait'
 import { saveGaitSession } from '../../lib/movement/gaitHistory'
 import { createSignaling, iceServers, randomId, type Signaling, type SignalMsg } from '../../lib/call/signaling'
+import { buildAssessmentPdf, chartDataUrl, downloadDataUrl, type StaticCapture } from '../../lib/call/report'
+
+// Edge guide lines (fraction of frame width) shown over the host's view so the
+// practitioner can see where the client should stand to start/finish.
+const LINE_L = 0.18
+const LINE_R = 0.82
 
 type Role = 'host' | 'client'
 type ConnState = 'idle' | 'waiting' | 'connecting' | 'connected' | 'failed' | 'closed'
@@ -85,6 +91,25 @@ function drawSkeleton(ctx: CanvasRenderingContext2D, lms: LandmarkSet, w: number
   }
 }
 
+/** Vertical start/finish guide lines + labels on the host overlay. */
+function drawGuideLines(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  for (const fx of [LINE_L, LINE_R]) {
+    const x = fx * w
+    ctx.strokeStyle = 'rgba(34,211,238,0.85)'
+    ctx.lineWidth = Math.max(2, w * 0.004)
+    ctx.setLineDash([w * 0.02, w * 0.015])
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke()
+    ctx.setLineDash([])
+    // label tag near the bottom
+    ctx.fillStyle = 'rgba(34,211,238,0.9)'
+    const fontPx = Math.max(14, w * 0.018)
+    ctx.font = `bold ${fontPx}px ui-sans-serif, system-ui, sans-serif`
+    ctx.textAlign = 'center'
+    ctx.fillText('START', x, h - fontPx)
+    ctx.textAlign = 'left'
+  }
+}
+
 const median = (a: number[]) => {
   if (!a.length) return 0
   const s = [...a].sort((x, y) => x - y)
@@ -103,6 +128,10 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
   const [liveR, setLiveR] = useState<number | null>(null)
   const [recording, setRecording] = useState(false)
   const [summary, setSummary] = useState<GaitSummary | null>(null)
+  const [staticCaps, setStaticCaps] = useState<StaticCapture[]>([])
+  const [stepCount, setStepCount] = useState(0)
+  const [videoUrl, setVideoUrl] = useState<string | null>(null)
+  const [recSecs, setRecSecs] = useState(0)
 
   const selfId = useMemo(() => randomId(8), [])
   const link = useMemo(() => buildCallLink(roomId), [roomId])
@@ -129,6 +158,11 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
   const hipVelEma     = useRef(0)
   const walkDir       = useRef(1)
   const lastSamples   = useRef<GaitSample[]>([])
+  const lastMetrics   = useRef<ReturnType<typeof measureGaitFrame> | null>(null)
+  const remoteStream  = useRef<MediaStream | null>(null)
+  const mediaRec      = useRef<MediaRecorder | null>(null)
+  const recChunks     = useRef<Blob[]>([])
+  const recTimer      = useRef<number | null>(null)
 
   useEffect(() => { recRef.current = recording }, [recording])
 
@@ -204,6 +238,7 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
         if (role === 'host' && remoteVideoRef.current) {
           // Host watches the client's video (audio of the video element plays
           // the client's mic).
+          remoteStream.current = stream
           remoteVideoRef.current.srcObject = stream
           remoteVideoRef.current.play().catch(() => { /* */ })
         } else if (role === 'client' && remoteAudioRef.current) {
@@ -261,6 +296,9 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
       cancelled = true
       try { sigRef.current?.send('bye') } catch { /* */ }
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      if (recTimer.current) { clearInterval(recTimer.current); recTimer.current = null }
+      try { mediaRec.current?.stop() } catch { /* */ }
+      mediaRec.current = null
       sigRef.current?.close()
       pcRef.current?.getSenders().forEach((s) => { try { s.track?.stop() } catch {} })
       try { pcRef.current?.close() } catch { /* */ }
@@ -293,9 +331,11 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
             const lms = detectVideoFrame(detector!, v, performance.now())
             const ctx = c.getContext('2d')!
             ctx.clearRect(0, 0, c.width, c.height)
+            drawGuideLines(ctx, c.width, c.height)
             if (lms) {
               drawSkeleton(ctx, lms, c.width, c.height)
               const m = measureGaitFrame(lms)
+              lastMetrics.current = m
               setLiveL(m.leftAnkle != null ? Math.round(m.leftAnkle) : null)
               setLiveR(m.rightAnkle != null ? Math.round(m.rightAnkle) : null)
               if (recRef.current) recordFrame(lms, m)
@@ -320,7 +360,24 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
     if (prevHipX.current != null) hipVelEma.current = 0.3 * (hx - prevHipX.current) + 0.7 * hipVelEma.current
     prevHipX.current = hx
     if (Math.abs(hipVelEma.current) > 0.0015) walkDir.current = hipVelEma.current > 0 ? 1 : -1
-    stepMachine.current.push(m.leftAnkleX, m.rightAnkleX, m.hipX, walkDir.current, t, m.legLen, m.stepLenM)
+    const struck = stepMachine.current.push(m.leftAnkleX, m.rightAnkleX, m.hipX, walkDir.current, t, m.legLen, m.stepLenM)
+    if (struck) setStepCount(stepMachine.current.count())
+  }
+
+  /** Static posture capture — snapshot the current both-ankle angles. */
+  function capturePosture() {
+    const m = lastMetrics.current
+    if (!m) return
+    setStaticCaps((prev) => [
+      { ts: Date.now(), leftAnkle: m.leftAnkle, rightAnkle: m.rightAnkle, leftShank: m.leftShank, rightShank: m.rightShank },
+      ...prev,
+    ].slice(0, 12))
+  }
+
+  function pickMime(): string {
+    const opts = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4']
+    for (const o of opts) { if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(o)) return o }
+    return ''
   }
 
   function startRecording() {
@@ -328,12 +385,33 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
     stepMachine.current = new GaitStepMachine()
     prevHipX.current = null; hipVelEma.current = 0; walkDir.current = 1
     recStart.current = performance.now()
-    setSummary(null)
+    setSummary(null); setStepCount(0); setRecSecs(0)
+    if (videoUrl) { URL.revokeObjectURL(videoUrl); setVideoUrl(null) }
+    // Record the client's video stream to a downloadable clip.
+    const stream = remoteStream.current
+    if (stream && typeof MediaRecorder !== 'undefined') {
+      try {
+        recChunks.current = []
+        const mime = pickMime()
+        const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+        mr.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.current.push(e.data) }
+        mr.onstop = () => {
+          const blob = new Blob(recChunks.current, { type: recChunks.current[0]?.type || 'video/webm' })
+          setVideoUrl(URL.createObjectURL(blob))
+        }
+        mr.start(250)
+        mediaRec.current = mr
+      } catch (e) { console.warn('[call] MediaRecorder', e) }
+    }
+    recTimer.current = window.setInterval(() => setRecSecs((s) => s + 1), 1000)
     setRecording(true)
   }
 
   function stopRecording() {
     setRecording(false)
+    if (recTimer.current) { clearInterval(recTimer.current); recTimer.current = null }
+    try { mediaRec.current?.stop() } catch { /* */ }
+    mediaRec.current = null
     const raw = rawSamples.current
     if (raw.length < 5) { setSummary(null); return }
     // Neutral baseline = median of the first ~1.2 s per foot, so angles are
@@ -357,6 +435,20 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
     lastSamples.current = samples
     setSummary(sum)
     try { saveGaitSession(sum, samples) } catch { /* */ }
+  }
+
+  // ── Report exports ──────────────────────────────────────────────────────────
+  function exportPdf() {
+    buildAssessmentPdf({
+      date: new Date(),
+      statics: staticCaps,
+      summary,
+      samples: lastSamples.current,
+    })
+  }
+  function exportPng() {
+    if (!summary || lastSamples.current.length < 2) return
+    downloadDataUrl(`ankle-chart-${Date.now()}.png`, chartDataUrl(lastSamples.current, summary))
   }
 
   const toggleMic = useCallback(() => {
@@ -411,102 +503,152 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
       </header>
 
       <div className="relative flex flex-1 overflow-hidden">
-        {/* ── HOST view ─────────────────────────────────────────────────────── */}
+        {/* ── HOST view: video (left) + evaluator dashboard (right) ──────────── */}
         {role === 'host' && (
-          <div className="relative h-full w-full">
-            <video ref={remoteVideoRef} className="h-full w-full object-contain bg-black" playsInline />
-            <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full object-contain" />
+          <>
+            <div className="relative h-full flex-1 min-w-0">
+              <video ref={remoteVideoRef} className="h-full w-full object-contain bg-black" playsInline />
+              <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full object-contain" />
 
-            {!hasRemote && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6 text-center">
-                <div className="text-lg font-semibold text-cyan-200">Waiting for your client to join…</div>
-                <div className="text-xs text-slate-400 max-w-md">
-                  Send them this link. They open it in any browser, allow their camera, and put the
-                  phone on the floor in profile. You'll see their pose here and can guide them by voice.
+              {!hasRemote && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6 text-center">
+                  <div className="text-lg font-semibold text-cyan-200">Waiting for your client to join…</div>
+                  <div className="text-xs text-slate-400 max-w-md">
+                    Send them this link. They open it in any browser, allow their camera, and put the
+                    phone on the floor in profile. You'll see their pose here and can guide them by voice.
+                  </div>
+                  <div className="flex w-full max-w-lg items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 p-2">
+                    <input readOnly value={link} className="min-w-0 flex-1 bg-transparent px-2 text-xs text-slate-200 outline-none" />
+                    <button
+                      onClick={() => { navigator.clipboard?.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
+                      className="flex items-center gap-1 rounded-md bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-400"
+                    >
+                      {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? 'Copied' : 'Copy link'}
+                    </button>
+                  </div>
                 </div>
-                <div className="flex w-full max-w-lg items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 p-2">
-                  <input readOnly value={link} className="min-w-0 flex-1 bg-transparent px-2 text-xs text-slate-200 outline-none" />
-                  <button
-                    onClick={() => { navigator.clipboard?.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
-                    className="flex items-center gap-1 rounded-md bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-400"
-                  >
-                    {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? 'Copied' : 'Copy link'}
-                  </button>
+              )}
+
+              {recording && (
+                <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full bg-red-600/90 px-3 py-1 text-xs font-semibold">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-white" /> REC {recSecs}s
                 </div>
+              )}
+            </div>
+
+            {/* Evaluator dashboard */}
+            <aside className="flex w-80 flex-shrink-0 flex-col gap-3 overflow-y-auto border-l border-slate-800 bg-slate-950 p-3">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-300">Evaluator dashboard</div>
+
+              {/* Live metrics */}
+              <div className="grid grid-cols-3 gap-2">
+                <Metric label="L ankle" value={liveL == null ? '—' : `${liveL}°`} tone="orange" />
+                <Metric label="R ankle" value={liveR == null ? '—' : `${liveR}°`} tone="cyan" />
+                <Metric label="Steps" value={String(stepCount)} tone="slate" />
               </div>
-            )}
+              <div className="text-[10px] text-slate-500">Live ankle = raw shank↔foot angle (side view).</div>
 
-            {/* Live readout + controls */}
-            {hasRemote && (
-              <>
-                <div className="absolute left-3 top-3 rounded-lg bg-black/70 px-4 py-3 backdrop-blur">
-                  <div className="text-[10px] uppercase tracking-wider text-cyan-400">Live ankle angle</div>
-                  <div className="mt-1 flex gap-5">
-                    <div className="flex flex-col">
-                      <span className="text-[10px] uppercase text-orange-300">Left</span>
-                      <span className="text-2xl font-bold tabular-nums text-orange-200">{liveL == null ? '—' : `${liveL}°`}</span>
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-[10px] uppercase text-cyan-300">Right</span>
-                      <span className="text-2xl font-bold tabular-nums text-cyan-200">{liveR == null ? '—' : `${liveR}°`}</span>
-                    </div>
-                  </div>
-                  <div className="mt-1 text-[10px] text-slate-500">raw shank↔foot angle (image plane)</div>
-                </div>
-
-                <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2">
+              {/* Tools */}
+              <div className="space-y-2 rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Tools</div>
+                <button
+                  onClick={capturePosture}
+                  disabled={!hasRemote}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-md bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-700 disabled:opacity-40"
+                >
+                  <Camera size={13} /> Capture static posture
+                </button>
+                {!recording ? (
                   <button
-                    onClick={toggleMic}
-                    className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold ${micOn ? 'bg-slate-800 text-slate-100' : 'bg-red-600 text-white'}`}
+                    onClick={startRecording}
+                    disabled={!hasRemote}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-md bg-cyan-500 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-400 disabled:opacity-40"
                   >
-                    {micOn ? <Mic size={14} /> : <MicOff size={14} />} {micOn ? 'Mic on' : 'Muted'}
+                    <Circle size={13} /> Start recording walk
                   </button>
-                  {!recording ? (
-                    <button onClick={startRecording} className="flex items-center gap-1.5 rounded-full bg-cyan-500 px-4 py-2 text-xs font-semibold text-white hover:bg-cyan-400">
-                      <Circle size={14} /> Record walk
-                    </button>
-                  ) : (
-                    <button onClick={stopRecording} className="flex items-center gap-1.5 rounded-full bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-500">
-                      <Square size={14} /> Stop & analyse
-                    </button>
-                  )}
-                </div>
-
-                {recording && (
-                  <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full bg-red-600/90 px-3 py-1 text-xs font-semibold">
-                    <span className="h-2 w-2 animate-pulse rounded-full bg-white" /> REC
-                  </div>
-                )}
-              </>
-            )}
-
-            {summary && !recording && (
-              <div className="absolute bottom-20 left-1/2 w-[min(560px,92vw)] -translate-x-1/2 rounded-xl border border-slate-700 bg-slate-900/95 p-4 shadow-2xl">
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <Footprints size={15} className="text-cyan-400" /> Walk captured
-                </div>
-                <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
-                  <Stat label="Excursion" l={summary.left.excursion} r={summary.right.excursion} />
-                  <Stat label="Peak dorsiflex" l={summary.left.max} r={summary.right.max} />
-                  <Stat label="Peak plantarflex" l={summary.left.min} r={summary.right.min} />
-                </div>
-                <div className="mt-2 text-[11px] text-slate-400">
-                  {summary.steps} steps · {summary.cadenceSpm}/min{summary.speedMps != null ? ` · ${summary.speedMps} m/s (est.)` : ''}
-                </div>
-                <div className="mt-3 flex justify-end gap-2">
+                ) : (
                   <button
-                    onClick={() => {
-                      if (lastSamples.current.length) downloadText(`remote-ankle-${Date.now()}.csv`, buildGaitCsv(lastSamples.current, summary))
-                    }}
-                    className="flex items-center gap-1.5 rounded-md bg-slate-800 px-3 py-1.5 text-xs text-slate-100 hover:bg-slate-700"
+                    onClick={stopRecording}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-md bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-500"
+                  >
+                    <Square size={13} /> Stop &amp; analyse
+                  </button>
+                )}
+                <button
+                  onClick={toggleMic}
+                  className={`flex w-full items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold ${micOn ? 'bg-slate-800 text-slate-100 hover:bg-slate-700' : 'bg-red-600 text-white'}`}
+                >
+                  {micOn ? <Mic size={13} /> : <MicOff size={13} />} {micOn ? 'Mic on' : 'Muted'}
+                </button>
+              </div>
+
+              {/* Static captures */}
+              {staticCaps.length > 0 && (
+                <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Static captures</div>
+                  <div className="mt-1 space-y-1">
+                    {staticCaps.map((s) => (
+                      <div key={s.ts} className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-500">{new Date(s.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                        <span className="tabular-nums">
+                          <span className="text-orange-300">L {s.leftAnkle == null ? '—' : `${Math.round(s.leftAnkle)}°`}</span>{'  '}
+                          <span className="text-cyan-300">R {s.rightAnkle == null ? '—' : `${Math.round(s.rightAnkle)}°`}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Dynamic result */}
+              {summary && (
+                <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
+                  <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-cyan-300">
+                    <Footprints size={12} /> Walk result
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 gap-1.5">
+                    <Stat label="Ankle excursion" l={summary.left.excursion} r={summary.right.excursion} />
+                    <Stat label="Peak dorsiflex" l={summary.left.max} r={summary.right.max} />
+                    <Stat label="Peak plantarflex" l={summary.left.min} r={summary.right.min} />
+                  </div>
+                  <div className="mt-1.5 text-[11px] text-slate-400">
+                    {summary.steps} steps · {summary.cadenceSpm}/min{summary.speedMps != null ? ` · ${summary.speedMps} m/s` : ''}
+                    {summary.symmetryPct != null ? ` · ${summary.symmetryPct}% sym` : ''}
+                  </div>
+                </div>
+              )}
+
+              {videoUrl && (
+                <a
+                  href={videoUrl}
+                  download={`remote-walk-${Date.now()}.webm`}
+                  className="flex items-center justify-center gap-1.5 rounded-md bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-700"
+                >
+                  <Download size={13} /> Download recorded video
+                </a>
+              )}
+
+              {/* Report exports */}
+              <div className="mt-auto space-y-2 border-t border-slate-800 pt-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Report</div>
+                <div className="grid grid-cols-3 gap-2">
+                  <button onClick={exportPdf} className="flex items-center justify-center gap-1 rounded-md bg-violet-500 px-2 py-2 text-[11px] font-semibold text-white hover:bg-violet-400">
+                    <FileText size={12} /> PDF
+                  </button>
+                  <button onClick={exportPng} disabled={!summary} className="flex items-center justify-center gap-1 rounded-md bg-slate-800 px-2 py-2 text-[11px] font-semibold text-slate-100 hover:bg-slate-700 disabled:opacity-40">
+                    <ImageIcon size={12} /> PNG
+                  </button>
+                  <button
+                    onClick={() => { if (summary && lastSamples.current.length) downloadText(`remote-ankle-${Date.now()}.csv`, buildGaitCsv(lastSamples.current, summary)) }}
+                    disabled={!summary}
+                    className="flex items-center justify-center gap-1 rounded-md bg-slate-800 px-2 py-2 text-[11px] font-semibold text-slate-100 hover:bg-slate-700 disabled:opacity-40"
                   >
                     <Download size={12} /> CSV
                   </button>
-                  <button onClick={() => setSummary(null)} className="rounded-md bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-400">Done</button>
                 </div>
               </div>
-            )}
-          </div>
+            </aside>
+          </>
         )}
 
         {/* ── CLIENT view ───────────────────────────────────────────────────── */}
@@ -541,6 +683,16 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function Metric({ label, value, tone }: { label: string; value: string; tone: 'orange' | 'cyan' | 'slate' }) {
+  const color = tone === 'orange' ? 'text-orange-200' : tone === 'cyan' ? 'text-cyan-200' : 'text-slate-100'
+  return (
+    <div className="rounded-md border border-slate-800 bg-slate-900/60 p-2 text-center">
+      <div className="text-[9px] uppercase tracking-wider text-slate-400">{label}</div>
+      <div className={`mt-0.5 text-xl font-bold tabular-nums ${color}`}>{value}</div>
     </div>
   )
 }
