@@ -188,80 +188,58 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl }: ZevahealthHomeProps)
       </nav>
 
       {/* ── Hero ────────────────────────────────────────────────────────────── */}
-      <section id="top" className="relative z-10 mx-auto max-w-6xl px-5 pb-10 pt-16 text-center sm:px-8 lg:pt-24">
-        <Reveal className="mb-7 flex justify-center">
-          <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm backdrop-blur">
-            <Sparkles className="h-4 w-4 text-cyan-500" />
-            For every body — desk workers, lifters, runners, weekend warriors
-          </span>
-        </Reveal>
-
-        <Reveal delay={60}>
-          <h1 className="mx-auto max-w-4xl text-5xl font-extrabold leading-[0.95] tracking-[-0.045em] text-slate-900 sm:text-7xl lg:text-[5.5rem]">
-            Sore spots shouldn&apos;t be a{' '}
-            <span className="zh-gradient-text bg-gradient-to-r from-orange-500 via-rose-500 to-cyan-500 bg-clip-text text-transparent">
-              mystery
-            </span>
-            .
-          </h1>
-        </Reveal>
-
-        <Reveal delay={120}>
-          <p className="mx-auto mt-7 max-w-2xl text-lg leading-8 text-slate-600 sm:text-xl">
-            Talk to the AI or pinpoint the muscle behind the hurt. Then move through suggested exercises with your AI
-            coach — and feel better.
-          </p>
-        </Reveal>
-
-        <Reveal delay={180}>
-          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <a
-              href={diagnosticUrl}
-              className="group inline-flex min-w-56 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-orange-500 to-rose-500 px-8 py-4 text-base font-semibold text-white shadow-[0_18px_45px_-15px_rgba(244,63,94,0.8)] transition hover:-translate-y-0.5 hover:shadow-[0_24px_55px_-15px_rgba(244,63,94,0.9)]"
-            >
-              Try it free <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-            </a>
-            <a
-              href={atlasUrl}
-              className="inline-flex min-w-56 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-8 py-4 text-base font-semibold text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300 hover:text-cyan-700"
-            >
-              Explore the body <ChevronRight className="h-4 w-4" />
-            </a>
-          </div>
-          <p className="mt-6 text-sm text-slate-500">No signup. No download. Works in your browser.</p>
-        </Reveal>
-
-        {/* Hero product showcase — framed app preview with floating chips */}
-        <Reveal delay={120} className="relative mx-auto mt-16 max-w-5xl">
-          {/* Floating accent chips */}
-          <div className="zh-float pointer-events-none absolute -left-4 top-10 z-20 hidden rounded-2xl border border-slate-900/5 bg-white/90 px-4 py-3 shadow-[0_20px_50px_-20px_rgba(15,23,42,0.35)] backdrop-blur md:block">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-rose-100 text-rose-500">
-                <Heart className="h-4 w-4" />
+      <section id="top" className="relative z-10 mx-auto max-w-7xl px-5 pb-6 pt-12 sm:px-8 lg:pt-16">
+        <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:gap-8">
+          {/* Left — copy */}
+          <div className="text-center lg:text-left">
+            <Reveal className="mb-6 flex justify-center lg:justify-start">
+              <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm backdrop-blur">
+                <Sparkles className="h-4 w-4 text-cyan-500" />
+                For every body — desk workers, lifters, runners, weekend warriors
               </span>
-              <div className="text-left">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Likely source</div>
-                <div className="text-sm font-bold text-slate-900">Deltoid · 98%</div>
+            </Reveal>
+
+            <Reveal delay={60}>
+              <h1 className="text-5xl font-extrabold leading-[0.95] tracking-[-0.045em] text-slate-900 sm:text-6xl lg:text-[4.5rem]">
+                Sore spots shouldn&apos;t be a{' '}
+                <span className="zh-gradient-text bg-gradient-to-r from-orange-500 via-rose-500 to-cyan-500 bg-clip-text text-transparent">
+                  mystery
+                </span>
+                .
+              </h1>
+            </Reveal>
+
+            <Reveal delay={120}>
+              <p className="mx-auto mt-6 max-w-xl text-lg leading-8 text-slate-600 sm:text-xl lg:mx-0">
+                Talk to the AI or pinpoint the muscle behind the hurt. Then move through suggested exercises with your AI
+                coach — and feel better.
+              </p>
+            </Reveal>
+
+            <Reveal delay={180}>
+              <div className="mt-9 flex flex-col items-center justify-center gap-4 sm:flex-row lg:justify-start">
+                <a
+                  href={diagnosticUrl}
+                  className="group inline-flex min-w-56 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-orange-500 to-rose-500 px-8 py-4 text-base font-semibold text-white shadow-[0_18px_45px_-15px_rgba(244,63,94,0.8)] transition hover:-translate-y-0.5 hover:shadow-[0_24px_55px_-15px_rgba(244,63,94,0.9)]"
+                >
+                  Try it free <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                </a>
+                <a
+                  href={atlasUrl}
+                  className="inline-flex min-w-56 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-8 py-4 text-base font-semibold text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300 hover:text-cyan-700"
+                >
+                  Explore the body <ChevronRight className="h-4 w-4" />
+                </a>
               </div>
-            </div>
+              <p className="mt-6 text-sm text-slate-500">No signup. No download. Works in your browser.</p>
+            </Reveal>
           </div>
 
-          <div className="zh-float-slow pointer-events-none absolute -right-4 top-24 z-20 hidden rounded-2xl border border-slate-900/5 bg-white/90 px-4 py-3 shadow-[0_20px_50px_-20px_rgba(15,23,42,0.35)] backdrop-blur md:block">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-100 text-cyan-600">
-                <Activity className="h-4 w-4" />
-              </span>
-              <div className="text-left">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Pose tracking</div>
-                <div className="text-sm font-bold text-slate-900">Live · 92° joint</div>
-              </div>
-            </div>
-          </div>
-
-          <BrowserFrame label="zevahealth.ai/diagnose">
-            <HeroVideo />
-          </BrowserFrame>
-        </Reveal>
+          {/* Right — generated cover image with live overlays */}
+          <Reveal delay={120} className="relative">
+            <HeroShowcase />
+          </Reveal>
+        </div>
       </section>
 
       {/* ── Audience marquee strip ──────────────────────────────────────────── */}
@@ -481,54 +459,126 @@ const BENEFITS: { title: string; body: string; icon: React.ReactNode; tile: stri
   },
 ]
 
-/* ───────────────────────── Browser-style frame ───────────────────────── */
+/* ───────────── Hero showcase — generated cover image + live overlays ───────────── */
 
-function BrowserFrame({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="overflow-hidden rounded-[1.75rem] border border-slate-900/5 bg-white p-2.5 shadow-[0_50px_120px_-40px_rgba(15,23,42,0.55)] sm:p-3">
-      <div className="flex items-center gap-3 px-2 py-2">
-        <div className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-full bg-rose-400" />
-          <span className="h-3 w-3 rounded-full bg-amber-400" />
-          <span className="h-3 w-3 rounded-full bg-emerald-400" />
-        </div>
-        <div className="mx-auto hidden items-center gap-2 rounded-full bg-slate-100 px-4 py-1 text-xs font-medium text-slate-400 sm:flex">
-          <ShieldCheck className="h-3 w-3 text-emerald-500" />
-          {label}
-        </div>
-        <div className="w-12" />
-      </div>
-      <div className="overflow-hidden rounded-[1.25rem] border border-slate-900/5 bg-slate-950">{children}</div>
-    </div>
-  )
+// The generated Nano-Banana cover. Drop the PNG into /public as `hero-zeva.png`.
+const heroImageUrl = `${import.meta.env.BASE_URL}hero-zeva.png`
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n))
 }
 
-/* Hero video — loops the diagnosis clip as the product showcase. */
-function HeroVideo() {
+function HeroShowcase() {
   const [containerRef, inView] = useInView<HTMLDivElement>(0.2)
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const [angle, setAngle] = useState(82)
+  const [match, setMatch] = useState(96)
+  const [reps, setReps] = useState(3)
+  const [spark, setSpark] = useState<number[]>(() =>
+    Array.from({ length: 20 }, (_, i) => 45 + Math.round(26 * Math.sin(i / 2.2))),
+  )
 
+  // Drive the "live measurement" feel — values drift and the plot scrolls,
+  // but only while the hero is actually on screen.
   useEffect(() => {
-    const v = videoRef.current
-    if (!v) return
-    if (inView) v.play().catch(() => {})
-    else v.pause()
+    if (!inView) return
+    const id = window.setInterval(() => {
+      setAngle((a) => clamp(a + Math.round((Math.random() - 0.45) * 9), 62, 96))
+      setMatch((m) => clamp(m + Math.round((Math.random() - 0.5) * 4), 91, 99))
+      setReps((r) => (r >= 8 ? 1 : r + 1))
+      setSpark((s) => {
+        const next = clamp(s[s.length - 1] + Math.round((Math.random() - 0.5) * 36), 12, 94)
+        return [...s.slice(1), next]
+      })
+    }, 1100)
+    return () => window.clearInterval(id)
   }, [inView])
 
+  const W = 132
+  const H = 40
+  const linePts = spark
+    .map((v, i) => `${((i / (spark.length - 1)) * W).toFixed(1)},${(H - (v / 100) * H).toFixed(1)}`)
+    .join(' ')
+  const areaPts = `0,${H} ${linePts} ${W},${H}`
+
   return (
-    <div ref={containerRef} className="relative aspect-video w-full">
-      <video
-        ref={videoRef}
-        src={diagnosisVideoUrl}
-        className="absolute inset-0 h-full w-full object-contain"
-        autoPlay
-        muted
-        loop
-        playsInline
-        onLoadedMetadata={(e) => {
-          e.currentTarget.playbackRate = 0.7
-        }}
+    <div ref={containerRef} className="relative mx-auto w-full max-w-xl lg:max-w-none">
+      {/* The cover image */}
+      <img
+        src={heroImageUrl}
+        alt="Zevahealth AI — interactive body model with live muscle and movement insights"
+        draggable={false}
+        className="w-full select-none rounded-[1.5rem] shadow-[0_40px_90px_-50px_rgba(15,23,42,0.45)]"
       />
+
+      {/* Sweeping live-scan line over the figure */}
+      <div className="pointer-events-none absolute inset-x-3 inset-y-4 overflow-hidden rounded-[1.25rem]">
+        <div className="zh-scan absolute left-[6%] right-[6%] h-px bg-gradient-to-r from-transparent via-cyan-400/80 to-transparent shadow-[0_0_14px_2px_rgba(34,211,238,0.55)]" />
+      </div>
+
+      {/* LIVE badge */}
+      <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full border border-white/60 bg-white/85 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-700 shadow-lg backdrop-blur">
+        <span className="relative flex h-2 w-2">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500" />
+        </span>
+        Live scan
+      </div>
+
+      {/* Animated activation plot — hangs off the left edge (desktop) */}
+      <div className="zh-float pointer-events-none absolute -left-3 top-[30%] hidden rounded-2xl border border-slate-900/5 bg-white/90 px-3.5 py-3 shadow-[0_20px_50px_-20px_rgba(15,23,42,0.4)] backdrop-blur sm:block">
+        <div className="mb-1.5 flex items-center justify-between gap-5">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Activation</span>
+          <span className="text-xs font-bold tabular-nums text-cyan-600">{spark[spark.length - 1]}%</span>
+        </div>
+        <svg viewBox={`0 0 ${W} ${H}`} className="h-9 w-32 overflow-visible">
+          <defs>
+            <linearGradient id="zh-spark-line" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#06b6d4" />
+              <stop offset="100%" stopColor="#f97316" />
+            </linearGradient>
+            <linearGradient id="zh-spark-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.25" />
+              <stop offset="100%" stopColor="#06b6d4" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <polygon points={areaPts} fill="url(#zh-spark-fill)" />
+          <polyline
+            points={linePts}
+            fill="none"
+            stroke="url(#zh-spark-line)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
+
+      {/* Live metric chip — hangs off the right edge (desktop) */}
+      <div className="zh-float-slow pointer-events-none absolute -right-3 bottom-[24%] hidden rounded-2xl border border-slate-900/5 bg-white/90 px-4 py-3 shadow-[0_20px_50px_-20px_rgba(15,23,42,0.4)] backdrop-blur sm:block">
+        <div className="flex items-center gap-3">
+          <div className="text-center">
+            <div className="text-lg font-extrabold tabular-nums text-slate-900">{angle}°</div>
+            <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">Joint</div>
+          </div>
+          <span className="h-8 w-px bg-slate-200" />
+          <div className="text-center">
+            <div className="text-lg font-extrabold tabular-nums text-orange-500">{match}%</div>
+            <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">Match</div>
+          </div>
+          <span className="h-8 w-px bg-slate-200" />
+          <div className="text-center">
+            <div className="text-lg font-extrabold tabular-nums text-cyan-600">{reps}/8</div>
+            <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">Reps</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile live strip — below the image so it never covers the figure */}
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-2 sm:hidden">
+        <span className="rounded-lg border border-cyan-200 bg-white px-2.5 py-1 text-xs font-bold tabular-nums text-cyan-600 shadow-sm">{angle}° joint</span>
+        <span className="rounded-lg border border-orange-200 bg-white px-2.5 py-1 text-xs font-bold tabular-nums text-orange-500 shadow-sm">{match}% match</span>
+        <span className="rounded-lg border border-rose-200 bg-white px-2.5 py-1 text-xs font-bold tabular-nums text-rose-500 shadow-sm">{reps}/8 reps</span>
+      </div>
     </div>
   )
 }

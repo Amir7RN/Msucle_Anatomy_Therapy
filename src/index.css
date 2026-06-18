@@ -183,6 +183,15 @@
   }
   .zh-spin-slow { animation: zh-spin-slow 14s linear infinite; }
 
+  /* Live "scan" line that sweeps top→bottom across the hero showcase. */
+  @keyframes zh-scan {
+    0%   { top: 2%;  opacity: 0; }
+    12%  { opacity: 0.9; }
+    88%  { opacity: 0.9; }
+    100% { top: 98%; opacity: 0; }
+  }
+  .zh-scan { animation: zh-scan 3.6s ease-in-out infinite; }
+
   /* Scroll-reveal: start hidden, .is-visible toggled by IntersectionObserver. */
   .zh-reveal {
     opacity: 0;
@@ -198,7 +207,7 @@
 
   @media (prefers-reduced-motion: reduce) {
     .zh-blob-a, .zh-blob-b, .zh-gradient-text, .zh-marquee-track,
-    .zh-float, .zh-float-slow, .zh-spin-slow { animation: none; }
+    .zh-float, .zh-float-slow, .zh-spin-slow, .zh-scan { animation: none; }
     .zh-reveal { opacity: 1; transform: none; transition: none; }
   }
 }
