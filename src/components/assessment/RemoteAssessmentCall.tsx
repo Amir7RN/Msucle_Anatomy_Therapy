@@ -33,7 +33,7 @@ import {
   GaitStepMachine, downloadText, type GaitSample, type GaitSummary,
 } from '../../lib/movement/gait'
 import { saveGaitSession } from '../../lib/movement/gaitHistory'
-import { createSignaling, getIceServers, turnConfigured, loadTurnConfig, saveTurnConfig, randomId, type Signaling, type SignalMsg } from '../../lib/call/signaling'
+import { createSignaling, getIceServers, turnConfigured, loadTurnConfig, saveTurnConfig, probeIce, randomId, type Signaling, type SignalMsg, type IceProbe } from '../../lib/call/signaling'
 import { buildAssessmentPdf, chartDataUrl, downloadDataUrl, type StaticCapture } from '../../lib/call/report'
 
 // Edge guide lines (fraction of frame width) shown over the host's view so the
@@ -138,6 +138,8 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
   const [turnDomain, setTurnDomain] = useState(() => loadTurnConfig().meteredDomain ?? '')
   const [turnKey, setTurnKey] = useState(() => loadTurnConfig().meteredApiKey ?? '')
   const [turnReady, setTurnReady] = useState(() => turnConfigured())
+  const [probe, setProbe] = useState<IceProbe | null>(null)
+  const [probing, setProbing] = useState(false)
 
   const selfId = useMemo(() => randomId(8), [])
   const link = useMemo(() => buildCallLink(roomId), [roomId])
@@ -169,6 +171,7 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
   const mediaRec      = useRef<MediaRecorder | null>(null)
   const recChunks     = useRef<Blob[]>([])
   const recTimer      = useRef<number | null>(null)
+  const myIce         = useRef<RTCIceServer[]>([])   // this peer's resolved ICE servers
 
   useEffect(() => { recRef.current = recording }, [recording])
 
@@ -211,9 +214,17 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
       if (!pc) return
       try {
         if (m.kind === 'host-ready' && role === 'client') {
+          // Adopt the host's TURN relay too, so a restrictive client network
+          // can still gather relay candidates (one-sided TURN isn't always
+          // enough). Merge host servers into ours before gathering.
+          const hostIce = Array.isArray(m.data) ? (m.data as RTCIceServer[]) : []
+          if (hostIce.length) {
+            try { pc.setConfiguration({ iceServers: [...myIce.current, ...hostIce], iceCandidatePoolSize: 10 }) }
+            catch (e) { console.warn('[call] setConfiguration', e) }
+          }
           await makeOffer()
         } else if (m.kind === 'client-ready' && role === 'host') {
-          sigRef.current?.send('host-ready')   // (re)announce so a late client offers
+          sigRef.current?.send('host-ready', myIce.current)   // share TURN + (re)announce
         } else if (m.kind === 'offer' && role === 'host') {
           await pc.setRemoteDescription(m.data as RTCSessionDescriptionInit)
           await flushIce()
@@ -237,6 +248,7 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
       setHasRemote(false)
       // 1) Peer connection (await TURN credential resolution first)
       const servers = await getIceServers()
+      myIce.current = servers
       if (cancelled) return
       const pc = new RTCPeerConnection({ iceServers: servers, iceCandidatePoolSize: 10 })
       pcRef.current = pc
@@ -300,8 +312,10 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
       try { await sig.ready } catch (e) { setError('Could not reach the realtime server. Check your Supabase config.'); return }
       if (cancelled) return
 
-      // 4) Announce presence — kicks off the offer/answer handshake.
-      sig.send(role === 'host' ? 'host-ready' : 'client-ready')
+      // 4) Announce presence — kicks off the offer/answer handshake. The host
+      //    shares its resolved ICE servers so the client can use the same TURN.
+      if (role === 'host') sig.send('host-ready', myIce.current)
+      else sig.send('client-ready')
     }
 
     void setup()
@@ -467,9 +481,14 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
   function saveTurn() {
     saveTurnConfig({ meteredDomain: turnDomain, meteredApiKey: turnKey })
     setTurnReady(turnConfigured())
-    setShowTurn(false)
     setError(null)
     setAttempt((a) => a + 1)   // reconnect using the new relay
+  }
+  async function runProbe() {
+    setProbing(true); setProbe(null)
+    saveTurnConfig({ meteredDomain: turnDomain, meteredApiKey: turnKey })  // test what's typed
+    setTurnReady(turnConfigured())
+    try { setProbe(await probeIce()) } finally { setProbing(false) }
   }
 
   const toggleMic = useCallback(() => {
@@ -672,8 +691,24 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
                       className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-100 outline-none focus:border-cyan-500" />
                     <div className="flex gap-2">
                       <button onClick={saveTurn} className="flex-1 rounded-md bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-400">Save &amp; reconnect</button>
-                      <button onClick={() => setShowTurn(false)} className="rounded-md bg-slate-800 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700">Cancel</button>
+                      <button onClick={runProbe} disabled={probing} className="rounded-md bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-100 hover:bg-slate-600 disabled:opacity-50">
+                        {probing ? 'Testing…' : 'Test relay'}
+                      </button>
+                      <button onClick={() => setShowTurn(false)} className="rounded-md bg-slate-800 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700">Close</button>
                     </div>
+                    {probe && (
+                      <div className={`rounded border p-2 text-[10px] leading-relaxed ${probe.relay ? 'border-emerald-600/50 bg-emerald-950/40 text-emerald-200' : 'border-red-600/50 bg-red-950/40 text-red-200'}`}>
+                        {probe.relay ? (
+                          <span><b>✓ TURN relay works.</b> Cross-network calls should connect now — press “Save &amp; reconnect”.</span>
+                        ) : probe.fetchTried && !probe.fetchOk ? (
+                          <span><b>✗ Credential fetch failed</b> (HTTP {probe.fetchStatus ?? '—'}). Check the subdomain is the full <code>yourapp.metered.live</code> and the API key is the TURN key.</span>
+                        ) : probe.fetchTried && probe.turnServerCount === 0 ? (
+                          <span><b>✗ No TURN servers returned.</b> The key/subdomain look wrong — re-copy them from the Metered dashboard.</span>
+                        ) : (
+                          <span><b>✗ No relay candidate.</b> Credentials loaded ({probe.turnServerCount} TURN servers) but the relay was unreachable — a firewall may be blocking it, or the key is invalid. Candidates seen: {probe.candidateTypes.join(', ') || 'none'}.</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

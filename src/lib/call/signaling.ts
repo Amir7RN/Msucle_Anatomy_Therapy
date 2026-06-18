@@ -176,3 +176,81 @@ export function turnConfigured(): boolean {
   const { credentialUrl, turnUrl } = resolveTurn()
   return !!(credentialUrl || turnUrl)
 }
+
+export interface IceProbe {
+  fetchTried:    boolean
+  fetchOk:       boolean
+  fetchStatus?:  number
+  serverCount:   number
+  turnServerCount: number
+  candidateTypes: string[]   // 'host' | 'srflx' | 'relay'
+  relay:         boolean     // did a TURN relay candidate appear? (the real test)
+  error?:        string
+}
+
+/**
+ * Self-test the ICE setup WITHOUT a second peer: resolve the servers (incl.
+ * fetching TURN credentials), then gather candidates locally and report which
+ * types appear.  A 'relay' candidate proves the TURN relay actually works — if
+ * it's missing, the credentials are wrong/unreachable and cross-network calls
+ * will fail no matter how many times you retry.
+ */
+export async function probeIce(timeoutMs = 8000): Promise<IceProbe> {
+  const out: IceProbe = {
+    fetchTried: false, fetchOk: false, serverCount: 0, turnServerCount: 0,
+    candidateTypes: [], relay: false,
+  }
+  const { credentialUrl, turnUrl, turnUser, turnCred } = resolveTurn()
+  const servers: RTCIceServer[] = [
+    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+  ]
+
+  const countTurn = (list: RTCIceServer[]) =>
+    list.reduce((n, s) => {
+      const urls = Array.isArray(s.urls) ? s.urls : [s.urls]
+      return n + urls.filter((u) => /^turns?:/.test(u)).length
+    }, 0)
+
+  if (credentialUrl) {
+    out.fetchTried = true
+    try {
+      const r = await fetch(credentialUrl)
+      out.fetchStatus = r.status
+      out.fetchOk = r.ok
+      if (r.ok) {
+        const list = (await r.json()) as RTCIceServer[]
+        if (Array.isArray(list)) { servers.push(...list); out.turnServerCount = countTurn(list) }
+      }
+    } catch (e) {
+      out.error = `credential fetch error: ${(e as Error).message}`
+    }
+  } else if (turnUrl) {
+    const s = { urls: turnUrl.split(',').map((x) => x.trim()), username: turnUser, credential: turnCred }
+    servers.push(s); out.turnServerCount = countTurn([s])
+  }
+  out.serverCount = servers.length
+
+  return await new Promise<IceProbe>((resolve) => {
+    let pc: RTCPeerConnection
+    try { pc = new RTCPeerConnection({ iceServers: servers, iceCandidatePoolSize: 1 }) }
+    catch (e) { out.error = (e as Error).message; resolve(out); return }
+    const types = new Set<string>()
+    const done = () => {
+      out.candidateTypes = [...types]
+      out.relay = types.has('relay')
+      try { pc.close() } catch { /* */ }
+      resolve(out)
+    }
+    const timer = window.setTimeout(done, timeoutMs)
+    pc.onicecandidate = (e) => {
+      if (!e.candidate) { window.clearTimeout(timer); done(); return }
+      const t = e.candidate.type || (/ typ (\w+)/.exec(e.candidate.candidate)?.[1] ?? '')
+      if (t) types.add(t)
+      if (t === 'relay') { window.clearTimeout(timer); done() }  // success — stop early
+    }
+    try {
+      pc.createDataChannel('probe')
+      pc.createOffer().then((o) => pc.setLocalDescription(o)).catch((e) => { out.error = (e as Error).message; window.clearTimeout(timer); done() })
+    } catch (e) { out.error = (e as Error).message; window.clearTimeout(timer); done() }
+  })
+}
