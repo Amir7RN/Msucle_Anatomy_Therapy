@@ -33,7 +33,7 @@ import {
   GaitStepMachine, downloadText, type GaitSample, type GaitSummary,
 } from '../../lib/movement/gait'
 import { saveGaitSession } from '../../lib/movement/gaitHistory'
-import { createSignaling, iceServers, randomId, type Signaling, type SignalMsg } from '../../lib/call/signaling'
+import { createSignaling, getIceServers, turnConfigured, randomId, type Signaling, type SignalMsg } from '../../lib/call/signaling'
 import { buildAssessmentPdf, chartDataUrl, downloadDataUrl, type StaticCapture } from '../../lib/call/report'
 
 // Edge guide lines (fraction of frame width) shown over the host's view so the
@@ -132,6 +132,7 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
   const [stepCount, setStepCount] = useState(0)
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [recSecs, setRecSecs] = useState(0)
+  const [attempt, setAttempt] = useState(0)   // bump to re-run the connection
 
   const selfId = useMemo(() => randomId(8), [])
   const link = useMemo(() => buildCallLink(roomId), [roomId])
@@ -228,8 +229,11 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
 
     async function setup() {
       setConn('waiting')
-      // 1) Peer connection
-      const pc = new RTCPeerConnection({ iceServers: iceServers() })
+      setHasRemote(false)
+      // 1) Peer connection (await TURN credential resolution first)
+      const servers = await getIceServers()
+      if (cancelled) return
+      const pc = new RTCPeerConnection({ iceServers: servers, iceCandidatePoolSize: 10 })
       pcRef.current = pc
       pc.onicecandidate = (e) => { if (e.candidate) sigRef.current?.send('ice', e.candidate.toJSON()) }
       pc.ontrack = (e) => {
@@ -251,7 +255,12 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
       pc.onconnectionstatechange = () => {
         const st = pc.connectionState
         if (st === 'connected') setConn('connected')
-        else if (st === 'failed') { setConn('failed'); setError('Connection failed. If you are on different networks a TURN server may be required.') }
+        else if (st === 'failed') {
+          setConn('failed')
+          setError(turnConfigured()
+            ? 'Connection failed despite a TURN relay. Make sure the client allowed camera access, then press Retry.'
+            : 'Connection failed. Across different networks WebRTC needs a TURN relay — add free TURN credentials (see notes) and press Retry. (Same-network calls work without it.)')
+        }
         else if (st === 'disconnected') setConn('waiting')
       }
 
@@ -311,7 +320,7 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
       disposeDetector()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  }, [open, attempt])
 
   // ── Host: run pose detection on the received video ──────────────────────────
   useEffect(() => {
@@ -678,8 +687,16 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
         )}
 
         {error && (
-          <div className="absolute bottom-4 left-4 right-4 rounded border border-red-700 bg-red-950/80 p-2 text-xs text-red-200">
-            {error}
+          <div className="absolute bottom-4 left-4 right-4 flex items-center gap-3 rounded border border-red-700 bg-red-950/80 p-2 text-xs text-red-200">
+            <span className="flex-1">{error}</span>
+            {conn === 'failed' && (
+              <button
+                onClick={() => { setError(null); setAttempt((a) => a + 1) }}
+                className="flex-shrink-0 rounded bg-red-600 px-3 py-1 font-semibold text-white hover:bg-red-500"
+              >
+                Retry
+              </button>
+            )}
           </div>
         )}
       </div>
