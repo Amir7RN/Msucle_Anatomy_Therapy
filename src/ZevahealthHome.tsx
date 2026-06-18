@@ -274,55 +274,43 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl }: ZevahealthHomeProps)
       </section>
 
       {/* ── Feature 1 — Pinpoint the muscle ─────────────────────────────────── */}
-      <section id="pinpoint" className="relative z-10 mx-auto max-w-6xl px-5 py-14 sm:px-8 lg:py-20">
-        <Reveal>
-          <PanelHeader
-            eyebrow="Pinpoint the Muscle"
-            icon={<ScanSearch className="h-3.5 w-3.5" />}
-            title="Tap the spot. Find the source."
-            subtitle="Watch how Zevahealth turns a hand on a sore shoulder into a clear answer."
-            hue="cyan"
-          />
-        </Reveal>
-        <Reveal delay={80}>
-          <DiagnosisStoryPanel />
-        </Reveal>
-      </section>
+      <FeatureSplit
+        id="pinpoint"
+        eyebrow="Pinpoint the Muscle"
+        icon={<ScanSearch className="h-3.5 w-3.5" />}
+        title="Tap the spot. Find the source."
+        subtitle="Watch how Zevahealth turns a hand on a sore shoulder into a clear answer."
+        hue="cyan"
+      >
+        <DiagnosisStoryPanel />
+      </FeatureSplit>
 
       {/* ── Feature 2 — Just Ask ────────────────────────────────────────────── */}
-      <section id="chat" className="relative z-10 overflow-hidden">
+      <div className="relative overflow-hidden">
         <div className="absolute inset-0 -z-10 bg-gradient-to-b from-cyan-50/80 via-white/0 to-orange-50/70" />
-        <div className="mx-auto max-w-6xl px-5 py-14 sm:px-8 lg:py-20">
-          <Reveal>
-            <PanelHeader
-              eyebrow="Just Ask Zevahealth"
-              icon={<MessageSquare className="h-3.5 w-3.5" />}
-              title="Or just talk to it."
-              subtitle="Type or speak. Zevahealth asks the right questions until the source is clear."
-              hue="orange"
-            />
-          </Reveal>
-          <Reveal delay={80}>
-            <AIChatPanel />
-          </Reveal>
-        </div>
-      </section>
+        <FeatureSplit
+          id="chat"
+          eyebrow="Just Ask Zevahealth"
+          icon={<MessageSquare className="h-3.5 w-3.5" />}
+          title="Or just talk to it."
+          subtitle="Type or speak. Zevahealth asks the right questions until the source is clear."
+          hue="orange"
+        >
+          <AIChatPanel />
+        </FeatureSplit>
+      </div>
 
       {/* ── Feature 3 — AI Form Coach ───────────────────────────────────────── */}
-      <section id="coach" className="relative z-10 mx-auto max-w-6xl px-5 py-14 sm:px-8 lg:py-20">
-        <Reveal>
-          <PanelHeader
-            eyebrow="AI Form Coach"
-            icon={<Camera className="h-3.5 w-3.5" />}
-            title="A coach that watches every rep."
-            subtitle="Pose tracking, joint angles, and live cues — your trainer in two megapixels."
-            hue="cyan"
-          />
-        </Reveal>
-        <Reveal delay={80}>
-          <AICoachPanel />
-        </Reveal>
-      </section>
+      <FeatureSplit
+        id="coach"
+        eyebrow="AI Form Coach"
+        icon={<Camera className="h-3.5 w-3.5" />}
+        title="A coach that watches every rep."
+        subtitle="Pose tracking, joint angles, and live cues — your trainer in two megapixels."
+        hue="cyan"
+      >
+        <AICoachPanel />
+      </FeatureSplit>
 
       {/* ── Why Zevahealth — benefits grid ──────────────────────────────────── */}
       <section id="why" className="relative z-10 mx-auto max-w-6xl px-5 py-14 sm:px-8 lg:py-20">
@@ -461,8 +449,8 @@ const BENEFITS: { title: string; body: string; icon: React.ReactNode; tile: stri
 
 /* ───────────── Hero showcase — generated cover image + live overlays ───────────── */
 
-// The generated Nano-Banana cover. Drop the PNG into /public as `hero-zeva.png`.
-const heroImageUrl = `${import.meta.env.BASE_URL}hero-zeva.png`
+// The generated cover image (lives at the project root, alongside /Videos).
+const heroImageUrl = new URL('../landingpage.png', import.meta.url).href
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
@@ -613,6 +601,48 @@ function PanelHeader({
       </h2>
       <p className="mx-auto mt-4 max-w-2xl text-base text-slate-500 sm:text-lg">{subtitle}</p>
     </div>
+  )
+}
+
+/* ── Feature row: left-aligned heading on the left, live demo on the right ── */
+
+function FeatureSplit({
+  id,
+  eyebrow,
+  icon,
+  title,
+  subtitle,
+  hue,
+  children,
+}: {
+  id: string
+  eyebrow: string
+  icon: React.ReactNode
+  title: string
+  subtitle: string
+  hue: 'cyan' | 'orange'
+  children: React.ReactNode
+}) {
+  const pill =
+    hue === 'cyan'
+      ? 'border-cyan-200 bg-cyan-50 text-cyan-700'
+      : 'border-orange-200 bg-orange-50 text-orange-600'
+  return (
+    <section id={id} className="relative z-10 mx-auto w-full max-w-[112rem] px-5 py-16 sm:px-8 lg:px-12 lg:py-24">
+      <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,0.54fr)_minmax(0,1.46fr)] lg:gap-16">
+        <Reveal>
+          <div className="text-center lg:text-left">
+            <div className={`mb-5 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.24em] ${pill}`}>
+              {icon}
+              {eyebrow}
+            </div>
+            <h2 className="text-4xl font-extrabold tracking-[-0.04em] text-slate-900 sm:text-5xl lg:text-[3.5rem] lg:leading-[1.04]">{title}</h2>
+            <p className="mx-auto mt-5 max-w-md text-base text-slate-500 sm:text-lg lg:mx-0">{subtitle}</p>
+          </div>
+        </Reveal>
+        <Reveal delay={80}>{children}</Reveal>
+      </div>
+    </section>
   )
 }
 
@@ -820,7 +850,7 @@ function AIChatPanel() {
   }, [count, typing])
 
   return (
-    <div ref={containerRef} className="grid gap-6 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+    <div ref={containerRef} className="grid gap-6 xl:grid-cols-[minmax(0,400px)_minmax(0,1fr)]">
       <div className="flex h-[460px] flex-col overflow-hidden rounded-[2rem] border border-slate-900/5 bg-white shadow-[0_40px_110px_-45px_rgba(15,23,42,0.5)] sm:h-[520px] lg:h-[600px]">
         <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-5 py-4">
           <div className="flex items-center gap-2">
@@ -844,7 +874,7 @@ function AIChatPanel() {
           {/* Mobile-only: result appears as the final inline bubble so the
               chat reads as one continuous flow instead of two stacked boxes. */}
           {showResult && (
-            <div className="mm-pop-in flex justify-start lg:hidden">
+            <div className="mm-pop-in flex justify-start xl:hidden">
               <div className="w-full max-w-[92%] overflow-hidden rounded-2xl border border-orange-200 bg-white shadow-lg">
                 <img
                   src={chatBotImageAfter}
@@ -868,7 +898,7 @@ function AIChatPanel() {
         </div>
       </div>
 
-      <div className="relative hidden aspect-[3/2] overflow-hidden rounded-[2rem] border border-slate-900/5 bg-slate-950 shadow-[0_40px_110px_-45px_rgba(15,23,42,0.5)] lg:block lg:aspect-auto lg:h-[600px]">
+      <div className="relative hidden aspect-[3/2] overflow-hidden rounded-[2rem] border border-slate-900/5 bg-slate-950 shadow-[0_40px_110px_-45px_rgba(15,23,42,0.5)] xl:block xl:aspect-auto xl:h-[600px]">
         <img
           src={chatBotImageBefore}
           alt=""
