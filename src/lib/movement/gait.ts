@@ -95,6 +95,8 @@ export interface AnkleStats {
   min:       number | null
   max:       number | null
   excursion: number | null    // max − min
+  mean:      number | null    // mean ankle angle (rel. neutral)
+  sd:        number | null    // standard deviation of the ankle angle
   meanShank: number | null
   samples:   number
 }
@@ -295,17 +297,22 @@ export class GaitStepMachine {
 function statsFor(vals: Array<number | null>, shanks: Array<number | null>): AnkleStats {
   const a = vals.filter((v): v is number => v != null)
   const sh = shanks.filter((v): v is number => v != null)
-  if (a.length === 0) return { min: null, max: null, excursion: null, meanShank: null, samples: 0 }
+  if (a.length === 0) return { min: null, max: null, excursion: null, mean: null, sd: null, meanShank: null, samples: 0 }
   // Trim the most extreme 5% each end so a single bad frame doesn't blow up
   // the excursion.
   const sorted = [...a].sort((x, y) => x - y)
   const lo = sorted[Math.floor(sorted.length * 0.05)]
   const hi = sorted[Math.ceil(sorted.length * 0.95) - 1]
+  const mean = a.reduce((s, v) => s + v, 0) / a.length
+  const variance = a.reduce((s, v) => s + (v - mean) * (v - mean), 0) / a.length
+  const sd = Math.sqrt(variance)
   const meanShank = sh.length ? sh.reduce((s, v) => s + v, 0) / sh.length : null
   return {
     min: Math.round(lo),
     max: Math.round(hi),
     excursion: Math.round(hi - lo),
+    mean: Math.round(mean),
+    sd: Math.round(sd),
     meanShank: meanShank == null ? null : Math.round(meanShank),
     samples: a.length,
   }
@@ -378,6 +385,8 @@ export function buildGaitCsv(samples: GaitSample[], summary: GaitSummary): strin
   lines.push(`# ankle_min_deg,${fmt(summary.left.min)},${fmt(summary.right.min)}`)
   lines.push(`# ankle_max_deg,${fmt(summary.left.max)},${fmt(summary.right.max)}`)
   lines.push(`# ankle_excursion_deg,${fmt(summary.left.excursion)},${fmt(summary.right.excursion)}`)
+  lines.push(`# ankle_mean_deg,${fmt(summary.left.mean)},${fmt(summary.right.mean)}`)
+  lines.push(`# ankle_sd_deg,${fmt(summary.left.sd)},${fmt(summary.right.sd)}`)
   lines.push(`# mean_shank_tilt_deg,${fmt(summary.left.meanShank)},${fmt(summary.right.meanShank)}`)
   lines.push(`# steps,${summary.steps}`)
   lines.push(`# duration_s,${summary.durationSec}`)
@@ -425,7 +434,7 @@ export function renderGaitPlot(
   samples: GaitSample[],
   summary: GaitSummary,
 ): void {
-  const W = 1100, H = 760
+  const W = 1100, H = 620
   canvas.width = W
   canvas.height = H
   const ctx = canvas.getContext('2d')
@@ -447,7 +456,7 @@ export function renderGaitPlot(
   const tSpan = Math.max(0.001, tMax - tMin)
 
   // ── Panel 1: ankle angle ──────────────────────────────────────────────────
-  const p1 = { x: 60, y: 100, w: W - 120, h: 280 }
+  const p1 = { x: 60, y: 100, w: W - 120, h: 330 }
   drawPanel(ctx, p1, 'Ankle angle during the walk  (sagittal plane)', 'degrees from standing neutral  ·  + dorsiflexion (toe up) / − plantarflexion (toe down)')
 
   const angVals = samples.flatMap((s) => [s.leftAnkle, s.rightAnkle]).filter((v): v is number => v != null)
@@ -456,29 +465,24 @@ export function renderGaitPlot(
   drawYTicks(ctx, p1, aLo, aHi, 5)
   drawXTicks(ctx, p1, tMin, tMax)
   drawZeroLine(ctx, p1, aLo, aHi, 'neutral (0°)')
+  // Shaded ±1 SD ribbon (rolling) behind each continuous line.
+  plotRibbon(ctx, p1, samples, (s) => s.leftAnkle,  tMin, tSpan, aLo, aHi, COL.left)
+  plotRibbon(ctx, p1, samples, (s) => s.rightAnkle, tMin, tSpan, aLo, aHi, COL.right)
   plotSeries(ctx, p1, samples, (s) => s.leftAnkle,  tMin, tSpan, aLo, aHi, COL.left)
   plotSeries(ctx, p1, samples, (s) => s.rightAnkle, tMin, tSpan, aLo, aHi, COL.right)
   legend(ctx, p1.x + p1.w - 240, p1.y + 18, [
     ['Left ankle',  COL.left],
     ['Right ankle', COL.right],
+    ['Shaded = +/- 1 SD', COL.sub],
   ])
 
-  // ── Panel 2: angular speed proxy ───────────────────────────────────────────
-  const p2 = { x: 60, y: 420, w: W - 120, h: 180 }
-  drawPanel(ctx, p2, 'Ankle motion speed  (how fast the ankle is rotating)', 'degrees per second')
-  const spVals = samples.map((s) => s.speed).filter((v): v is number => v != null)
-  const sHi = spVals.length ? Math.max(...spVals) * 1.15 + 1 : 100
-  drawYTicks(ctx, p2, 0, sHi, 4)
-  drawXTicks(ctx, p2, tMin, tMax)
-  plotSeries(ctx, p2, samples, (s) => s.speed, tMin, tSpan, 0, sHi, COL.speed)
-
-  // Shared x-axis label.
+  // Time axis label under the single panel.
   ctx.fillStyle = COL.sub
   ctx.font = '13px ui-sans-serif, system-ui, sans-serif'
-  ctx.fillText('Time (seconds)', p2.x + p2.w / 2 - 40, p2.y + p2.h + 8)
+  ctx.fillText('Time (seconds)', p1.x + p1.w / 2 - 40, p1.y + p1.h + 8)
 
   // ── Metrics strip ──────────────────────────────────────────────────────────
-  const y0 = 640
+  const y0 = 470
   ctx.fillStyle = COL.panel
   roundRect(ctx, 60, y0, W - 120, 96, 10)
   ctx.fill()
@@ -596,6 +600,58 @@ function plotSeries(
     if (!pen) { ctx.moveTo(x, y); pen = true } else { ctx.lineTo(x, y) }
   }
   ctx.stroke()
+}
+
+/**
+ * Rolling ±1 SD ribbon for one foot: at each sample, the mean and standard
+ * deviation are computed over a short time window, and the band [mean−sd,
+ * mean+sd] is filled.  Drawn behind the raw line so you see both the continuous
+ * measurement and its variability.
+ */
+function plotRibbon(
+  ctx: CanvasRenderingContext2D, r: Rect, samples: GaitSample[],
+  pick: (s: GaitSample) => number | null,
+  tMin: number, tSpan: number, lo: number, hi: number, color: string,
+  windowSec = 0.5,
+) {
+  const left = r.x + 44, right = r.x + r.w - 14, top = r.y + 48, bot = r.y + r.h - 30
+  const sx = (t: number) => left + ((t - tMin) / tSpan) * (right - left)
+  const sy = (v: number) => bot - ((v - lo) / (hi - lo)) * (bot - top)
+
+  // Pre-extract (t, v) for tracked frames.
+  const pts: Array<{ t: number; v: number }> = []
+  for (const s of samples) { const v = pick(s); if (v != null) pts.push({ t: s.t, v }) }
+  if (pts.length < 3) return
+
+  // Rolling mean/SD → band edges, broken into contiguous runs.
+  type Band = { x: number; topY: number; botY: number }
+  const runs: Band[][] = []
+  let run: Band[] = []
+  for (let i = 0; i < pts.length; i++) {
+    const t0 = pts[i].t
+    let sum = 0, sum2 = 0, n = 0
+    for (let j = i; j >= 0 && t0 - pts[j].t <= windowSec; j--) { sum += pts[j].v; sum2 += pts[j].v * pts[j].v; n++ }
+    for (let j = i + 1; j < pts.length && pts[j].t - t0 <= windowSec; j++) { sum += pts[j].v; sum2 += pts[j].v * pts[j].v; n++ }
+    if (n < 2) { if (run.length) { runs.push(run); run = [] } continue }
+    const m = sum / n
+    const sd = Math.sqrt(Math.max(0, sum2 / n - m * m))
+    run.push({ x: sx(t0), topY: sy(m + sd), botY: sy(m - sd) })
+  }
+  if (run.length) runs.push(run)
+
+  ctx.save()
+  ctx.globalAlpha = 0.16
+  ctx.fillStyle = color
+  for (const band of runs) {
+    if (band.length < 2) continue
+    ctx.beginPath()
+    ctx.moveTo(band[0].x, band[0].topY)
+    for (let i = 1; i < band.length; i++) ctx.lineTo(band[i].x, band[i].topY)
+    for (let i = band.length - 1; i >= 0; i--) ctx.lineTo(band[i].x, band[i].botY)
+    ctx.closePath()
+    ctx.fill()
+  }
+  ctx.restore()
 }
 
 function legend(ctx: CanvasRenderingContext2D, x: number, y: number, items: Array<[string, string]>) {

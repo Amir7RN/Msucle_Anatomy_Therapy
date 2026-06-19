@@ -172,6 +172,7 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
   const recChunks     = useRef<Blob[]>([])
   const recTimer      = useRef<number | null>(null)
   const myIce         = useRef<RTCIceServer[]>([])   // this peer's resolved ICE servers
+  const recCanvas     = useRef<HTMLCanvasElement | null>(null)  // video+overlay composite
 
   useEffect(() => { recRef.current = recording }, [recording])
 
@@ -368,6 +369,15 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
               setLiveR(m.rightAnkle != null ? Math.round(m.rightAnkle) : null)
               if (recRef.current) recordFrame(lms, m)
             }
+            // Composite (raw video + guide lines + skeleton) onto an offscreen
+            // canvas — this is what we screenshot and record, so the saved
+            // image/video has the pose overlay BURNED IN.
+            const rc = recCanvas.current ?? (recCanvas.current = document.createElement('canvas'))
+            if (rc.width !== c.width || rc.height !== c.height) { rc.width = c.width; rc.height = c.height }
+            const rctx = rc.getContext('2d')!
+            rctx.drawImage(v, 0, 0, rc.width, rc.height)
+            drawGuideLines(rctx, rc.width, rc.height)
+            if (lms) drawSkeleton(rctx, lms, rc.width, rc.height)
           } catch (e) { /* per-frame */ }
         }
         rafRef.current = requestAnimationFrame(loop)
@@ -392,12 +402,15 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
     if (struck) setStepCount(stepMachine.current.count())
   }
 
-  /** Static posture capture — snapshot the current both-ankle angles. */
+  /** Static posture capture — snapshot both-ankle angles AND a screenshot of
+   *  the person with the pose overlay burned in. */
   function capturePosture() {
     const m = lastMetrics.current
     if (!m) return
+    let image: string | undefined
+    try { image = recCanvas.current?.toDataURL('image/png') } catch { /* */ }
     setStaticCaps((prev) => [
-      { ts: Date.now(), leftAnkle: m.leftAnkle, rightAnkle: m.rightAnkle, leftShank: m.leftShank, rightShank: m.rightShank },
+      { ts: Date.now(), leftAnkle: m.leftAnkle, rightAnkle: m.rightAnkle, leftShank: m.leftShank, rightShank: m.rightShank, image },
       ...prev,
     ].slice(0, 12))
   }
@@ -415,8 +428,17 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
     recStart.current = performance.now()
     setSummary(null); setStepCount(0); setRecSecs(0)
     if (videoUrl) { URL.revokeObjectURL(videoUrl); setVideoUrl(null) }
-    // Record the client's video stream to a downloadable clip.
-    const stream = remoteStream.current
+    // Record the COMPOSITE canvas (video + pose overlay burned in) plus the
+    // client's audio, so the saved clip shows the skeleton on top of the video.
+    const rc = recCanvas.current
+    let stream: MediaStream | null = null
+    if (rc && typeof rc.captureStream === 'function') {
+      stream = rc.captureStream(30)
+      const audio = remoteStream.current?.getAudioTracks?.() ?? []
+      audio.forEach((t) => stream!.addTrack(t))
+    } else {
+      stream = remoteStream.current   // fallback: raw video without overlay
+    }
     if (stream && typeof MediaRecorder !== 'undefined') {
       try {
         recChunks.current = []
@@ -628,12 +650,19 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
                   <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Static captures</div>
                   <div className="mt-1 space-y-1">
                     {staticCaps.map((s) => (
-                      <div key={s.ts} className="flex items-center justify-between text-[11px]">
-                        <span className="text-slate-500">{new Date(s.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
-                        <span className="tabular-nums">
-                          <span className="text-orange-300">L {s.leftAnkle == null ? '—' : `${Math.round(s.leftAnkle)}°`}</span>{'  '}
-                          <span className="text-cyan-300">R {s.rightAnkle == null ? '—' : `${Math.round(s.rightAnkle)}°`}</span>
-                        </span>
+                      <div key={s.ts} className="flex items-center gap-2 text-[11px]">
+                        {s.image && (
+                          <a href={s.image} download={`posture-${s.ts}.png`} title="Download screenshot">
+                            <img src={s.image} alt="capture" className="h-10 w-16 rounded object-cover ring-1 ring-slate-700 hover:ring-cyan-400" />
+                          </a>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="text-slate-500">{new Date(s.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
+                          <div className="tabular-nums">
+                            <span className="text-orange-300">L {s.leftAnkle == null ? '—' : `${Math.round(s.leftAnkle)}°`}</span>{'  '}
+                            <span className="text-cyan-300">R {s.rightAnkle == null ? '—' : `${Math.round(s.rightAnkle)}°`}</span>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>

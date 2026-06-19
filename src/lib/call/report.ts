@@ -15,6 +15,8 @@ export interface StaticCapture {
   rightAnkle: number | null
   leftShank:  number | null
   rightShank: number | null
+  /** PNG data URL of the frame + pose overlay at capture time. */
+  image?:     string
 }
 
 export interface ReportData {
