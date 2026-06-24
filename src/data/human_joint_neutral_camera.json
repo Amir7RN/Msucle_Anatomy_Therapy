@@ -1,0 +1,149 @@
+[
+  {
+    "joint_id": "shoulder_flexion_extension",
+    "joint_name": "Shoulder",
+    "movement": "Flexion/Extension",
+    "neutral_pose": "Stand upright or sit with back straight, arms relaxed at sides, palms facing medially; the shoulder joint is at 0° flexion/extension.",
+    "camera_orientation": "Position yourself sideways to the camera so the sagittal plane is perpendicular to the lens. The shoulder being measured should be closest to the camera. From this neutral position, lift the arm forward (flexion) or move it backward (extension) without trunk lean."
+  },
+  {
+    "joint_id": "shoulder_abduction_adduction",
+    "joint_name": "Shoulder",
+    "movement": "Abduction/Adduction",
+    "neutral_pose": "Stand upright facing the camera with weight evenly distributed on both feet. Arms hang at the sides with palms facing medially; shoulders are at 0° abduction.",
+    "camera_orientation": "Face the camera directly so your frontal plane is perpendicular to the lens and both ears are visible【832543543048138†L883-L894】. From this neutral position, move the arm laterally away from the trunk (abduction) and return toward the side (adduction) without leaning the torso."
+  },
+  {
+    "joint_id": "shoulder_internal_external_rotation",
+    "joint_name": "Shoulder",
+    "movement": "Internal/External Rotation",
+    "neutral_pose": "Stand or sit upright with the arm at the side and elbow flexed 90°, forearm in neutral (thumb up).",
+    "camera_orientation": "Face the camera. Keep your elbow close to your torso and at 90° while rotating your forearm toward the body (internal rotation) or away from the body (external rotation). A neutral backdrop helps visualize the movement; both shoulders and the elbow should remain in the frame."
+  },
+  {
+    "joint_id": "elbow_flexion_extension",
+    "joint_name": "Elbow",
+    "movement": "Flexion/Extension",
+    "neutral_pose": "Stand or sit upright with arm alongside the body, elbow fully extended (0°) and forearm supinated (palm facing forward).",
+    "camera_orientation": "Position yourself sideways to the camera with the arm being measured closest to the lens. Keep the shoulder at 0° flexion/abduction and the forearm supinated. Bend the elbow, bringing the hand toward the shoulder (flexion), then straighten it back to neutral (extension). Keep the upper arm aligned with the torso【832543543048138†L922-L934】."
+  },
+  {
+    "joint_id": "forearm_pronation_supination",
+    "joint_name": "Forearm",
+    "movement": "Pronation/Supination",
+    "neutral_pose": "Stand or sit with the shoulder adducted to the side, elbow flexed 90°, and forearm in neutral (thumb up). Hold a small object like a pencil for alignment.",
+    "camera_orientation": "Face the camera directly. Keep your elbow at 90° and close to your body. Rotate the forearm so the palm faces down (pronation) and up (supination). Maintain an upright posture and avoid shoulder movement【832543543048138†L949-L962】."
+  },
+  {
+    "joint_id": "wrist_flexion_extension",
+    "joint_name": "Wrist",
+    "movement": "Flexion/Extension",
+    "neutral_pose": "With elbow flexed to 90° and forearm pronated (palm down), the wrist rests in neutral alignment (0° flexion/extension).",
+    "camera_orientation": "Sit or stand sideways to the camera with the wrist and hand closest to the lens. With the forearm supported and palm facing down, move the hand downward toward the palm (flexion) or upward toward the back of the forearm (extension). Avoid elbow or shoulder movement【832543543048138†L977-L988】."
+  },
+  {
+    "joint_id": "wrist_radial_ulnar_deviation",
+    "joint_name": "Wrist",
+    "movement": "Radial/Ulnar Deviation",
+    "neutral_pose": "Elbow flexed to 90° and forearm pronated; the wrist and hand are aligned with the forearm (0° deviation).",
+    "camera_orientation": "Face the camera with the forearm supported on a table and palm down. Keeping the forearm stable, slide the hand sideways toward the thumb side (radial deviation) and little‑finger side (ulnar deviation). Ensure the wrist joint is centered in the frame."
+  },
+  {
+    "joint_id": "hip_flexion_extension",
+    "joint_name": "Hip",
+    "movement": "Flexion/Extension",
+    "neutral_pose": "Stand upright with pelvis in neutral, feet hip‑width apart, knees fully extended (0°).",
+    "camera_orientation": "Position yourself sideways to the camera so the sagittal plane is perpendicular to the lens. Keeping the pelvis stable, lift the leg forward (hip flexion) or extend it backward (hip extension) without bending the trunk. Make sure the entire lower limb is visible."
+  },
+  {
+    "joint_id": "hip_abduction_adduction",
+    "joint_name": "Hip",
+    "movement": "Abduction/Adduction",
+    "neutral_pose": "Stand upright facing the camera with feet together and knees straight; pelvis remains level.",
+    "camera_orientation": "Face the camera directly. From neutral, move the leg laterally away from the midline (abduction) and return toward or across the midline (adduction). Keep the trunk upright and avoid lateral leaning."
+  },
+  {
+    "joint_id": "hip_internal_external_rotation",
+    "joint_name": "Hip",
+    "movement": "Internal/External Rotation",
+    "neutral_pose": "Sit on a chair or stand with the hip and knee flexed to 90°, foot off the ground. The femur points forward and knee is aligned with hip.",
+    "camera_orientation": "Face the camera. Keeping the thigh vertical and knee at 90°, rotate the lower leg inward (foot moves outward) for hip external rotation and rotate the lower leg outward (foot moves inward) for internal rotation. Ensure the pelvis and thigh remain stationary; the camera should capture the entire lower limb in this seated position."
+  },
+  {
+    "joint_id": "knee_flexion_extension",
+    "joint_name": "Knee",
+    "movement": "Flexion/Extension",
+    "neutral_pose": "Stand or sit with the leg fully extended (0°). When seated, thighs are parallel to floor and knees at 90° before movement.",
+    "camera_orientation": "Position yourself sideways to the camera with the knee to be measured closest to the lens. For standing measurements, lift the foot toward the buttocks (flexion) and return to full extension. For seated measurements, extend the knee from 90° to 0°. Ensure the entire leg is captured. Smartphones should be placed roughly 5–7 ft away at thigh height to capture the whole limb【346110976837468†L90-L99】."
+  },
+  {
+    "joint_id": "ankle_dorsiflexion_plantarflexion",
+    "joint_name": "Ankle",
+    "movement": "Dorsiflexion/Plantarflexion",
+    "neutral_pose": "Stand or sit with knee flexed to 90° and ankle at 90° (neutral); foot flat on the floor.",
+    "camera_orientation": "Place yourself sideways to the camera so the sagittal plane is perpendicular to the lens. Keeping the heel on the ground, lift the forefoot toward the shin (dorsiflexion) or point the toes downward (plantarflexion). Ensure the foot and ankle are visible in the frame."
+  },
+  {
+    "joint_id": "ankle_inversion_eversion",
+    "joint_name": "Ankle",
+    "movement": "Inversion/Eversion",
+    "neutral_pose": "Stand or sit with the foot flat on the ground, ankle at 90°, and knee extended.",
+    "camera_orientation": "Face the camera with the foot clearly visible. Keeping the heel on the ground, roll the sole inward (inversion) and outward (eversion) without moving the knee."
+  },
+  {
+    "joint_id": "cervical_flexion_extension",
+    "joint_name": "Cervical Spine (Neck)",
+    "movement": "Flexion/Extension",
+    "neutral_pose": "Sit or stand upright with head in neutral alignment (earlobe aligned over shoulder).",
+    "camera_orientation": "Position yourself sideways to the camera so that your profile is captured. From neutral, tuck your chin and bend your head forward to look down (flexion), then look upward (extension). Keep the trunk stationary and maintain the shoulders relaxed."
+  },
+  {
+    "joint_id": "cervical_lateral_flexion",
+    "joint_name": "Cervical Spine (Neck)",
+    "movement": "Lateral Flexion",
+    "neutral_pose": "Sit or stand upright facing the camera; head and neck in neutral alignment, shoulders relaxed.",
+    "camera_orientation": "Face the camera directly with both ears visible. Without rotating the head, tilt your head toward one shoulder, attempting to bring the ear closer to the shoulder, then return to neutral. Keep the shoulders level."
+  },
+  {
+    "joint_id": "cervical_rotation",
+    "joint_name": "Cervical Spine (Neck)",
+    "movement": "Rotation",
+    "neutral_pose": "Sit or stand upright with head and neck aligned neutrally; shoulders remain relaxed.",
+    "camera_orientation": "Face the camera with your shoulders square to the lens. Rotate your head to look over your left and right shoulders while keeping the trunk stationary. Ensure the camera is at eye level to capture full rotation."
+  },
+  {
+    "joint_id": "thoracolumbar_flexion_extension",
+    "joint_name": "Thoracolumbar Spine",
+    "movement": "Flexion/Extension",
+    "neutral_pose": "Stand upright with feet shoulder‑width apart, arms relaxed at the sides; spine in neutral curvature.",
+    "camera_orientation": "Stand sideways to the camera so the sagittal plane is perpendicular. Bend forward, allowing the spine to flex through the thoracic and lumbar regions (flexion), and arch backward while keeping the pelvis stable (extension). Keep the knees straight and head aligned with the spine."
+  },
+  {
+    "joint_id": "thoracolumbar_lateral_flexion",
+    "joint_name": "Thoracolumbar Spine",
+    "movement": "Lateral Flexion",
+    "neutral_pose": "Stand upright facing the camera with feet shoulder‑width apart and arms at sides.",
+    "camera_orientation": "Face the camera directly. Slide one hand down the side of the thigh toward the knee while the other hand slides up along the opposite side (lateral flexion). Keep the pelvis level and avoid rotating the torso."
+  },
+  {
+    "joint_id": "thoracolumbar_rotation",
+    "joint_name": "Thoracolumbar Spine",
+    "movement": "Rotation",
+    "neutral_pose": "Stand upright with feet shoulder‑width apart. Cross arms over chest or place hands on shoulders to prevent arm movement.",
+    "camera_orientation": "Face the camera directly. Rotate the torso to the left and right while keeping the pelvis stationary. Ensure the camera is directly in front of the subject so the amount of rotation can be visualized."
+  },
+  {
+    "joint_id": "scapular_internal_rotation_hand_back",
+    "joint_name": "Shoulder/Scapula",
+    "movement": "Internal Rotation (Hand Behind Back Method)",
+    "neutral_pose": "Stand upright with arms by the sides. The measurement begins from the arm at 0° abduction and elbow extended.",
+    "camera_orientation": "Turn your back to the camera (or have the camera capture a posterior view). Slide your hand behind your back and reach upward along the spine as far as possible while keeping an upright trunk. The camera should capture the posterior torso and arm to estimate the angle between the forearm and a vertical line【217063514225980†L344-L351】."
+  },
+  {
+    "joint_id": "trunk_pelvic_tilt",
+    "joint_name": "Pelvis/Trunk",
+    "movement": "Anterior/Posterior Pelvic Tilt",
+    "neutral_pose": "Stand upright with feet shoulder‑width apart, knees slightly flexed; pelvis in neutral alignment (ASIS and PSIS level).",
+    "camera_orientation": "Position yourself sideways to the camera so the sagittal plane is perpendicular. Tilt the pelvis forward (anterior tilt) or backward (posterior tilt) while keeping the upper body stable. Keep the camera at hip height to visualize the pelvic motion."
+  }
+]

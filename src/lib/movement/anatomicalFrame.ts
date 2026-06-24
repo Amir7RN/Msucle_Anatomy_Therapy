@@ -53,6 +53,10 @@ export interface AnatomicalFrame {
   origin: Vec3
   /** True when frame was built from world coords; false for the 2-D fallback. */
   is3D: boolean
+  /** 0..1 confidence in the frame. Low when depth (z) looks degenerate or the
+   *  torso anchors are barely visible — lets callers down-weight or skip a
+   *  measurement instead of trusting a bad frame. Optional for back-compat. */
+  quality?: number
 }
 
 // ── Vec3 helpers ────────────────────────────────────────────────────────────
@@ -128,7 +132,20 @@ export function computeAnatomicalFrame(lms: LandmarkSet, minVis = 0.5): Anatomic
     // zAxis = xAxis × yAxis → points OUT of the chest (anterior) for an
     // upright, forward-facing user.
     const zAxis = normalize(cross(xAxis, yAxis))
-    return { yAxis, xAxis, zAxis, origin: midHp, is3D: true }
+    // Frame quality: torso-anchor visibility × a depth-sanity factor. When the
+    // four anchors have almost no z-separation the depth channel is degenerate
+    // (MediaPipe gave up on depth — common when lying down), so plane
+    // separation is unreliable and we flag the frame as low quality.
+    const visQ = Math.min(
+      ls.visibility ?? 0, rs.visibility ?? 0, lh.visibility ?? 0, rh.visibility ?? 0,
+    )
+    const zSpread = Math.max(
+      Math.abs(lsW.z - rsW.z), Math.abs(lhW.z - rhW.z),
+      Math.abs(midSh.z - midHp.z),
+    )
+    const depthQ = Math.min(1, zSpread / 0.04 + 0.4)   // 0.4 floor so in-plane poses still measure
+    const quality = Math.max(0, Math.min(1, visQ)) * Math.max(0.4, Math.min(1, depthQ))
+    return { yAxis, xAxis, zAxis, origin: midHp, is3D: true, quality }
   }
 
   // 2-D fallback. Image y grows DOWNWARD = gravity direction. We flip the
@@ -143,7 +160,10 @@ export function computeAnatomicalFrame(lms: LandmarkSet, minVis = 0.5): Anatomic
   // body is roughly upright). Projections using zAxis in 2-D should be
   // treated as "frontal-only" approximations.
   const zAxis = normalize(cross(xAxis, yAxis))
-  return { yAxis, xAxis, zAxis, origin: midHpI, is3D: false }
+  // 2-D fallback can't separate planes and assumes the user is upright (image
+  // y = gravity). Flag it as low quality so callers prefer the 3-D path and
+  // can refuse plane-decomposed measurements when only this is available.
+  return { yAxis, xAxis, zAxis, origin: midHpI, is3D: false, quality: 0.3 }
 }
 
 // ── Plane projection helpers ───────────────────────────────────────────────
@@ -189,4 +209,78 @@ export function angleBetween(a: Vec3, b: Vec3): number {
 export function angleFromAxisInPlane(v: Vec3, axis: Vec3, planeNormal: Vec3): number {
   const vP = projectOntoPlane(v, planeNormal)
   return angleBetween(vP, axis)
+}
+
+// ── Gravity ─────────────────────────────────────────────────────────────────
+//
+// MediaPipe world landmarks are emitted gravity-aligned (raw +y is DOWN). Our
+// worldVec() flips that so +y = UP. Therefore "up" in world space is simply
+// (0,1,0) and we don't need a separate gravity estimator — but exposing it as
+// a named constant keeps gravity-relative code self-documenting and gives us
+// one place to swap in a smoothed IMU/estimated gravity later if needed.
+export const GRAVITY_UP: Vec3 = { x: 0, y: 1, z: 0 }
+
+// ── Depth reliability ─────────────────────────────────────────────────────────
+//
+// MediaPipe's z (depth) is its weakest output and degrades badly when the
+// subject is non-upright or far from the lens. A 3-D vertex angle that leans on
+// z is then LESS accurate than the plain 2-D image-plane angle (this is why the
+// gait module deliberately uses 2-D for the side-on walk). `depthReliability`
+// scores how much we should trust z for a given set of landmarks: high when
+// they are clearly visible and carry a non-trivial z spread, low otherwise.
+
+function lmRaw(lm: Landmark | undefined): { x: number; y: number; z: number; wx?: number; wy?: number; wz?: number; visibility: number } | null {
+  return lm ?? null
+}
+
+/** 0..1 trust in the depth channel across the given landmark indices. */
+export function depthReliability(lms: LandmarkSet, ...idx: number[]): number {
+  const pts = idx.map((i) => lmRaw(lms[i])).filter(Boolean) as Landmark[]
+  if (pts.length < 2) return 0
+  const haveWorld = pts.every((p) => p.wz !== undefined)
+  if (!haveWorld) return 0
+  const vis = pts.reduce((m, p) => Math.min(m, p.visibility ?? 0), 1)
+  // z spread across the chain, in metres.
+  let zMin = Infinity, zMax = -Infinity
+  for (const p of pts) { const z = p.wz!; if (z < zMin) zMin = z; if (z > zMax) zMax = z }
+  const spread = zMax - zMin
+  const spreadQ = Math.min(1, spread / 0.15)        // 15 cm of depth = full trust
+  return Math.max(0, Math.min(1, vis)) * spreadQ
+}
+
+/**
+ * Adaptive vertex angle at B for A-B-C.
+ *
+ * Computes BOTH the 3-D world-coord angle (camera-rotation invariant, but
+ * sensitive to noisy z) and the 2-D image-plane angle (exact when the motion
+ * is filmed in-plane, wrong when the limb points toward the lens) and blends
+ * them by `depthTrust` (0..1). With reliable depth it trusts 3-D; with poor
+ * depth it falls back to the in-plane 2-D reading. Returns degrees 0..180.
+ *
+ * `inPlane` should be true when the camera setup for this movement films the
+ * motion in its plane (e.g. side-on for a sagittal motion) — then the 2-D
+ * reading is the goniometric truth and we bias toward it on low depth trust.
+ */
+export function adaptiveVertexAngle(
+  a: Landmark, b: Landmark, c: Landmark,
+  depthTrust: number,
+): number {
+  // 2-D image-plane angle.
+  const v1x2 = a.x - b.x, v1y2 = a.y - b.y
+  const v2x2 = c.x - b.x, v2y2 = c.y - b.y
+  const dot2 = v1x2 * v2x2 + v1y2 * v2y2
+  const mag2 = Math.hypot(v1x2, v1y2) * Math.hypot(v2x2, v2y2) + 1e-9
+  const ang2 = (Math.acos(Math.max(-1, Math.min(1, dot2 / mag2))) * 180) / Math.PI
+
+  // 3-D world-coord angle, when present.
+  if (a.wx !== undefined && b.wx !== undefined && c.wx !== undefined) {
+    const v1x = a.wx! - b.wx!, v1y = a.wy! - b.wy!, v1z = a.wz! - b.wz!
+    const v2x = c.wx! - b.wx!, v2y = c.wy! - b.wy!, v2z = c.wz! - b.wz!
+    const dot3 = v1x * v2x + v1y * v2y + v1z * v2z
+    const mag3 = Math.hypot(v1x, v1y, v1z) * Math.hypot(v2x, v2y, v2z) + 1e-9
+    const ang3 = (Math.acos(Math.max(-1, Math.min(1, dot3 / mag3))) * 180) / Math.PI
+    const t = Math.max(0, Math.min(1, depthTrust))
+    return t * ang3 + (1 - t) * ang2
+  }
+  return ang2
 }

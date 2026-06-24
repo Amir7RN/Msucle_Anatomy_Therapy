@@ -66,6 +66,8 @@ interface AtlasState {
 
   // Movement Assessment full-screen
   movementOpen:         boolean
+  // Live 3D Muscle-Activation Twin full-screen
+  twinOpen:             boolean
   /** Number of full-screen overlay modals currently open. When > 0,
    *  the 3D canvas chrome (Movement Screen launcher, schematic overlay,
    *  diagnostic toggle, status badges) is hidden so the modal is the
@@ -144,6 +146,8 @@ interface AtlasState {
   setTriageOpen:        (open: boolean) => void
   toggleMovement:       () => void
   setMovementOpen:      (open: boolean) => void
+  toggleTwin:           () => void
+  setTwinOpen:          (open: boolean) => void
   pushModal:            () => void
   popModal:             () => void
   setFeatureModalToOpen: (key: null | 'battery' | 'program' | 'symmetry') => void
@@ -198,6 +202,7 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   showMuscleDebug:       false,
   triageOpen:            false,
   movementOpen:          false,
+  twinOpen:              false,
   modalOpenCount:        0,
   featureModalToOpen:    null,
   // Baked calibration values — tuned so the 52-mesh muscles align with
@@ -351,6 +356,8 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   setTriageOpen:     (open) => set({ triageOpen: open }),
   toggleMovement:    () => set((s) => ({ movementOpen: !s.movementOpen })),
   setMovementOpen:   (open) => set({ movementOpen: open }),
+  toggleTwin:        () => set((s) => ({ twinOpen: !s.twinOpen })),
+  setTwinOpen:       (open) => set({ twinOpen: open }),
   pushModal:         () => set((s) => ({ modalOpenCount: s.modalOpenCount + 1 })),
   popModal:          () => set((s) => ({ modalOpenCount: Math.max(0, s.modalOpenCount - 1) })),
   setFeatureModalToOpen: (key) => set({ featureModalToOpen: key }),

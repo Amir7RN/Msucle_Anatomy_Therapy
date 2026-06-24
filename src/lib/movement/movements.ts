@@ -14,6 +14,9 @@ import {
   jointAngleDeg, vectorVerticalAngleDeg, dist2D, symmetry, visible,
   LM, type LandmarkSet,
 } from './landmarks'
+import {
+  computeAnatomicalFrame, worldVec, signedAngleInPlane, sub, magnitude,
+} from './anatomicalFrame'
 
 /** A single per-frame metrics snapshot for one movement. */
 export interface MovementMetrics {
@@ -232,15 +235,28 @@ const neckRotation: MovementDef = {
     if (!visible(lms, LM.NOSE, LM.L_EAR, LM.R_EAR, LM.L_SHOULDER, LM.R_SHOULDER)) {
       return { values: {} as Record<string, number>, valid: false, compensations: [] }
     }
-    const midShoulder = midpoint(lms[LM.L_SHOULDER], lms[LM.R_SHOULDER])
-    const earSpread   = Math.abs(lms[LM.L_EAR].x - lms[LM.R_EAR].x) + 1e-6
-    // Approximate rotation: how far the nose has shifted relative to the
-    // mid-shoulder line, normalised by ear spread (=> roughly degrees).
-    const noseShift   = (lms[LM.NOSE].x - midShoulder.x) / earSpread
-    // Right rotation = nose moves right (positive x in image), left rotation = negative.
-    const rotDeg      = Math.atan(noseShift * 2) * 180 / Math.PI
-    // The orchestrator collects the peak in EACH direction — we report
-    // both extremes through min/max sentinels.
+    // Preferred: true transverse-plane rotation from world coords. The ear-to-
+    // ear line is measured against the body's lateral axis in the plane normal
+    // to the spine — this reads actual head rotation in degrees and is robust
+    // to camera tilt and the user not being perfectly square to the lens,
+    // unlike the old nose-x-shift heuristic (which conflated translation,
+    // lateral flexion, and rotation).
+    let rotDeg: number | null = null
+    const frame = computeAnatomicalFrame(lms)
+    if (frame && frame.is3D) {
+      const le = worldVec(lms[LM.L_EAR]), re = worldVec(lms[LM.R_EAR])
+      if (le && re) {
+        rotDeg = signedAngleInPlane(sub(re, le), frame.xAxis, frame.yAxis)
+      }
+    }
+    if (rotDeg === null) {
+      // 2-D fallback (camera-facing only) — previous nose-shift heuristic.
+      const midShoulder = midpoint(lms[LM.L_SHOULDER], lms[LM.R_SHOULDER])
+      const earSpread   = Math.abs(lms[LM.L_EAR].x - lms[LM.R_EAR].x) + 1e-6
+      const noseShift   = (lms[LM.NOSE].x - midShoulder.x) / earSpread
+      rotDeg = Math.atan(noseShift * 2) * 180 / Math.PI
+    }
+    // The orchestrator collects the peak in EACH direction.
     return {
       valid:        true,
       compensations: [],
@@ -430,14 +446,23 @@ const shoulderExternalRotation: MovementDef = {
   analyse(lms) {
     const need = [LM.L_SHOULDER, LM.R_SHOULDER, LM.L_ELBOW, LM.R_ELBOW, LM.L_WRIST, LM.R_WRIST]
     if (!visible(lms, ...need)) return { values: {} as Record<string, number>, valid: false, compensations: [] }
-    // ER angle: forearm rotation above the elbow line.
-    // Use vertical component of elbow→wrist (negative = pointing up = ER).
-    const lUp = -(lms[LM.L_WRIST].y - lms[LM.L_ELBOW].y)   // positive when wrist is higher
-    const rUp = -(lms[LM.R_WRIST].y - lms[LM.R_ELBOW].y)
-    const lForearm = Math.hypot(lms[LM.L_WRIST].x - lms[LM.L_ELBOW].x, lms[LM.L_WRIST].y - lms[LM.L_ELBOW].y) + 1e-6
-    const rForearm = Math.hypot(lms[LM.R_WRIST].x - lms[LM.R_ELBOW].x, lms[LM.R_WRIST].y - lms[LM.R_ELBOW].y) + 1e-6
-    const lER = Math.asin(Math.max(-1, Math.min(1, lUp / lForearm))) * 180 / Math.PI
-    const rER = Math.asin(Math.max(-1, Math.min(1, rUp / rForearm))) * 180 / Math.PI
+    // ER angle: how far the forearm has rotated UP from horizontal at 90/90.
+    // Measure the forearm's elevation against gravity using WORLD coords when
+    // available (robust to camera tilt / body rotation), falling back to image
+    // y only when world coords are missing.
+    const forearmElevation = (elbow: number, wrist: number): number => {
+      const e = worldVec(lms[elbow]), w = worldVec(lms[wrist])
+      if (e && w) {
+        const v = sub(w, e)
+        const len = magnitude(v) + 1e-6
+        return v.y / len                        // world +y = up; +ve = wrist above elbow
+      }
+      const up = -(lms[wrist].y - lms[elbow].y)  // image fallback (y grows down)
+      const len = Math.hypot(lms[wrist].x - lms[elbow].x, lms[wrist].y - lms[elbow].y) + 1e-6
+      return up / len
+    }
+    const lER = Math.asin(Math.max(-1, Math.min(1, forearmElevation(LM.L_ELBOW, LM.L_WRIST)))) * 180 / Math.PI
+    const rER = Math.asin(Math.max(-1, Math.min(1, forearmElevation(LM.R_ELBOW, LM.R_WRIST)))) * 180 / Math.PI
     // Map [-90, +90] → [0, 180] then take "above-horizontal" portion as ER degrees.
     const lDeg = Math.max(0, lER)
     const rDeg = Math.max(0, rER)

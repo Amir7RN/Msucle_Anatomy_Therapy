@@ -13,16 +13,23 @@
  */
 
 import React from 'react'
-import { Activity, Sparkles, Scan } from 'lucide-react'
+import { Activity, Sparkles, Scan, Flame } from 'lucide-react'
 import { useAtlasStore } from '../../store/atlasStore'
 
 export function FeatureLauncher() {
   const setFeatureModalToOpen = useAtlasStore((s) => s.setFeatureModalToOpen)
+  const setTwinOpen           = useAtlasStore((s) => s.setTwinOpen)
   const modalOpenCount        = useAtlasStore((s) => s.modalOpenCount)
   // Hide while any modal is up so we don't clutter overlay-on-overlay.
   if (modalOpenCount > 0) return null
   return (
     <div className="hidden md:flex absolute right-4 top-4 z-20 flex-col gap-2">
+      <FeatureButton
+        icon={<Flame size={14} />}
+        label="Live Muscle Twin"
+        tone="violet"
+        onClick={() => setTwinOpen(true)}
+      />
       <FeatureButton
         icon={<Activity size={14} />}
         label="Movement Assessment"
@@ -50,12 +57,13 @@ function FeatureButton({
 }: {
   icon:    React.ReactNode
   label:   string
-  tone:    'emerald' | 'orange' | 'cyan'
+  tone:    'emerald' | 'orange' | 'cyan' | 'violet'
   onClick: () => void
 }) {
   const toneClass =
     tone === 'emerald' ? 'border-emerald-400/50 text-emerald-300 hover:bg-emerald-500/15 ring-emerald-500/20'
     : tone === 'orange' ? 'border-orange-400/50 text-orange-300 hover:bg-orange-500/15 ring-orange-500/20'
+    : tone === 'violet' ? 'border-violet-400/50 text-violet-300 hover:bg-violet-500/15 ring-violet-500/20'
     :                     'border-cyan-400/50 text-cyan-300 hover:bg-cyan-500/15 ring-cyan-500/20'
   return (
     <button

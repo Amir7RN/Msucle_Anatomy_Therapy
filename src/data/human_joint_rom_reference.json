@@ -1,0 +1,438 @@
+[
+  {
+    "joint_id": "ankle_dorsiflexion_plantarflexion",
+    "joint_name": "Ankle (Talocrural) Joint",
+    "movement": "Dorsiflexion",
+    "normal_range_degrees": [
+      0,
+      20
+    ],
+    "citation": [
+      "\u3010443641179019477\u2020L0-L104\u3011",
+      "\u3010664425798260410\u2020L192-L221\u3011"
+    ]
+  },
+  {
+    "joint_id": "ankle_dorsiflexion_plantarflexion",
+    "joint_name": "Ankle (Talocrural) Joint",
+    "movement": "Plantarflexion",
+    "normal_range_degrees": [
+      0,
+      50
+    ],
+    "citation": [
+      "\u3010443641179019477\u2020L0-L104\u3011",
+      "\u3010664425798260410\u2020L192-L221\u3011"
+    ]
+  },
+  {
+    "joint_id": "ankle_inversion_eversion",
+    "joint_name": "Subtalar/Transverse Tarsal Joints",
+    "movement": "Inversion",
+    "normal_range_degrees": [
+      0,
+      35
+    ],
+    "citation": [
+      "\u3010664425798260410\u2020L192-L221\u3011"
+    ]
+  },
+  {
+    "joint_id": "ankle_inversion_eversion",
+    "joint_name": "Subtalar/Transverse Tarsal Joints",
+    "movement": "Eversion",
+    "normal_range_degrees": [
+      0,
+      15
+    ],
+    "citation": [
+      "\u3010664425798260410\u2020L192-L221\u3011"
+    ]
+  },
+  {
+    "joint_id": "elbow_flexion_extension",
+    "joint_name": "Elbow Joint",
+    "movement": "Flexion",
+    "normal_range_degrees": [
+      0,
+      150
+    ],
+    "citation": [
+      "\u3010443641179019477\u2020L0-L104\u3011",
+      "\u3010326626114556719\u2020L8-L18\u3011"
+    ]
+  },
+  {
+    "joint_id": "elbow_flexion_extension",
+    "joint_name": "Elbow Joint",
+    "movement": "Extension",
+    "normal_range_degrees": [
+      0,
+      0
+    ],
+    "citation": [
+      "\u3010443641179019477\u2020L0-L104\u3011",
+      "\u3010326626114556719\u2020L8-L18\u3011"
+    ]
+  },
+  {
+    "joint_id": "forearm_supination_pronation",
+    "joint_name": "Forearm (Radioulnar Joints)",
+    "movement": "Supination",
+    "normal_range_degrees": [
+      0,
+      85
+    ],
+    "citation": [
+      "\u3010326626114556719\u2020L8-L18\u3011"
+    ]
+  },
+  {
+    "joint_id": "forearm_supination_pronation",
+    "joint_name": "Forearm (Radioulnar Joints)",
+    "movement": "Pronation",
+    "normal_range_degrees": [
+      0,
+      70
+    ],
+    "citation": [
+      "\u3010326626114556719\u2020L8-L18\u3011"
+    ]
+  },
+  {
+    "joint_id": "hip_abduction_adduction",
+    "joint_name": "Hip Joint",
+    "movement": "Abduction",
+    "normal_range_degrees": [
+      0,
+      40
+    ],
+    "citation": [
+      "\u3010465818924941472\u2020L40-L52\u3011",
+      "\u3010664425798260410\u2020L192-L221\u3011",
+      "\u3010443641179019477\u2020L0-L104\u3011"
+    ]
+  },
+  {
+    "joint_id": "hip_abduction_adduction",
+    "joint_name": "Hip Joint",
+    "movement": "Adduction",
+    "normal_range_degrees": [
+      0,
+      20
+    ],
+    "citation": [
+      "\u3010465818924941472\u2020L40-L52\u3011",
+      "\u3010664425798260410\u2020L192-L221\u3011",
+      "\u3010443641179019477\u2020L0-L104\u3011"
+    ]
+  },
+  {
+    "joint_id": "hip_flexion_extension",
+    "joint_name": "Hip Joint",
+    "movement": "Flexion",
+    "normal_range_degrees": [
+      0,
+      120
+    ],
+    "citation": [
+      "\u3010465818924941472\u2020L40-L52\u3011",
+      "\u3010664425798260410\u2020L192-L221\u3011",
+      "\u3010443641179019477\u2020L0-L104\u3011"
+    ]
+  },
+  {
+    "joint_id": "hip_flexion_extension",
+    "joint_name": "Hip Joint",
+    "movement": "Extension",
+    "normal_range_degrees": [
+      0,
+      20
+    ],
+    "citation": [
+      "\u3010465818924941472\u2020L40-L52\u3011",
+      "\u3010664425798260410\u2020L192-L221\u3011",
+      "\u3010443641179019477\u2020L0-L104\u3011"
+    ]
+  },
+  {
+    "joint_id": "hip_internal_external_rotation",
+    "joint_name": "Hip Joint",
+    "movement": "Internal Rotation",
+    "normal_range_degrees": [
+      0,
+      40
+    ],
+    "citation": [
+      "\u3010465818924941472\u2020L40-L52\u3011",
+      "\u3010664425798260410\u2020L192-L221\u3011"
+    ]
+  },
+  {
+    "joint_id": "hip_internal_external_rotation",
+    "joint_name": "Hip Joint",
+    "movement": "External Rotation",
+    "normal_range_degrees": [
+      0,
+      45
+    ],
+    "citation": [
+      "\u3010465818924941472\u2020L40-L52\u3011",
+      "\u3010664425798260410\u2020L192-L221\u3011"
+    ]
+  },
+  {
+    "joint_id": "knee_flexion_extension",
+    "joint_name": "Knee Joint",
+    "movement": "Flexion",
+    "normal_range_degrees": [
+      0,
+      135
+    ],
+    "citation": [
+      "\u3010443641179019477\u2020L0-L104\u3011",
+      "\u3010664425798260410\u2020L192-L221\u3011"
+    ]
+  },
+  {
+    "joint_id": "knee_flexion_extension",
+    "joint_name": "Knee Joint",
+    "movement": "Extension",
+    "normal_range_degrees": [
+      0,
+      0
+    ],
+    "citation": [
+      "\u3010443641179019477\u2020L0-L104\u3011",
+      "\u3010664425798260410\u2020L192-L221\u3011"
+    ]
+  },
+  {
+    "joint_id": "shoulder_abduction_adduction",
+    "joint_name": "Shoulder (Glenohumeral) Joint",
+    "movement": "Abduction",
+    "normal_range_degrees": [
+      0,
+      180
+    ],
+    "citation": [
+      "\u3010664407670350407\u2020L200-L259\u3011",
+      "\u3010443641179019477\u2020L0-L104\u3011"
+    ]
+  },
+  {
+    "joint_id": "shoulder_abduction_adduction",
+    "joint_name": "Shoulder (Glenohumeral) Joint",
+    "movement": "Adduction",
+    "normal_range_degrees": [
+      0,
+      40
+    ],
+    "citation": [
+      "\u3010664407670350407\u2020L200-L259\u3011",
+      "\u3010443641179019477\u2020L0-L104\u3011"
+    ]
+  },
+  {
+    "joint_id": "shoulder_flexion_extension",
+    "joint_name": "Shoulder (Glenohumeral) Joint",
+    "movement": "Flexion",
+    "normal_range_degrees": [
+      0,
+      180
+    ],
+    "citation": [
+      "\u3010664407670350407\u2020L200-L259\u3011",
+      "\u3010443641179019477\u2020L0-L104\u3011"
+    ]
+  },
+  {
+    "joint_id": "shoulder_flexion_extension",
+    "joint_name": "Shoulder (Glenohumeral) Joint",
+    "movement": "Extension",
+    "normal_range_degrees": [
+      0,
+      60
+    ],
+    "citation": [
+      "\u3010664407670350407\u2020L200-L259\u3011",
+      "\u3010443641179019477\u2020L0-L104\u3011"
+    ]
+  },
+  {
+    "joint_id": "shoulder_rotation",
+    "joint_name": "Shoulder (Glenohumeral) Joint",
+    "movement": "Internal Rotation",
+    "normal_range_degrees": [
+      0,
+      90
+    ],
+    "citation": [
+      "\u3010664407670350407\u2020L200-L259\u3011",
+      "\u3010443641179019477\u2020L0-L104\u3011"
+    ]
+  },
+  {
+    "joint_id": "shoulder_rotation",
+    "joint_name": "Shoulder (Glenohumeral) Joint",
+    "movement": "External Rotation",
+    "normal_range_degrees": [
+      0,
+      90
+    ],
+    "citation": [
+      "\u3010664407670350407\u2020L200-L259\u3011",
+      "\u3010443641179019477\u2020L0-L104\u3011"
+    ]
+  },
+  {
+    "joint_id": "spine_cervical_flexion_extension",
+    "joint_name": "Cervical Spine",
+    "movement": "Flexion",
+    "normal_range_degrees": [
+      0,
+      60
+    ],
+    "citation": [
+      "\u3010350459405806109\u2020L33-L41\u3011"
+    ]
+  },
+  {
+    "joint_id": "spine_cervical_flexion_extension",
+    "joint_name": "Cervical Spine",
+    "movement": "Extension",
+    "normal_range_degrees": [
+      0,
+      60
+    ],
+    "citation": [
+      "\u3010350459405806109\u2020L33-L41\u3011"
+    ]
+  },
+  {
+    "joint_id": "spine_cervical_lateral_flexion",
+    "joint_name": "Cervical Spine",
+    "movement": "Lateral Flexion",
+    "normal_range_degrees": [
+      0,
+      45
+    ],
+    "citation": [
+      "\u3010350459405806109\u2020L33-L41\u3011"
+    ]
+  },
+  {
+    "joint_id": "spine_cervical_rotation",
+    "joint_name": "Cervical Spine",
+    "movement": "Rotation",
+    "normal_range_degrees": [
+      0,
+      70
+    ],
+    "citation": [
+      "\u3010350459405806109\u2020L33-L41\u3011"
+    ]
+  },
+  {
+    "joint_id": "spine_thoracolumbar_flexion_extension",
+    "joint_name": "Thoracic/Lumbar Spine",
+    "movement": "Flexion",
+    "normal_range_degrees": [
+      0,
+      70
+    ],
+    "citation": [
+      "\u3010350459405806109\u2020L37-L41\u3011"
+    ]
+  },
+  {
+    "joint_id": "spine_thoracolumbar_flexion_extension",
+    "joint_name": "Thoracic/Lumbar Spine",
+    "movement": "Extension",
+    "normal_range_degrees": [
+      0,
+      40
+    ],
+    "citation": [
+      "\u3010350459405806109\u2020L37-L41\u3011"
+    ]
+  },
+  {
+    "joint_id": "spine_thoracolumbar_lateral_flexion",
+    "joint_name": "Thoracic/Lumbar Spine",
+    "movement": "Lateral Flexion",
+    "normal_range_degrees": [
+      0,
+      35
+    ],
+    "citation": [
+      "\u3010350459405806109\u2020L37-L41\u3011"
+    ]
+  },
+  {
+    "joint_id": "spine_thoracolumbar_rotation",
+    "joint_name": "Thoracic/Lumbar Spine",
+    "movement": "Rotation",
+    "normal_range_degrees": [
+      0,
+      40
+    ],
+    "citation": [
+      "\u3010350459405806109\u2020L37-L41\u3011"
+    ]
+  },
+  {
+    "joint_id": "wrist_flexion_extension",
+    "joint_name": "Wrist (Radiocarpal) Joint",
+    "movement": "Flexion",
+    "normal_range_degrees": [
+      0,
+      80
+    ],
+    "citation": [
+      "\u3010443641179019477\u2020L0-L104\u3011",
+      "\u3010326626114556719\u2020L8-L18\u3011",
+      "\u3010664425798260410\u2020L192-L221\u3011"
+    ]
+  },
+  {
+    "joint_id": "wrist_flexion_extension",
+    "joint_name": "Wrist (Radiocarpal) Joint",
+    "movement": "Extension",
+    "normal_range_degrees": [
+      0,
+      70
+    ],
+    "citation": [
+      "\u3010443641179019477\u2020L0-L104\u3011",
+      "\u3010326626114556719\u2020L8-L18\u3011",
+      "\u3010664425798260410\u2020L192-L221\u3011"
+    ]
+  },
+  {
+    "joint_id": "wrist_radial_ulnar_deviation",
+    "joint_name": "Wrist (Radiocarpal) Joint",
+    "movement": "Radial Deviation",
+    "normal_range_degrees": [
+      0,
+      20
+    ],
+    "citation": [
+      "\u3010326626114556719\u2020L8-L18\u3011",
+      "\u3010664425798260410\u2020L192-L221\u3011"
+    ]
+  },
+  {
+    "joint_id": "wrist_radial_ulnar_deviation",
+    "joint_name": "Wrist (Radiocarpal) Joint",
+    "movement": "Ulnar Deviation",
+    "normal_range_degrees": [
+      0,
+      30
+    ],
+    "citation": [
+      "\u3010326626114556719\u2020L8-L18\u3011",
+      "\u3010664425798260410\u2020L192-L221\u3011"
+    ]
+  }
+]

@@ -30,6 +30,9 @@ import {
   signedAngleInPlane,
   angleBetween,
   angleFromAxisInPlane,
+  adaptiveVertexAngle,
+  depthReliability,
+  GRAVITY_UP,
   sub,
   scale,
   midpoint,
@@ -37,6 +40,14 @@ import {
   type Vec3,
   type AnatomicalFrame,
 } from './anatomicalFrame'
+import {
+  classifyOrientation, isUpright,
+  type OrientationEstimate, type BodyOrientation,
+} from './bodyOrientation'
+import { applyBaseline, type CalibrationBaseline } from './calibration'
+import {
+  clampToRom, measurementConfidence, MeasurementStabilizer,
+} from './constraints'
 
 // Soft visibility threshold for ROM measurement.
 //
@@ -102,6 +113,11 @@ export interface NeutralPoseStatus {
 export function verifyNeutralPose(
   lms:     LandmarkSet,
   segment: 'upper_body' | 'lower_body' | 'trunk' | 'neck',
+  /** Expected posture for this movement. Defaults to 'standing' so existing
+   *  callers behave as before; pass 'seated'/'lying' for movements whose
+   *  reference neutral pose is seated (hip rotation) or lying (supine /
+   *  side-lying exercises) so we verify the RIGHT neutral, not a standing one. */
+  expectedPosture: 'standing' | 'seated' | 'lying' | 'any' = 'standing',
 ): NeutralPoseStatus {
   const checks: NeutralPoseStatus['checks'] = []
 
@@ -120,17 +136,41 @@ export function verifyNeutralPose(
   })
   if (!coreVisible) return { ok: false, checks }
 
-  // 1. Trunk vertical — mid-shoulder X should be close to mid-hip X.
-  // Image x is in [0..1]; a delta of 0.05 (~5% of frame width) is plenty
-  // of tolerance for natural sway.
-  const midShX = (lShoulder.x + rShoulder.x) / 2
-  const midHpX = (lHip.x + rHip.x) / 2
-  const trunkVertical = Math.abs(midShX - midHpX) < 0.06
-  checks.push({
-    name: 'Stand upright',
-    ok:   trunkVertical,
-    hint: 'Stand tall — align your shoulders over your hips.',
-  })
+  // Posture check is orientation-aware. We classify the actual body
+  // orientation from world coords and confirm it matches what the movement
+  // expects — so a seated hip-rotation test or a side-lying clamshell isn't
+  // rejected for "not standing upright", and a standing test isn't accepted
+  // while the user is slumped on the floor.
+  const orient = classifyOrientation(lms)
+  if (expectedPosture === 'standing') {
+    const midShX = (lShoulder.x + rShoulder.x) / 2
+    const midHpX = (lHip.x + rHip.x) / 2
+    // Accept when either the image-space trunk is vertical OR the 3-D
+    // classifier says standing — robust to camera tilt.
+    const trunkVertical = Math.abs(midShX - midHpX) < 0.06 ||
+      (orient.is3D && orient.trunkTilt < 25)
+    checks.push({
+      name: 'Stand upright',
+      ok:   trunkVertical,
+      hint: 'Stand tall — align your shoulders over your hips.',
+    })
+  } else if (expectedPosture === 'seated') {
+    const ok = !orient.is3D || orient.orientation === 'seated' || orient.trunkTilt < 35
+    checks.push({
+      name: 'Sit upright',
+      ok,
+      hint: 'Sit tall facing the camera, hip and knee bent about ninety degrees.',
+    })
+  } else if (expectedPosture === 'lying') {
+    const ok = !orient.is3D || orient.trunkTilt > 50
+    checks.push({
+      name: 'Lie down in position',
+      ok,
+      hint: 'Get into the lying start position shown, body settled and still.',
+    })
+  }
+  // expectedPosture === 'any' → no posture gate (used when orientation is
+  // irrelevant to the measurement).
 
   if (segment === 'upper_body' || segment === 'trunk') {
     // 2. Arms by sides — wrists below shoulders, close to hips.
@@ -413,8 +453,12 @@ function measureElbowFlexion(lms: LandmarkSet, side: 'L' | 'R'): number | null {
   const EL = side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW
   const WR = side === 'L' ? LM.L_WRIST    : LM.R_WRIST
   if (!visAnchor(lms, SH, EL) || !vis(lms, WR)) return null
-  const ang = jointAngleDeg(lms[SH], lms[EL], lms[WR])  // 0..180 at the elbow
-  return Math.max(0, 180 - ang)                          // 0 = straight, 150+ = full flex
+  // Depth-adaptive: trust the 3-D angle only as far as MediaPipe's depth is
+  // believable for this chain; otherwise lean on the in-plane 2-D reading
+  // (the elbow is usually filmed side-on, where 2-D is goniometrically exact).
+  const dr  = depthReliability(lms, SH, EL, WR)
+  const ang = adaptiveVertexAngle(lms[SH], lms[EL], lms[WR], dr)  // 0..180 at the elbow
+  return Math.max(0, 180 - ang)                                   // 0 = straight, 150+ = full flex
 }
 
 // ── Hip flexion ─────────────────────────────────────────────────────────────
@@ -509,7 +553,8 @@ function measureKneeFlexion(lms: LandmarkSet, side: 'L' | 'R'): number | null {
   const KN = side === 'L' ? LM.L_KNEE  : LM.R_KNEE
   const AN = side === 'L' ? LM.L_ANKLE : LM.R_ANKLE
   if (!vis(lms, HP, KN, AN)) return null
-  const ang = jointAngleDeg(lms[HP], lms[KN], lms[AN])
+  const dr  = depthReliability(lms, HP, KN, AN)
+  const ang = adaptiveVertexAngle(lms[HP], lms[KN], lms[AN], dr)
   return Math.max(0, 180 - ang)
 }
 
@@ -523,7 +568,10 @@ function measureAnkleDorsiflexion(lms: LandmarkSet, side: 'L' | 'R'): number | n
   const AN = side === 'L' ? LM.L_ANKLE    : LM.R_ANKLE
   const FT = side === 'L' ? LM.L_FOOT_IDX : LM.R_FOOT_IDX
   if (!vis(lms, KN, AN, FT)) return null
-  const ang = jointAngleDeg(lms[KN], lms[AN], lms[FT])   // 0..180 at ankle
+  // Ankle is filmed side-on → image plane IS the sagittal plane, so the 2-D
+  // reading is exact and depth (very noisy at the foot) should be down-weighted.
+  const dr  = Math.min(0.5, depthReliability(lms, KN, AN, FT))
+  const ang = adaptiveVertexAngle(lms[KN], lms[AN], lms[FT], dr)   // 0..180 at ankle
   // Neutral standing ≈ 90°. Dorsiflexion drives angle below 90°.
   return Math.max(0, 90 - ang)
 }
@@ -533,7 +581,8 @@ function measureAnklePlantarflexion(lms: LandmarkSet, side: 'L' | 'R'): number |
   const AN = side === 'L' ? LM.L_ANKLE    : LM.R_ANKLE
   const FT = side === 'L' ? LM.L_FOOT_IDX : LM.R_FOOT_IDX
   if (!vis(lms, KN, AN, FT)) return null
-  const ang = jointAngleDeg(lms[KN], lms[AN], lms[FT])
+  const dr  = Math.min(0.5, depthReliability(lms, KN, AN, FT))
+  const ang = adaptiveVertexAngle(lms[KN], lms[AN], lms[FT], dr)
   return Math.max(0, ang - 90)
 }
 
@@ -610,9 +659,10 @@ function pelvicFrame(lms: LandmarkSet): AnatomicalFrame | null {
   if (!vis(lms, LM.L_HIP, LM.R_HIP)) return null
   const lh = lmVec(lms[LM.L_HIP]), rh = lmVec(lms[LM.R_HIP])
   if (!lh || !rh) return null
-  // Pelvic yAxis = world UP (assumes user is standing). In our convention
-  // (+y = up) that's just (0, 1, 0).
-  const yAxis: Vec3 = { x: 0, y: 1, z: 0 }
+  // Pelvic yAxis = world UP (gravity). Valid for trunk movements, which the
+  // reference prescribes standing; the readJointMovement() gate refuses trunk
+  // measurements when the user is lying so this assumption always holds.
+  const yAxis: Vec3 = GRAVITY_UP
   // Pelvic xAxis = lateral hip line, orthogonalised to yAxis.
   const hipLine = sub(rh, lh)
   const xRaw = sub(hipLine, scale(yAxis, hipLine.y))
@@ -1090,4 +1140,120 @@ export const MUSCLE_TO_MOVEMENTS: Record<string, string[]> = {
 export function getMovementsForMuscle(muscleId: string): JointMovement[] {
   const ids = MUSCLE_TO_MOVEMENTS[muscleId] ?? []
   return ids.map((id) => JOINT_MOVEMENTS[id]).filter(Boolean)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  readJointMovement — the orientation-aware, calibrated, confidence-scored
+//  measurement entry point.
+//
+//  This is the recommended way to read a joint angle live. It wraps the raw
+//  per-movement measure with the full accuracy stack:
+//    • orientation gating  (refuse a trunk test while the user is lying, etc.)
+//    • per-user calibration baseline subtraction (zeroes the goniometer)
+//    • temporal plausibility (rejects single-frame jumps) + stability
+//    • ROM clamping to the human_joint_rom_reference bounds
+//    • a fused 0..1 confidence the UI can surface
+//
+//  The bare `def.measure()` functions remain for back-compat; new code should
+//  prefer readJointMovement so every reading benefits from the stack.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface JointReading {
+  /** Raw measured angle before any correction (deg). */
+  raw:           number
+  /** Calibrated, stabilized, ROM-clamped angle (deg) — the value to show. */
+  value:         number
+  /** 0..1 fused measurement confidence. */
+  confidence:    number
+  band:          'strong' | 'fair' | 'weak'
+  /** True when the reading exceeds the normal able-bodied max (plausible). */
+  beyondNormal:  boolean
+  /** False when the user's posture is incompatible with this test. */
+  orientationOk: boolean
+  /** The orientation we observed this frame. */
+  orientation:   BodyOrientation
+}
+
+export interface ReadOptions {
+  baseline?:    CalibrationBaseline | null
+  /** Pre-computed orientation (from an OrientationTracker) to avoid
+   *  re-classifying every call; falls back to a per-frame classification. */
+  orientation?: OrientationEstimate
+  /** Per-(movement,side) temporal stabilizer; pass tMs too. */
+  stabilizer?:  MeasurementStabilizer
+  tMs?:         number
+}
+
+/** Expected posture per movement (drives orientation gating). */
+function expectedPostureFor(def: JointMovement): 'upright' | 'lying' | 'any' {
+  if (def.segment === 'trunk') return 'upright'
+  if (def.id === 'hip_rotation') return 'upright'   // seated, but trunk is upright
+  return 'any'
+}
+
+function minVisibility(lms: LandmarkSet, idx: number[]): number {
+  let m = 1
+  for (const i of idx) m = Math.min(m, lms[i]?.visibility ?? 0)
+  return m
+}
+
+export function readJointMovement(
+  movementId: string,
+  lms:        LandmarkSet,
+  side:       'L' | 'R',
+  opts:       ReadOptions = {},
+): JointReading | null {
+  const def = JOINT_MOVEMENTS[movementId]
+  if (!def) return null
+
+  const orient = opts.orientation ?? classifyOrientation(lms)
+
+  // Orientation gate.
+  let orientationOk = true
+  const expect = expectedPostureFor(def)
+  if (orient.is3D) {
+    if (expect === 'upright' && !isUpright(orient.orientation)) orientationOk = false
+    if (expect === 'lying'   &&  isUpright(orient.orientation)) orientationOk = false
+  }
+
+  const raw = def.measure(lms, side)
+  if (raw === null || Number.isNaN(raw)) return null
+
+  // Calibration baseline (zero the goniometer on the user's neutral).
+  let value = applyBaseline(raw, movementId, side, opts.baseline ?? null, orient.orientation)
+
+  // Temporal plausibility + stability.
+  let stability = 0.6
+  if (opts.stabilizer && opts.tMs !== undefined) {
+    const s = opts.stabilizer.push(value, opts.tMs)
+    value = s.value
+    stability = s.stability
+  }
+
+  // ROM clamp against the reference bounds.
+  const clamp = clampToRom(movementId, value)
+  value = clamp.value
+
+  // Confidence fusion.
+  const frame = computeAnatomicalFrame(lms)
+  const vis   = minVisibility(lms, def.calibrationLandmarks)
+  const dr    = depthReliability(lms, ...def.calibrationLandmarks)
+  let confidence = measurementConfidence({
+    frameQuality:     frame?.quality,
+    visibility:       vis,
+    depthReliability: dr,
+    stability,
+    clamped:          clamp.clamped,
+  })
+  if (!orientationOk) confidence = Math.min(confidence, 0.25)
+
+  return {
+    raw,
+    value,
+    confidence,
+    band:          confidence >= 0.7 ? 'strong' : confidence >= 0.45 ? 'fair' : 'weak',
+    beyondNormal:  clamp.beyondNormal,
+    orientationOk,
+    orientation:   orient.orientation,
+  }
 }

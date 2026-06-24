@@ -4,6 +4,7 @@ import { LeftSidebar }  from './components/layout/LeftSidebar'
 import { RightPanel }   from './components/layout/RightPanel'
 import { ViewerCanvas } from './components/viewer/ViewerCanvas'
 import { MovementScreen } from './components/movement/MovementScreen'
+import { MuscleTwinView } from './components/movement/MuscleTwinView'
 import { useAtlasStore } from './store/atlasStore'
 import type { CameraPresetKey } from './lib/cameraUtils'
 import { Activity, MessageCircle, Box, Info, X, Sparkles, Scan } from 'lucide-react'
@@ -260,6 +261,9 @@ function AtlasApp() {
 
       {/* Phone-camera Movement Assessment */}
       <MovementScreenMount />
+
+      {/* Live 3-D Muscle-Activation Twin */}
+      <MuscleTwinMount />
     </div>
   )
 }
@@ -304,6 +308,29 @@ function MovementScreenMount() {
   const movementOpen    = useAtlasStore((s) => s.movementOpen)
   const setMovementOpen = useAtlasStore((s) => s.setMovementOpen)
   return <MovementScreen open={movementOpen} onClose={() => setMovementOpen(false)} />
+}
+
+// ── Live Muscle Twin launcher + mount ────────────────────────────────────────
+
+function MuscleTwinLauncher() {
+  const twinOpen   = useAtlasStore((s) => s.twinOpen)
+  const toggleTwin = useAtlasStore((s) => s.toggleTwin)
+  return (
+    <button
+      onClick={toggleTwin}
+      title="Open the Live Muscle Twin"
+      className="absolute right-4 top-16 z-20 flex items-center gap-1.5 rounded-md bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-100 shadow-lg ring-1 ring-cyan-500/40 hover:bg-slate-700"
+    >
+      <Sparkles size={14} />
+      {twinOpen ? 'Twin open' : 'Muscle Twin'}
+    </button>
+  )
+}
+
+function MuscleTwinMount() {
+  const twinOpen    = useAtlasStore((s) => s.twinOpen)
+  const setTwinOpen = useAtlasStore((s) => s.setTwinOpen)
+  return <MuscleTwinView open={twinOpen} onClose={() => setTwinOpen(false)} />
 }
 
 // ── Diagnostic mode toggle (floating button over canvas) ─────────────────────

@@ -223,6 +223,134 @@ export function pickCueFromJoint(
   return cue
 }
 
+/**
+ * Confidence- and motion-aware cue picker.
+ *
+ * Layers pacing on top of pickCue:
+ *   • When measurement confidence is low (bad angle / out of frame) the coach
+ *     stops giving angle cues and instead asks the user to reposition — better
+ *     than confidently coaching a wrong number.
+ *   • While the user is actively MOVING FAST toward the target we hold routine
+ *     cues (don't talk over the motion) but allow a tempo cue if they're
+ *     rushing — so the coach paces the rep instead of nagging mid-swing.
+ *   • In-zone / holding states get the normal reinforcement cadence.
+ */
+export function pickPacedCue(
+  snapshot: FormSnapshot,
+  state:    CueStreamState,
+  opts: {
+    pacer?:       MotionPacer
+    confidence?:  number          // 0..1 from constraints.measurementConfidence
+    peakLookup?:  (jointLabel: string) => number | undefined
+  } = {},
+): CueOutput | null {
+  // Low-confidence guard — coach setup, not a bogus angle.
+  if (opts.confidence !== undefined && opts.confidence < 0.4) {
+    const now = Date.now()
+    if (now - state.lastSpokenAt < Math.max(2500, state.cooldownMs)) return null
+    state.lastKey = 'reposition'; state.lastSpokenAt = now
+    return {
+      text: pick(
+        `Let me get a clearer view — square up to the camera and step into frame.`,
+        `I'm losing your position — adjust so your whole body is in view.`,
+        `Reposition slightly so I can read your angles clearly.`,
+      ),
+      urgent: false, key: 'reposition',
+    }
+  }
+
+  // Tempo: if moving fast, prefer a pacing cue and suppress fiddly angle cues.
+  if (opts.pacer) {
+    const tempo = opts.pacer.tempoCue()
+    if (tempo) {
+      const now = Date.now()
+      if (now - state.lastSpokenAt >= state.cooldownMs && state.lastKey !== tempo.key) {
+        state.lastKey = tempo.key; state.lastSpokenAt = now
+        return tempo
+      }
+      // Holding a tempo cue window — stay quiet rather than stacking cues.
+      if (opts.pacer.isMovingFast()) return null
+    }
+  }
+
+  return pickCue(snapshot, state, opts.peakLookup)
+}
+
 export function createCueStream(cooldownMs = 5000): CueStreamState {
   return { lastKey: null, lastSpokenAt: 0, cooldownMs }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   MotionPacer — rep-tempo + movement-phase tracker.
+
+   Watches the primary joint angle over time, derives a smoothed angular
+   velocity, classifies the movement phase (concentric / eccentric / hold /
+   idle), and decides when the user is rushing so the coach can pace them
+   ("control the lowering", "slow it down"). Good tempo is one of the biggest
+   levers in rehab adherence and safety — fast, ballistic reps both reduce
+   stimulus and raise injury risk — and no single-camera competitor paces tempo
+   from live pose.
+   ────────────────────────────────────────────────────────────────────── */
+
+export type MotionPhase = 'concentric' | 'eccentric' | 'hold' | 'idle'
+
+// Above this smoothed |velocity| (deg/s) the rep is "fast" and we suggest
+// slowing down. A controlled therapeutic rep moves at roughly 30–90 °/s.
+const FAST_DEG_PER_S = 160
+// Below this the joint is effectively still (a hold).
+const STILL_DEG_PER_S = 8
+
+export class MotionPacer {
+  private lastAngle: number | null = null
+  private lastT: number | null = null
+  private vel = 0                       // smoothed deg/s (signed: + = increasing angle)
+  private phase: MotionPhase = 'idle'
+  private lastTempoAt = 0
+
+  /** Feed the current primary angle (deg) each frame. */
+  update(angle: number, tMs: number): { phase: MotionPhase; velocity: number } {
+    if (this.lastAngle === null || this.lastT === null) {
+      this.lastAngle = angle; this.lastT = tMs
+      return { phase: 'idle', velocity: 0 }
+    }
+    const dt = Math.max(1e-3, (tMs - this.lastT) / 1000)
+    const raw = (angle - this.lastAngle) / dt
+    // Low-pass the velocity so a single noisy frame doesn't flip the phase.
+    this.vel = 0.6 * this.vel + 0.4 * raw
+    this.lastAngle = angle; this.lastT = tMs
+
+    const speed = Math.abs(this.vel)
+    if (speed < STILL_DEG_PER_S)      this.phase = 'hold'
+    else if (this.vel > 0)            this.phase = 'concentric'   // opening / increasing ROM
+    else                              this.phase = 'eccentric'    // returning
+    return { phase: this.phase, velocity: this.vel }
+  }
+
+  isMovingFast(): boolean { return Math.abs(this.vel) > FAST_DEG_PER_S }
+  currentPhase(): MotionPhase { return this.phase }
+
+  /** A pacing cue when the user is rushing — debounced to ≥ 3 s. */
+  tempoCue(): CueOutput | null {
+    if (!this.isMovingFast()) return null
+    const now = Date.now()
+    if (now - this.lastTempoAt < 3000) return null
+    this.lastTempoAt = now
+    const eccentric = this.phase === 'eccentric'
+    return {
+      text: eccentric
+        ? pick(`Control the lowering — slow and smooth.`,
+               `Ease it back slowly — resist on the way down.`,
+               `Slow the return — own every inch.`)
+        : pick(`Slow it down — smooth and controlled.`,
+               `Ease the speed — quality over momentum.`,
+               `Take it slower — no swinging.`),
+      urgent: false,
+      key:    eccentric ? 'tempo-ecc' : 'tempo-con',
+    }
+  }
+
+  reset(): void {
+    this.lastAngle = null; this.lastT = null
+    this.vel = 0; this.phase = 'idle'; this.lastTempoAt = 0
+  }
 }

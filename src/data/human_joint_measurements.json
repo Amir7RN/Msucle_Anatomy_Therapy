@@ -1,0 +1,173 @@
+[
+  {
+    "joint_id": "shoulder_flexion_extension",
+    "joint_name": "Shoulder (Glenohumeral) Joint",
+    "movement": "Flexion/Extension",
+    "plane": "Sagittal",
+    "axis": "Medial–lateral axis through the shoulder (frontal axis)",
+    "measurement_reference": "Flexion and extension of the shoulder are measured in the sagittal plane.  A goniometer is centered over the lateral aspect of the humeral head and the stationary arm lies along the lateral mid‑line of the trunk while the movable arm follows the humerus.  The patient lifts the arm forward for flexion or backward for extension, maintaining neutral trunk posture【207624605632235†L865-L870】【443968950586749†L189-L203】.",
+    "citation": ["【207624605632235†L865-L870】", "【443968950586749†L189-L203】"]
+  },
+  {
+    "joint_id": "shoulder_abduction_adduction",
+    "joint_name": "Shoulder (Glenohumeral) Joint",
+    "movement": "Abduction/Adduction",
+    "plane": "Frontal (Coronal)",
+    "axis": "Anteroposterior axis through the shoulder",
+    "measurement_reference": "Abduction is measured by placing the goniometer’s axis over the glenohumeral joint.  The stationary arm is kept parallel to the trunk and the movable arm aligns with the humerus.  The arm is raised sideways away from the body in the coronal plane.  Adduction is the return of the arm toward the trunk【207624605632235†L830-L846】【207163125167372†L1160-L1171】.",
+    "citation": ["【207624605632235†L830-L846】", "【207163125167372†L1160-L1171】"]
+  },
+  {
+    "joint_id": "shoulder_rotation",
+    "joint_name": "Shoulder (Glenohumeral) Joint",
+    "movement": "Internal (Medial) / External (Lateral) Rotation",
+    "plane": "Transverse",
+    "axis": "Longitudinal axis of the humerus (vertical) when the arm is abducted",
+    "measurement_reference": "With the shoulder abducted to 90° and the elbow flexed to 90°, the goniometer axis is placed over the olecranon or the midpoint of the humerus.  The stationary arm is vertical (perpendicular to the floor) and the movable arm aligns with the ulna.  Rotation of the forearm inward produces internal rotation and outward produces external rotation【207163125167372†L1178-L1191】.",
+    "citation": ["【207163125167372†L1178-L1191】"]
+  },
+  {
+    "joint_id": "elbow_flexion_extension",
+    "joint_name": "Elbow Joint",
+    "movement": "Flexion/Extension",
+    "plane": "Sagittal",
+    "axis": "Medial–lateral axis through the elbow (lateral epicondyle of the humerus)",
+    "measurement_reference": "For elbow flexion and extension the patient lies supine with the arm in anatomical position.  The goniometer axis is placed over the lateral epicondyle of the humerus; the stationary arm is parallel to the humerus pointing toward the acromion, and the movable arm is parallel to the radius pointing toward the styloid process.  The forearm is moved anteriorly for flexion and posteriorly for extension【464251097877031†L190-L201】【464251097877031†L220-L239】.",
+    "citation": ["【464251097877031†L190-L201】", "【464251097877031†L220-L239】"]
+  },
+  {
+    "joint_id": "forearm_supination_pronation",
+    "joint_name": "Forearm (Radioulnar Joints)",
+    "movement": "Supination/Pronation",
+    "plane": "Transverse",
+    "axis": "Vertical (longitudinal) axis through the forearm and third metacarpal",
+    "measurement_reference": "The patient sits with the shoulder adducted and elbow flexed 90° while holding a pencil vertically in a closed fist.  The goniometer axis is placed over the shaft of the third metacarpal; the stationary arm is perpendicular to the floor and the movable arm is parallel to the pencil.  Rotation of the forearm laterally (palm up) gives supination, and medially (palm down) gives pronation【464251097877031†L254-L279】【464251097877031†L297-L323】.",
+    "citation": ["【464251097877031†L254-L279】", "【464251097877031†L297-L323】"]
+  },
+  {
+    "joint_id": "wrist_flexion_extension",
+    "joint_name": "Wrist (Radiocarpal) Joint",
+    "movement": "Flexion/Extension (Palmar flexion/Dorsiflexion)",
+    "plane": "Sagittal",
+    "axis": "Medial–lateral axis through the wrist (lateral triquetral bone)",
+    "measurement_reference": "For wrist flexion and extension the patient sits with the forearm pronated and the wrist over the table edge.  Place the goniometer axis over the lateral triquetral bone; align the stationary arm parallel with the ulna and the movable arm parallel with the longitudinal axis of the fifth metacarpal.  Flexion brings the palm toward the forearm while extension moves the back of the hand toward the forearm【574327411027918†L215-L224】.",
+    "citation": ["【574327411027918†L215-L224】"]
+  },
+  {
+    "joint_id": "wrist_radial_ulnar_deviation",
+    "joint_name": "Wrist (Radiocarpal) Joint",
+    "movement": "Radial (Abduction) / Ulnar (Adduction) Deviation",
+    "plane": "Frontal (Coronal)",
+    "axis": "Anteroposterior axis through the head of the capitate",
+    "measurement_reference": "Radial and ulnar deviation occur in the frontal plane.  To measure ulnar deviation, position the forearm pronated and supported on a table with the wrist in neutral.  Align the goniometer axis over the capitate or dorsal wrist region, the stationary arm along the dorsal midline of the forearm, and the moving arm along the dorsal midline of the third metacarpal.  The hand is moved toward the little‑finger side for ulnar deviation and toward the thumb side for radial deviation【273803174613455†L175-L181】【389448386147260†L89-L94】.",
+    "citation": ["【273803174613455†L175-L181】", "【389448386147260†L89-L94】"]
+  },
+  {
+    "joint_id": "hip_flexion_extension",
+    "joint_name": "Hip Joint",
+    "movement": "Flexion/Extension",
+    "plane": "Sagittal",
+    "axis": "Medial–lateral axis through the hip (greater trochanter)",
+    "measurement_reference": "Hip flexion is measured with the patient supine.  The goniometer axis is at the greater trochanter; the stationary arm is aligned with the mid‑line of the pelvis and trunk, and the movable arm follows the femur toward the lateral epicondyle.  The thigh is brought toward the chest while keeping the pelvis stable【962442152135646†L237-L260】.  For extension the patient lies prone with the same axis and arms; the leg is lifted backward【962442152135646†L192-L209】.",
+    "citation": ["【962442152135646†L237-L260】", "【962442152135646†L192-L209】"]
+  },
+  {
+    "joint_id": "hip_abduction_adduction",
+    "joint_name": "Hip Joint",
+    "movement": "Abduction/Adduction",
+    "plane": "Frontal (Coronal)",
+    "axis": "Anteroposterior axis through the hip (anterior superior iliac spine)",
+    "measurement_reference": "For hip abduction and adduction the patient lies supine.  The goniometer axis is placed over the anterior superior iliac spine (ASIS) on the measured side or at a point between the two ASIS.  The stationary arm is aligned with the opposite ASIS and the movable arm follows the femur toward the patella.  The leg is moved laterally away from the midline for abduction and medially across the midline for adduction【962442152135646†L282-L299】【962442152135646†L317-L339】.",
+    "citation": ["【962442152135646†L282-L299】", "【962442152135646†L317-L339】"]
+  },
+  {
+    "joint_id": "hip_internal_external_rotation",
+    "joint_name": "Hip Joint",
+    "movement": "Internal (Medial) / External (Lateral) Rotation",
+    "plane": "Transverse",
+    "axis": "Vertical axis through the femur (patella as landmark)",
+    "measurement_reference": "Hip rotation is measured with the patient sitting and the hip and knee flexed 90°.  The goniometer axis is placed over the mid‑point of the patella; the stationary arm is perpendicular to the floor and the movable arm aligns with the tibia.  Moving the foot inward (laterally rotating the femur) produces external rotation; moving the foot outward produces internal rotation【962442152135646†L356-L379】【962442152135646†L395-L407】.",
+    "citation": ["【962442152135646†L356-L379】", "【962442152135646†L395-L407】"]
+  },
+  {
+    "joint_id": "knee_flexion_extension",
+    "joint_name": "Knee Joint",
+    "movement": "Flexion/Extension",
+    "plane": "Sagittal",
+    "axis": "Medial–lateral axis through the knee (lateral epicondyle of the femur)",
+    "measurement_reference": "For both knee flexion and extension the patient is positioned supine with the hip in neutral.  The goniometer axis is placed over the lateral epicondyle of the femur.  The stationary arm is aligned with the femur pointing toward the greater trochanter and the movable arm aligns with the fibula pointing toward the lateral malleolus.  Straightening the leg measures extension and bending the knee draws the heel toward the buttock for flexion【640606723689672†L162-L181】【640606723689672†L195-L210】.",
+    "citation": ["【640606723689672†L162-L181】", "【640606723689672†L195-L210】"]
+  },
+  {
+    "joint_id": "ankle_dorsiflexion_plantarflexion",
+    "joint_name": "Ankle (Talocrural) Joint",
+    "movement": "Dorsiflexion/Plantarflexion",
+    "plane": "Sagittal",
+    "axis": "Medial–lateral axis through the ankle (lateral malleolus)",
+    "measurement_reference": "Dorsiflexion and plantarflexion are measured with the patient seated or supine with the knee flexed to relax the gastrocnemius.  A goniometer is aligned over the lateral malleolus; the stationary arm follows the fibula toward the fibular head and the movable arm aligns with the fifth metatarsal.  Moving the foot upward toward the shin measures dorsiflexion; pointing the foot downward measures plantarflexion【207163125167372†L1224-L1237】.",
+    "citation": ["【207163125167372†L1224-L1237】"]
+  },
+  {
+    "joint_id": "ankle_inversion_eversion",
+    "joint_name": "Subtalar/Transverse Tarsal Joints",
+    "movement": "Inversion/Eversion",
+    "plane": "Frontal (Coronal)",
+    "axis": "Oblique axis through the foot (approximate anteroposterior axis)",
+    "measurement_reference": "Inversion turns the sole of the foot medially; eversion turns it laterally.  These motions occur primarily at the subtalar and transverse tarsal joints around an oblique axis.  The goniometer’s axis may be placed over the dorsal aspect of the ankle; the stationary arm aligns with the midline of the tibia and the movable arm with the midline of the second metatarsal.  Movement of the sole toward the midline records inversion and away from the midline records eversion【207163125167372†L1248-L1256】.",
+    "citation": ["【207163125167372†L1248-L1256】"]
+  },
+  {
+    "joint_id": "spine_cervical_flexion_extension",
+    "joint_name": "Cervical Spine",
+    "movement": "Flexion/Extension",
+    "plane": "Sagittal",
+    "axis": "Medial–lateral axis through the cervical spine",
+    "measurement_reference": "Cervical flexion decreases the angle between the chin and chest; extension tilts the head backward.  Movements occur in the sagittal plane around a medial‑lateral axis【207163125167372†L1139-L1149】.",
+    "citation": ["【207163125167372†L1139-L1149】"]
+  },
+  {
+    "joint_id": "spine_cervical_lateral_flexion",
+    "joint_name": "Cervical Spine",
+    "movement": "Lateral Flexion",
+    "plane": "Frontal (Coronal)",
+    "axis": "Anteroposterior axis through the cervical spine",
+    "measurement_reference": "Tilting the head so that the ear moves toward the shoulder describes cervical lateral flexion.  This occurs in the frontal plane around an anteroposterior axis【207163125167372†L1160-L1171】.",
+    "citation": ["【207163125167372†L1160-L1171】"]
+  },
+  {
+    "joint_id": "spine_cervical_rotation",
+    "joint_name": "Cervical Spine",
+    "movement": "Rotation",
+    "plane": "Transverse",
+    "axis": "Vertical axis through the cervical spine",
+    "measurement_reference": "Cervical rotation involves turning the head to look over the shoulder.  It occurs in the transverse plane around a vertical axis【207163125167372†L1178-L1191】.",
+    "citation": ["【207163125167372†L1178-L1191】"]
+  },
+  {
+    "joint_id": "spine_thoracolumbar_flexion_extension",
+    "joint_name": "Thoracic/Lumbar Spine",
+    "movement": "Flexion/Extension",
+    "plane": "Sagittal",
+    "axis": "Medial–lateral axes through the spinal motion segments",
+    "measurement_reference": "Thoracic and lumbar flexion involve bending forward to decrease the trunk angle while extension involves bending backward.  These motions occur in the sagittal plane about medial‑lateral axes at each intervertebral joint【207163125167372†L1139-L1149】.",
+    "citation": ["【207163125167372†L1139-L1149】"]
+  },
+  {
+    "joint_id": "spine_thoracolumbar_lateral_flexion",
+    "joint_name": "Thoracic/Lumbar Spine",
+    "movement": "Lateral Flexion",
+    "plane": "Frontal (Coronal)",
+    "axis": "Anteroposterior axes through the spinal motion segments",
+    "measurement_reference": "Lateral flexion of the thoracic and lumbar spine (side‑bending) occurs in the frontal plane as the trunk bends toward one side around an anteroposterior axis【207163125167372†L1160-L1171】.",
+    "citation": ["【207163125167372†L1160-L1171】"]
+  },
+  {
+    "joint_id": "spine_thoracolumbar_rotation",
+    "joint_name": "Thoracic/Lumbar Spine",
+    "movement": "Rotation",
+    "plane": "Transverse",
+    "axis": "Vertical axes through the spinal motion segments",
+    "measurement_reference": "Rotation of the trunk occurs in the transverse plane as the thorax rotates relative to the pelvis around vertical axes through the spine【207163125167372†L1178-L1191】.",
+    "citation": ["【207163125167372†L1178-L1191】"]
+  }
+]
