@@ -150,3 +150,29 @@ MuscleTwinView.tsx, ExerciseGuidance.tsx.
 
 Note: if forward/back reaching looks reversed (single-camera depth sign), flip
 `ant` in MuscleTwinModel's axis build — one line.
+
+## Realism pass 3 (latest)
+
+- **Forward/back fixed.** The model's anterior axis was inverted (trunk-back
+  showed as forward); `ANTERIOR_SIGN` in MuscleTwinModel now corrects it for all
+  flexion/extension. Left/right kept mirrored as requested.
+- **Posture-aware / gravity-aware model.** New `exercisePose.ts` maps each
+  exercise to its expected posture (stand/sit/supine/side). In exercises the
+  model adopts that posture (the "cheat" — trust the known exercise) instead of
+  guessing, so it lies down for a glute bridge, goes on its side for a clamshell,
+  stands for a wall stretch — and the limbs track live on top. In the standalone
+  Twin the posture follows the live orientation classifier. Trunk gravity-lean is
+  zeroed when lying so the trunk doesn't bend wildly.
+- **Visible ground.** A soil-coloured floor + contact ring is drawn under the
+  model in every 3-D view.
+- **Bigger analytics.** Wider panel column; larger spider plots and ROM bars.
+- **Engaged-muscle readout in exercises.** ExerciseGuidance now shows the few
+  muscles actually firing for the exercise, quantitatively (name + % bar), from
+  the live engine. The standalone Twin keeps the full all-muscle spiders.
+
+Files: src/lib/movement/exercisePose.ts, poseRig.ts; src/components/movement/
+MuscleTwinModel.tsx, MuscleTwinView.tsx, ExerciseGuidance.tsx,
+MuscleActivationRadars.tsx, RomBars.tsx.
+
+Tunables if a posture looks off: the rotations in `postureToQuat` (MuscleTwin
+Model) and the per-exercise postures in `exercisePose.ts`.

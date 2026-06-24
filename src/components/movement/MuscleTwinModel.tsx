@@ -27,11 +27,16 @@ import {
   SEGMENT_ORDER, SEGMENT_PARENT, UPPER_SEGMENTS, segmentForMesh,
   type SegmentId, type BoneDirs,
 } from '../../lib/movement/poseRig'
+import { type Posture } from '../../lib/movement/exercisePose'
 
 const MODEL_PATH = `${import.meta.env.BASE_URL}models/human-muscular-system.glb`
 
 const SLERP    = 0.3
 const BASELINE = 0.12
+// The GLB's chest faces -Z by default, so the model's anterior axis comes out
+// reversed; flip it so forward/back (trunk lean, arm/hip flexion) match the
+// user. (If reaching forward ever looks backward again, flip this.)
+const ANTERIOR_SIGN = -1
 
 const MAX_ANGLE: Partial<Record<SegmentId, number>> = {
   trunk: 45, neck: 55, head: 45,
@@ -43,24 +48,58 @@ const MAX_ANGLE: Partial<Record<SegmentId, number>> = {
 interface Props {
   activationsRef: MutableRefObject<LiveMuscleActivation[]>
   boneDirsRef:    MutableRefObject<BoneDirs>
+  /** Optional posture prior (e.g. the selected exercise's expected posture).
+   *  When set, the model adopts that global posture (stand/sit/lie/side) and
+   *  the limbs track live on top of it. When absent, the caller can update it
+   *  from the live orientation classifier. */
+  postureRef?:    MutableRefObject<Posture | null>
 }
 
-export function MuscleTwinModel({ activationsRef, boneDirsRef }: Props) {
+export function MuscleTwinModel({ activationsRef, boneDirsRef, postureRef }: Props) {
   return (
     <Canvas
       gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
       dpr={[1, 2]}
       style={{ background: 'transparent' }}
-      camera={{ position: [0, 0.1, 3.4], fov: 42, near: 0.1, far: 100 }}
+      camera={{ position: [0, 0.1, 3.6], fov: 42, near: 0.1, far: 100 }}
     >
       <ambientLight intensity={0.6} />
       <directionalLight position={[3, 5, 4]}  intensity={0.8} />
       <directionalLight position={[-3, 2, 3]} intensity={0.4} color="#a5f3fc" />
+      <Ground />
       <Suspense fallback={null}>
-        <Rig activationsRef={activationsRef} boneDirsRef={boneDirsRef} />
+        <Rig activationsRef={activationsRef} boneDirsRef={boneDirsRef} postureRef={postureRef} />
       </Suspense>
     </Canvas>
   )
+}
+
+/** Solid soil-coloured floor so the user can see the ground / grounding. */
+function Ground() {
+  return (
+    <group position={[0, -1.28, 0]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[2.8, 56]} />
+        <meshStandardMaterial color="#5b4a37" roughness={1} metalness={0} />
+      </mesh>
+      {/* faint contact ring for depth */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]}>
+        <ringGeometry args={[1.0, 1.05, 48]} />
+        <meshBasicMaterial color="#3f3328" transparent opacity={0.6} />
+      </mesh>
+    </group>
+  )
+}
+
+const AXIS_X = new THREE.Vector3(1, 0, 0)
+const AXIS_Z = new THREE.Vector3(0, 0, 1)
+function postureToQuat(posture: Posture | null | undefined, out: THREE.Quaternion): THREE.Quaternion {
+  switch (posture) {
+    case 'supine': return out.setFromAxisAngle(AXIS_X, -Math.PI / 2)   // lie on back
+    case 'prone':  return out.setFromAxisAngle(AXIS_X,  Math.PI / 2)   // lie face down
+    case 'side':   return out.setFromAxisAngle(AXIS_Z,  Math.PI / 2)   // lie on side
+    default:       return out.identity()                              // standing / seated
+  }
 }
 
 useGLTF.preload(MODEL_PATH, true, true)
@@ -76,7 +115,7 @@ interface RigData {
   axes:    { right: THREE.Vector3; up: THREE.Vector3; ant: THREE.Vector3 }
 }
 
-function Rig({ activationsRef, boneDirsRef }: Props) {
+function Rig({ activationsRef, boneDirsRef, postureRef }: Props) {
   const { scene } = useGLTF(MODEL_PATH, true, true) as any
   const rig = useMemo<RigData>(() => buildRig(scene), [scene])
 
@@ -85,6 +124,7 @@ function Rig({ activationsRef, boneDirsRef }: Props) {
   const tmpTarget = useRef(new THREE.Vector3())
   const tmpDesired = useRef(new THREE.Quaternion())
   const tmpLocal  = useRef(new THREE.Quaternion())
+  const tmpPosture = useRef(new THREE.Quaternion())
   const IDENT     = useRef(new THREE.Quaternion())
 
   // Lazily init persistent quaternions.
@@ -97,6 +137,11 @@ function Rig({ activationsRef, boneDirsRef }: Props) {
     const dirs = boneDirsRef.current || {}
     const t = state.clock.elapsedTime
     const { right, up, ant } = rig.axes
+
+    // Global posture (gravity awareness): adopt the exercise's expected posture
+    // (or the live orientation) so the body stands / sits / lies appropriately.
+    postureToQuat(postureRef?.current, tmpPosture.current)
+    rig.outer.quaternion.slerp(tmpPosture.current, 0.12)
 
     // 1. Refresh each segment's body-relative rotation from fresh pose dirs.
     for (const seg of SEGMENT_ORDER) {
@@ -217,7 +262,8 @@ function buildRig(scene: THREE.Object3D): RigData {
   const right = shoulderR.clone().sub(shoulderL)
   if (right.lengthSq() < 1e-6) right.set(1, 0, 0)
   right.addScaledVector(up, -right.dot(up)).normalize()
-  const ant = new THREE.Vector3().crossVectors(right, up).normalize()
+  // ANTERIOR_SIGN corrects the GLB's facing so forward/back matches the user.
+  const ant = new THREE.Vector3().crossVectors(right, up).normalize().multiplyScalar(ANTERIOR_SIGN)
 
   const groups: Partial<Record<SegmentId, THREE.Group>> = {}
   const neutral: Partial<Record<SegmentId, THREE.Vector3>> = {}

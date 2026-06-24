@@ -121,8 +121,13 @@ export function poseBoneDirections(lms: LandmarkSet): BoneDirs {
 
   // Trunk lean: how far the spine tilts from vertical, in forward/side terms.
   // frame.zAxis.y < 0 when bent forward; frame.xAxis.y < 0 when side-bent right.
-  const leanFwd  = clamp(-frame.zAxis.y * LEAN_GAIN, -0.9, 0.9)
-  const leanSide = clamp(-frame.xAxis.y * LEAN_GAIN, -0.9, 0.9)
+  // Gate by uprightness: when the user is lying (spine horizontal) the gravity-
+  // lean is meaningless and would bend the trunk wildly — the model's global
+  // posture handles lying instead, so we keep the trunk straight.
+  const upright   = Math.abs(frame.yAxis.y)            // 1 = vertical spine, ~0 = lying
+  const leanScale = upright < 0.5 ? 0 : 1
+  const leanFwd  = clamp(-frame.zAxis.y * LEAN_GAIN, -0.9, 0.9) * leanScale
+  const leanSide = clamp(-frame.xAxis.y * LEAN_GAIN, -0.9, 0.9) * leanScale
   out['trunk'] = normalize({ x: leanSide, y: 1, z: leanFwd })
 
   set('neck', project(midSh, nose))

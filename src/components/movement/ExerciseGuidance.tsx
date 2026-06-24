@@ -54,6 +54,7 @@ import { MuscleActivationViewer } from './MuscleActivationViewer'
 import { MuscleTwinModel } from './MuscleTwinModel'
 import { LiveActivationEngine, type LiveMuscleActivation } from '../../lib/movement/liveMuscleActivation'
 import { poseBoneDirections, type BoneDirs } from '../../lib/movement/poseRig'
+import { postureForExercise, type Posture } from '../../lib/movement/exercisePose'
 import { useAtlasStore } from '../../store/atlasStore'
 
 // ── Smoothing buffer ──────────────────────────────────────────────────────────
@@ -142,6 +143,13 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
   const liveEngineRef = useRef<LiveActivationEngine | null>(null)
   const liveActsRef   = useRef<LiveMuscleActivation[]>([])
   const liveBoneRef   = useRef<BoneDirs>({})
+  // Posture prior — the model adopts the exercise's expected posture (the model
+  // favours the known exercise instead of guessing the global posture).
+  const posturePriorRef = useRef<Posture | null>(null)
+  useEffect(() => { posturePriorRef.current = postureForExercise(exerciseId) }, [exerciseId])
+  // Throttled list of the muscles actually engaged (for the quantitative readout).
+  const [engagedMuscles, setEngagedMuscles] = useState<{ muscleId: string; level: number }[]>([])
+  const lastEngagedRef = useRef(0)
   useEffect(() => () => { liveEngineRef.current?.reset(); liveEngineRef.current = null }, [])
 
   const handleLandmarks = useCallback((lms: LandmarkSet) => {
@@ -151,9 +159,25 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
     // Drive the live muscle twin every frame (runs even with no exercise def
     // so the model mirrors the user and shows real activation).
     if (!liveEngineRef.current) liveEngineRef.current = new LiveActivationEngine()
-    const liveFrame = liveEngineRef.current.update(lms, performance.now())
+    const liveNow = performance.now()
+    const liveFrame = liveEngineRef.current.update(lms, liveNow, undefined)
     liveActsRef.current = liveFrame.activations
     liveBoneRef.current = poseBoneDirections(lms)
+    // Surface the few muscles actually engaged for THIS exercise (top distinct,
+    // above baseline) as a throttled quantitative readout.
+    if (liveNow - lastEngagedRef.current > 220) {
+      lastEngagedRef.current = liveNow
+      const seen = new Set<string>()
+      const top: { muscleId: string; level: number }[] = []
+      for (const a of liveFrame.activations) {
+        if (a.level <= 0.18) break
+        if (seen.has(a.muscleId)) continue
+        seen.add(a.muscleId)
+        top.push({ muscleId: a.muscleId, level: a.level })
+        if (top.length >= 5) break
+      }
+      setEngagedMuscles(top)
+    }
 
     // Torso-anchor readiness check — runs even when there's no biofeedback def
     const ls = lms[LM.L_SHOULDER], rs = lms[LM.R_SHOULDER]
@@ -446,7 +470,7 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
             </div>
             {/* Muscle Activation - JUST the 3D body, no header/label/target text */}
             <div className="flex-1 min-w-0 relative bg-gradient-to-b from-slate-900 to-black overflow-hidden">
-              <MuscleTwinModel activationsRef={liveActsRef} boneDirsRef={liveBoneRef} />
+              <MuscleTwinModel activationsRef={liveActsRef} boneDirsRef={liveBoneRef} postureRef={posturePriorRef} />
             </div>
           </div>
           {/* Rep history - compact horizontal bar chart spanning full width */}
@@ -496,7 +520,7 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
             rendered in red, with a pulse keyed to activation intensity.
             The rest of the body is a faint translucent shell so the user
             sees clearly where the load is going. */}
-        <ActivationOverlay snapshot={snapshot} hasDef={!!def} targetMuscleId={muscleId} activationsRef={liveActsRef} boneDirsRef={liveBoneRef} />
+        <ActivationOverlay snapshot={snapshot} hasDef={!!def} targetMuscleId={muscleId} activationsRef={liveActsRef} boneDirsRef={liveBoneRef} postureRef={posturePriorRef} engaged={engagedMuscles} />
 
         {/* Performance tracker — fills the previously-empty area */}
         <PerformanceTracker
@@ -1491,20 +1515,20 @@ function ReferenceVideo({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ActivationOverlay({
-  snapshot, hasDef, targetMuscleId, activationsRef, boneDirsRef,
+  snapshot, hasDef, targetMuscleId, activationsRef, boneDirsRef, postureRef, engaged,
 }: {
   snapshot:        FormSnapshot | null
   hasDef:          boolean
   targetMuscleId?: string
   activationsRef:  React.MutableRefObject<LiveMuscleActivation[]>
   boneDirsRef:     React.MutableRefObject<BoneDirs>
+  postureRef:      React.MutableRefObject<Posture | null>
+  engaged:         { muscleId: string; level: number }[]
 }) {
   // Render whenever we know at least the target muscle id - even without a
   // biofeedback def we can still pre-glow the targeted muscle so the user
   // sees WHAT they are working before MediaPipe locks in.
   if (!hasDef && !targetMuscleId) return null
-  const activations = hasDef ? computeActivation(snapshot) : []
-  const top = activations.slice(0, 4)
   return (
     <div className="w-full md:w-80 flex-shrink-0 flex flex-col border-r border-slate-700 bg-slate-950/60 p-2 md:p-3 min-h-0 overflow-hidden">
       <div className="flex items-center justify-between mb-1.5">
@@ -1520,27 +1544,45 @@ function ActivationOverlay({
       {/* 3D anatomical viewer - faded body + pulsing target muscle. Tall and
           contrasty so the pulse reads from across the room. */}
       <div className="flex-1 min-h-0 md:min-h-[360px] rounded-md bg-gradient-to-b from-slate-900 to-black ring-1 ring-orange-500/30 overflow-hidden relative">
-        <MuscleTwinModel activationsRef={activationsRef} boneDirsRef={boneDirsRef} />
+        <MuscleTwinModel activationsRef={activationsRef} boneDirsRef={boneDirsRef} postureRef={postureRef} />
         {/* Soft halo pulse around the frame - independent of the WebGL
             canvas so the user notices the activity even before the muscle
             mesh renders. */}
         <div className="pointer-events-none absolute inset-0 ring-2 ring-orange-500/0 animate-pulse"
              style={{ boxShadow: 'inset 0 0 30px rgba(249, 115, 22, 0.18)' }} />
       </div>
-      <div className="mt-1.5 space-y-0.5">
-        {top.length === 0 && (
+      {/* Quantitative readout of the muscles actually engaged for THIS
+          exercise (live, from the pose-driven engine). */}
+      <div className="mt-2">
+        <div className="mb-1 flex items-center justify-between">
+          <span className="text-[10px] uppercase tracking-wider text-cyan-300 font-semibold">Engaged now</span>
+          {targetMuscleId && (
+            <span className="text-[9px] text-orange-400 font-semibold">target: {targetMuscleId.replace(/_/g, ' ')}</span>
+          )}
+        </div>
+        {engaged.length === 0 ? (
           <div className="text-[10px] text-slate-400 italic">
             {targetMuscleId
-              ? `Targeting ${targetMuscleId.replace(/_/g, ' ')} - the highlighted muscle is the focus of this exercise.`
-              : 'Move into position to engage muscles...'}
+              ? `Move into the ${targetMuscleId.replace(/_/g, ' ')} position to engage it.`
+              : 'Move into position to engage muscles…'}
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {engaged.map((a) => {
+              const pct = Math.round(a.level * 100)
+              const color = a.level < 0.4 ? '#22d3ee' : a.level < 0.7 ? '#f59e0b' : '#ef4444'
+              return (
+                <div key={a.muscleId} className="flex items-center gap-2">
+                  <span className="w-24 truncate text-[10px] text-slate-300">{a.muscleId.replace(/_/g, ' ')}</span>
+                  <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-slate-800">
+                    <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
+                  </div>
+                  <span className="w-9 text-right text-[10px] font-mono tabular-nums text-slate-200">{pct}%</span>
+                </div>
+              )
+            })}
           </div>
         )}
-        {top.map((a) => (
-          <div key={a.muscleId} className="flex items-center justify-between text-[10px]">
-            <span className="text-slate-300 truncate">{a.muscleId.replace(/_/g, ' ')}</span>
-            <span className="font-mono tabular-nums text-orange-300">{Math.round(a.level * 100)}%</span>
-          </div>
-        ))}
       </div>
     </div>
   )

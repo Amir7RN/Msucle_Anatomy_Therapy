@@ -41,7 +41,7 @@ export function RomBars({ readings }: { readings: JointLiveReading[] }) {
         const v = byId.get(row.id) ?? {}
         return (
           <div key={row.id}>
-            <div className="flex items-center justify-between text-[10px] text-slate-300">
+            <div className="flex items-center justify-between text-[11px] text-slate-300">
               <span>{row.label}</span>
               <span className="tabular-nums text-slate-500">norm {max}°</span>
             </div>
@@ -62,12 +62,12 @@ export function RomBars({ readings }: { readings: JointLiveReading[] }) {
 function Bar({ deg, max, color, tag }: { deg?: number; max: number; color: string; tag: string }) {
   const pct = deg === undefined ? 0 : Math.max(0, Math.min(1, deg / max)) * 100
   return (
-    <div className="mt-0.5 flex items-center gap-1.5">
-      <span className="w-2 text-[8px] text-slate-500">{tag}</span>
-      <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-slate-800">
+    <div className="mt-1 flex items-center gap-1.5">
+      <span className="w-2.5 text-[9px] text-slate-500">{tag}</span>
+      <div className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-slate-800">
         <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
       </div>
-      <span className="w-8 text-right text-[9px] tabular-nums text-slate-400">
+      <span className="w-9 text-right text-[10px] tabular-nums text-slate-400">
         {deg === undefined ? '—' : `${Math.round(deg)}°`}
       </span>
     </div>

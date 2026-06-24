@@ -32,6 +32,19 @@ import {
 import { poseBoneDirections, type BoneDirs } from '../../lib/movement/poseRig'
 import { LoadEstimator, type LoadEstimate } from '../../lib/movement/loadEstimator'
 import type { BodyOrientation } from '../../lib/movement/bodyOrientation'
+import type { Posture } from '../../lib/movement/exercisePose'
+
+/** Map the live orientation classification to a model posture. */
+function toPosture(o: BodyOrientation): Posture | null {
+  switch (o) {
+    case 'standing': return 'standing'
+    case 'seated':   return 'seated'
+    case 'supine':   return 'supine'
+    case 'prone':    return 'prone'
+    case 'side_lying': return 'side'
+    default: return null
+  }
+}
 
 interface Props { open: boolean; onClose: () => void }
 
@@ -59,6 +72,7 @@ export function MuscleTwinView({ open, onClose }: Props) {
   // Refs read by the 3-D model every frame (no React churn).
   const activationsRef = useRef<LiveMuscleActivation[]>([])
   const boneDirsRef    = useRef<BoneDirs>({})
+  const postureRef     = useRef<Posture | null>(null)
   const loadRef        = useRef<LoadInput>({})
   const lastHudRef     = useRef(0)
 
@@ -97,6 +111,7 @@ export function MuscleTwinView({ open, onClose }: Props) {
     const frame = eng.update(lms, now, loadRef.current)
     activationsRef.current = frame.activations
     boneDirsRef.current = poseBoneDirections(lms)
+    postureRef.current = toPosture(frame.orientation.orientation)
 
     if (now - lastHudRef.current >= HUD_MS) {
       lastHudRef.current = now
@@ -140,7 +155,7 @@ export function MuscleTwinView({ open, onClose }: Props) {
       <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
         {/* 3-D animated twin */}
         <div className="relative h-[42vh] w-full shrink-0 lg:h-auto lg:flex-1">
-          <MuscleTwinModel activationsRef={activationsRef} boneDirsRef={boneDirsRef} />
+          <MuscleTwinModel activationsRef={activationsRef} boneDirsRef={boneDirsRef} postureRef={postureRef} />
 
           {!ready && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/60">
@@ -175,7 +190,7 @@ export function MuscleTwinView({ open, onClose }: Props) {
 
         {/* Analytics — below the model on mobile, a right column on desktop.
             Load spans the top; activation + range-of-motion sit side by side. */}
-        <aside className="flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-t border-slate-800 bg-black/50 p-3 lg:w-[34rem] lg:border-l lg:border-t-0">
+        <aside className="flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-t border-slate-800 bg-black/50 p-3 lg:w-[44rem] lg:border-l lg:border-t-0">
           {/* AI load */}
           <section className="rounded-lg bg-slate-900/60 p-3">
             <div className="mb-1.5 flex items-center justify-between">
