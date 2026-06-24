@@ -68,6 +68,13 @@ const SKELETON_SEGMENTS: Segment[] = [
   { name: 'Shank L',     edges: [[LM.L_KNEE,     LM.L_ANKLE]],         color: '#d9f99d' },
   { name: 'Thigh R',     edges: [[LM.R_HIP,      LM.R_KNEE]],          color: '#fde047' },   // yellow
   { name: 'Shank R',     edges: [[LM.R_KNEE,     LM.R_ANKLE]],         color: '#fef08a' },
+  // Foot lines — the ankle→toe (and heel) segments, so the ankle angle
+  // (shank line vs foot line) is visible here just like the gait / movement /
+  // remote-assessment overlays.
+  { name: 'Foot L',      edges: [[LM.L_ANKLE, LM.L_HEEL], [LM.L_HEEL, LM.L_FOOT_IDX], [LM.L_ANKLE, LM.L_FOOT_IDX]],
+    color: '#bef264' },
+  { name: 'Foot R',      edges: [[LM.R_ANKLE, LM.R_HEEL], [LM.R_HEEL, LM.R_FOOT_IDX], [LM.R_ANKLE, LM.R_FOOT_IDX]],
+    color: '#fde68a' },
   { name: 'Head',        edges: [[LM.NOSE,       LM.L_SHOULDER], [LM.NOSE, LM.R_SHOULDER]],
     color: '#94a3b8' },                                                 // slate
 ]

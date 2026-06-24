@@ -169,6 +169,24 @@ const MOVEMENT_RULES: MovementRule[] = [
       { muscleId: 'multifidus',       role: 'agonist',    weight: 0.7 },
       { muscleId: 'rectus_abdominis', role: 'antagonist', weight: 0.4 },
     ] },
+  // ── Neck / head (gives the head-neck section real activation data) ──────────
+  { movementId: 'cervical_rotation_left', regionBase: 'neck', central: true, band: { min: 10, peak: 45, max: 70 },
+    muscles: [
+      { muscleId: 'sternocleidomastoid', role: 'agonist',    weight: 1.0 },
+      { muscleId: 'splenius_capitis',    role: 'agonist',    weight: 0.6 },
+      { muscleId: 'trapezius_upper',     role: 'stabilizer', weight: 0.5 },
+    ] },
+  { movementId: 'cervical_rotation_right', regionBase: 'neck', central: true, band: { min: 10, peak: 45, max: 70 },
+    muscles: [
+      { muscleId: 'sternocleidomastoid', role: 'agonist',    weight: 1.0 },
+      { muscleId: 'splenius_capitis',    role: 'agonist',    weight: 0.6 },
+      { muscleId: 'trapezius_upper',     role: 'stabilizer', weight: 0.5 },
+    ] },
+  { movementId: 'cervical_flexion', regionBase: 'neck', central: true, band: { min: 8, peak: 30, max: 55 },
+    muscles: [
+      { muscleId: 'sternocleidomastoid', role: 'agonist',    weight: 1.0 },
+      { muscleId: 'scalenus',            role: 'agonist',    weight: 0.5 },
+    ] },
 ]
 
 const SIDED_MOVEMENTS   = MOVEMENT_RULES.filter((r) => !r.central)
@@ -275,7 +293,12 @@ export class LiveActivationEngine {
     }
 
     for (const rule of SIDED_MOVEMENTS)   { evalMovement(rule, 'L'); evalMovement(rule, 'R') }
-    for (const rule of CENTRAL_MOVEMENTS) { evalMovement(rule, 'R') }
+    for (const rule of CENTRAL_MOVEMENTS) {
+      // Cervical rotation is side-specific; trunk/flexion are side-agnostic.
+      const side: 'L' | 'R' = rule.movementId.includes('left') ? 'L'
+        : rule.movementId.includes('right') ? 'R' : 'R'
+      evalMovement(rule, side)
+    }
 
     // Envelope-smooth every known muscle toward (baseline + drive*(1-baseline)),
     // so muscles that aren't driven this frame decay back to the calm baseline

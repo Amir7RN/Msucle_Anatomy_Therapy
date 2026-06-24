@@ -83,3 +83,42 @@ src/lib/movement/anatomicalFrame.ts, muscleJointMap.ts, movements.ts, directiona
 src/components/movement/CameraView.tsx, MuscleTwinView.tsx
 src/components/layout/FeatureLauncher.tsx, src/store/atlasStore.ts, src/App.tsx
 ```
+
+## Muscle Twin realism pass (latest)
+
+Fixes from video review of the live twin:
+
+- **L/R + direction fixed properly.** Pose is now decomposed into the user's own
+  anatomical frame (right / up / anterior) in `poseRig.ts` and rebuilt in the
+  model's anatomical frame (derived from mesh geometry) in `MuscleTwinModel.tsx`.
+  No more guessed axis signs — left stays left, abduction stays abduction, and
+  it holds even if the user is turned/tilted to the camera.
+- **Body no longer spins.** The torso root is locked upright; only limbs, neck
+  and head articulate.
+- **Forearm fixed.** It's gated on wrist visibility (poseRig) and every segment's
+  rotation is clamped (`MAX_ANGLE`) + slerped, so the forearm no longer detaches
+  or flails.
+- **Calm, load-aware activation.** Engine rewritten: dim isometric baseline at
+  rest (no flicker), activation rises with movement (ROM deviation + smoothed
+  velocity), per-muscle attack/decay envelope, and a load multiplier. The model
+  shows activation as COLOUR (tan → amber → deep red).
+- **Claude-vision load estimate** (`loadEstimator.ts`) scales activation by the
+  weight the camera sees you holding (uses your own Anthropic key; bodyweight if
+  none). Re-scan button in the rail.
+- **Foot line** (ankle→heel→toe) added to the camera skeleton overlay so the
+  ankle angle (shank line vs foot line) is visible, matching gait/assessment.
+- **Analytics rebuilt:** four activation **spider plots** (head/neck, trunk,
+  upper limb, lower limb) + a per-joint **ROM bar chart** with L/R and normal
+  range. Added neck/head activation (SCM, upper trap) so that section has data.
+- Larger, clearer camera preview.
+
+New/changed files this pass:
+
+```
+src/lib/movement/poseRig.ts, liveMuscleActivation.ts, loadEstimator.ts
+src/components/movement/MuscleTwinModel.tsx, MuscleTwinView.tsx, CameraView.tsx
+src/components/movement/MuscleActivationRadars.tsx, RomBars.tsx
+```
+
+Still verify with a local `npm run build` — the sandbox compiler can't see the
+editor's writes in this environment, so I type-reviewed by hand.

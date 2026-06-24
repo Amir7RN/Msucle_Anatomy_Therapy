@@ -18,15 +18,16 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react'
-import { X, Sparkles, Activity, RefreshCw, Dumbbell } from 'lucide-react'
+import { X, Sparkles, Activity, RefreshCw, Dumbbell, Flame } from 'lucide-react'
 import { CameraView } from './CameraView'
 import { MuscleTwinModel } from './MuscleTwinModel'
-import { MuscleRadar } from './MuscleRadar'
+import { MuscleActivationRadars } from './MuscleActivationRadars'
+import { RomBars } from './RomBars'
 import type { LandmarkSet } from '../../lib/movement/landmarks'
 import { disposeDetector } from '../../lib/movement/poseDetector'
 import {
-  LiveActivationEngine, summariseAsymmetry,
-  type LiveMuscleActivation, type JointLiveReading, type LoadInput, type AsymmetryRow,
+  LiveActivationEngine,
+  type LiveMuscleActivation, type JointLiveReading, type LoadInput,
 } from '../../lib/movement/liveMuscleActivation'
 import { poseBoneDirections, type BoneDirs } from '../../lib/movement/poseRig'
 import { LoadEstimator, type LoadEstimate } from '../../lib/movement/loadEstimator'
@@ -46,11 +47,10 @@ export function MuscleTwinView({ open, onClose }: Props) {
   const [error, setError]   = useState<string | null>(null)
   const [hud, setHud]       = useState<{
     readings: JointLiveReading[]
+    activations: LiveMuscleActivation[]
     orientation: BodyOrientation
     energy: number
-    top: LiveMuscleActivation[]
-    asym: AsymmetryRow[]
-  }>({ readings: [], orientation: 'unknown', energy: 0, top: [], asym: [] })
+  }>({ readings: [], activations: [], orientation: 'unknown', energy: 0 })
   const [load, setLoad]     = useState<LoadEstimate | null>(null)
 
   const engineRef = useRef<LiveActivationEngine | null>(null)
@@ -102,10 +102,9 @@ export function MuscleTwinView({ open, onClose }: Props) {
       lastHudRef.current = now
       setHud({
         readings: frame.readings,
+        activations: frame.activations,
         orientation: frame.orientation.orientation,
         energy: frame.movementEnergy,
-        top: frame.activations.filter((a) => a.level > 0.25).slice(0, 5),
-        asym: summariseAsymmetry(frame.readings).filter((r) => r.asym > 0.12).slice(0, 3),
       })
     }
   }
@@ -174,7 +173,7 @@ export function MuscleTwinView({ open, onClose }: Props) {
         </div>
 
         {/* Right rail */}
-        <aside className="hidden w-80 shrink-0 flex-col gap-3 overflow-y-auto border-l border-slate-800 bg-black/50 p-3 lg:flex">
+        <aside className="hidden w-96 shrink-0 flex-col gap-3 overflow-y-auto border-l border-slate-800 bg-black/50 p-3 lg:flex">
           {/* AI load */}
           <section className="rounded-lg bg-slate-900/60 p-3">
             <div className="mb-1.5 flex items-center justify-between">
@@ -208,30 +207,21 @@ export function MuscleTwinView({ open, onClose }: Props) {
             )}
           </section>
 
-          {/* ROM radar */}
+          {/* Muscle activation — four spider plots by body section */}
           <section className="rounded-lg bg-slate-900/60 p-3">
-            <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-cyan-300">
-              <Activity size={12} /> Range of motion
+            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-cyan-300">
+              <Flame size={12} /> Muscle activation
             </div>
-            <MuscleRadar readings={hud.readings} />
-            <div className="mt-1 flex items-center justify-center gap-3 text-[10px] text-slate-400">
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-cyan-400" /> Left</span>
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-violet-400" /> Right</span>
-            </div>
+            <MuscleActivationRadars activations={hud.activations} />
           </section>
 
-          {/* Asymmetry flags (only when notable) */}
-          {hud.asym.length > 0 && (
-            <section className="rounded-lg bg-slate-900/60 p-3">
-              <div className="mb-1.5 text-[11px] uppercase tracking-wider text-amber-300">Asymmetry</div>
-              {hud.asym.map((r) => (
-                <div key={r.jointBase} className="flex items-center justify-between text-[11px] text-slate-300">
-                  <span>{prettyJoint(r.jointBase)}</span>
-                  <span className={r.asym > 0.2 ? 'text-red-300' : 'text-amber-300'}>{Math.round(r.asym * 100)}% diff</span>
-                </div>
-              ))}
-            </section>
-          )}
+          {/* Range of motion — per-joint bars */}
+          <section className="rounded-lg bg-slate-900/60 p-3">
+            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-cyan-300">
+              <Activity size={12} /> Range of motion
+            </div>
+            <RomBars readings={hud.readings} />
+          </section>
 
           <p className="mt-auto text-[10px] leading-relaxed text-slate-500">
             Activation is a kinesiology estimate for biofeedback/education, not EMG.
