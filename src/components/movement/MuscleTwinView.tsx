@@ -1,44 +1,40 @@
 /**
- * MuscleTwinView.tsx
+ * MuscleTwinView.tsx  (v2)
  *
- * ZevaHealth's flagship differentiator: a LIVE 3-D MUSCLE TWIN.
+ * The Live Muscle Twin: a single-camera, on-device biofeedback mirror.
  *
- * The user moves in front of a single camera and the 3-D muscular-system atlas
- * lights up — in real time — showing exactly which muscles are working, how
- * hard, and whether they're contracting (concentric) or controlling
- * (eccentric). Alongside it, live ROM dials and a left/right symmetry meter
- * update continuously, in any body orientation (standing, seated, or lying),
- * thanks to the orientation-aware measurement stack.
+ *   • The 3-D muscular model in the centre ANIMATES with you (segment-rigged
+ *     from live pose) and its muscles COLOUR by activation — a calm tan at rest
+ *     (everything isometric), warming to amber and deep red as a muscle works.
+ *   • A radar/spider plot shows each joint's range of motion and where you are
+ *     in it right now, with left/right dots for symmetry.
+ *   • Claude vision estimates any weight you're holding so activation scales
+ *     with load (a curl with a 10 kg dumbbell lights the biceps far more than
+ *     empty-handed). Uses your own Anthropic key; bodyweight if none.
+ *   • A larger camera preview so you can actually see your pose overlay.
  *
- * No other single-camera rehab platform (Sword, Hinge, Kaia, …) renders an
- * anatomical digital twin from live pose — they show a stick-figure or a
- * green/red rep counter. This turns ZevaHealth's existing 3-D atlas into a
- * biofeedback mirror: see your own anatomy fire as you move.
- *
- * Fully on-device: landmarks are computed in-browser and never leave it.
+ * The 3-D model reads pose + activation from refs and animates in its own
+ * render loop, so it stays smooth while the HUD updates at a calm cadence.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { X, Activity, Flame, Sparkles } from 'lucide-react'
+import React, { useEffect, useRef, useState } from 'react'
+import { X, Sparkles, Activity, RefreshCw, Dumbbell } from 'lucide-react'
 import { CameraView } from './CameraView'
-import { MuscleActivationViewer } from './MuscleActivationViewer'
+import { MuscleTwinModel } from './MuscleTwinModel'
+import { MuscleRadar } from './MuscleRadar'
 import type { LandmarkSet } from '../../lib/movement/landmarks'
 import { disposeDetector } from '../../lib/movement/poseDetector'
 import {
   LiveActivationEngine, summariseAsymmetry,
-  type LiveFrame, type LiveMuscleActivation, type AsymmetryRow,
+  type LiveMuscleActivation, type JointLiveReading, type LoadInput, type AsymmetryRow,
 } from '../../lib/movement/liveMuscleActivation'
+import { poseBoneDirections, type BoneDirs } from '../../lib/movement/poseRig'
+import { LoadEstimator, type LoadEstimate } from '../../lib/movement/loadEstimator'
 import type { BodyOrientation } from '../../lib/movement/bodyOrientation'
 
-interface Props {
-  open:    boolean
-  onClose: () => void
-}
+interface Props { open: boolean; onClose: () => void }
 
-// The viewer + HUD refresh at ~12 Hz (every ~80 ms). The 3-D pulse animation
-// runs independently in the viewer's render loop, so this is plenty smooth
-// while keeping React/R3F reconciliation cheap.
-const UI_REFRESH_MS = 80
+const HUD_MS = 120   // HUD refresh cadence (model animates every frame via refs)
 
 const ORIENTATION_LABEL: Record<BodyOrientation, string> = {
   standing: 'Standing', seated: 'Seated', supine: 'Lying (back)',
@@ -46,49 +42,85 @@ const ORIENTATION_LABEL: Record<BodyOrientation, string> = {
 }
 
 export function MuscleTwinView({ open, onClose }: Props) {
-  const [active, setActive]         = useState(false)
-  const [ready, setReady]           = useState(false)
-  const [error, setError]           = useState<string | null>(null)
-  const [frame, setFrame]           = useState<LiveFrame | null>(null)
+  const [ready, setReady]   = useState(false)
+  const [error, setError]   = useState<string | null>(null)
+  const [hud, setHud]       = useState<{
+    readings: JointLiveReading[]
+    orientation: BodyOrientation
+    energy: number
+    top: LiveMuscleActivation[]
+    asym: AsymmetryRow[]
+  }>({ readings: [], orientation: 'unknown', energy: 0, top: [], asym: [] })
+  const [load, setLoad]     = useState<LoadEstimate | null>(null)
 
-  const engineRef   = useRef<LiveActivationEngine | null>(null)
-  const lastUiRef   = useRef(0)
+  const engineRef = useRef<LiveActivationEngine | null>(null)
+  const loadEstRef = useRef<LoadEstimator | null>(null)
+  const videoRef   = useRef<HTMLVideoElement | null>(null)
+  // Refs read by the 3-D model every frame (no React churn).
+  const activationsRef = useRef<LiveMuscleActivation[]>([])
+  const boneDirsRef    = useRef<BoneDirs>({})
+  const loadRef        = useRef<LoadInput>({})
+  const lastHudRef     = useRef(0)
 
   useEffect(() => {
     if (open) {
-      setActive(true)
       engineRef.current = new LiveActivationEngine()
+      loadEstRef.current = new LoadEstimator()
     } else {
-      setActive(false)
-      setReady(false)
-      setError(null)
-      setFrame(null)
-      engineRef.current?.reset()
-      engineRef.current = null
+      setReady(false); setError(null); setLoad(null)
+      activationsRef.current = []; boneDirsRef.current = {}; loadRef.current = {}
+      engineRef.current?.reset(); engineRef.current = null
+      loadEstRef.current?.reset(); loadEstRef.current = null
+      videoRef.current = null
       try { window.speechSynthesis?.cancel() } catch { /* ignore */ }
       disposeDetector()
     }
+  }, [open])
+
+  // Periodic Claude-vision load estimate (debounced internally to ~6 s).
+  useEffect(() => {
+    if (!open) return
+    const id = window.setInterval(async () => {
+      const est = loadEstRef.current
+      if (!est || !videoRef.current) return
+      const r = await est.maybeRefresh(videoRef.current)
+      loadRef.current = { leftKg: r.leftKg, rightKg: r.rightKg }
+      setLoad(r.at ? r : null)
+    }, 1500)
+    return () => window.clearInterval(id)
   }, [open])
 
   function handleLandmarks(lms: LandmarkSet) {
     const eng = engineRef.current
     if (!eng) return
     const now = performance.now()
-    const f = eng.update(lms, now)
-    // Throttle React state updates; the engine still runs every frame so
-    // velocity/phase stay accurate.
-    if (now - lastUiRef.current >= UI_REFRESH_MS) {
-      lastUiRef.current = now
-      setFrame(f)
+    const frame = eng.update(lms, now, loadRef.current)
+    activationsRef.current = frame.activations
+    boneDirsRef.current = poseBoneDirections(lms)
+
+    if (now - lastHudRef.current >= HUD_MS) {
+      lastHudRef.current = now
+      setHud({
+        readings: frame.readings,
+        orientation: frame.orientation.orientation,
+        energy: frame.movementEnergy,
+        top: frame.activations.filter((a) => a.level > 0.25).slice(0, 5),
+        asym: summariseAsymmetry(frame.readings).filter((r) => r.asym > 0.12).slice(0, 3),
+      })
     }
+  }
+
+  async function rescanWeight() {
+    const est = loadEstRef.current
+    if (!est || !videoRef.current) return
+    const r = await est.maybeRefresh(videoRef.current, true)
+    loadRef.current = { leftKg: r.leftKg, rightKg: r.rightKg }
+    setLoad(r.at ? r : null)
   }
 
   if (!open) return null
 
-  const activations: LiveMuscleActivation[] = frame?.activations ?? []
-  const orientation = frame?.orientation.orientation ?? 'unknown'
-  const asym = frame ? summariseAsymmetry(frame.readings) : []
-  const topMuscles = activations.slice(0, 6)
+  const keyPresent = loadEstRef.current?.isEnabled() ?? false
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-slate-950 to-black text-white">
@@ -98,18 +130,17 @@ export function MuscleTwinView({ open, onClose }: Props) {
           <Sparkles size={16} className="text-cyan-400" />
           <span className="text-sm font-semibold tracking-wide">Live Muscle Twin</span>
           <span className="ml-2 rounded-full bg-cyan-500/15 px-2 py-0.5 text-[10px] font-medium text-cyan-300 ring-1 ring-cyan-500/30">
-            {ORIENTATION_LABEL[orientation]}
+            {ORIENTATION_LABEL[hud.orientation]}
           </span>
+          <MovementPip energy={hud.energy} />
         </div>
-        <button onClick={onClose} className="rounded p-1 hover:bg-slate-800" title="Close">
-          <X size={16} />
-        </button>
+        <button onClick={onClose} className="rounded p-1 hover:bg-slate-800" title="Close"><X size={16} /></button>
       </header>
 
       <div className="relative flex flex-1 overflow-hidden">
-        {/* 3-D atlas — the twin */}
+        {/* 3-D animated twin */}
         <div className="relative h-full w-full">
-          <MuscleActivationViewer activations={activations} />
+          <MuscleTwinModel activationsRef={activationsRef} boneDirsRef={boneDirsRef} />
 
           {!ready && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/60">
@@ -117,158 +148,113 @@ export function MuscleTwinView({ open, onClose }: Props) {
             </div>
           )}
           {error && (
-            <div className="absolute inset-x-0 top-3 mx-auto w-fit rounded border border-red-700 bg-red-950/70 px-3 py-1.5 text-xs text-red-200">
-              {error}
-            </div>
+            <div className="absolute inset-x-0 top-3 mx-auto w-fit rounded border border-red-700 bg-red-950/70 px-3 py-1.5 text-xs text-red-200">{error}</div>
           )}
 
-          {/* Camera preview (small, bottom-left) with the live skeleton */}
-          <div className="absolute bottom-3 left-3 h-44 w-32 overflow-hidden rounded-lg ring-1 ring-slate-700 shadow-xl sm:h-56 sm:w-40">
-            <CameraView
-              active={active}
-              onLandmarks={handleLandmarks}
-              onReady={() => setReady(true)}
-              onError={(m) => { setError(m); setActive(false) }}
-            />
+          {/* Camera preview — large + clear so the pose overlay is readable */}
+          <div className="absolute bottom-4 left-4 w-44 overflow-hidden rounded-xl ring-1 ring-slate-600 shadow-2xl sm:w-60 md:w-72">
+            <div className="aspect-[3/4] w-full">
+              <CameraView
+                active={open}
+                onLandmarks={handleLandmarks}
+                onReady={() => setReady(true)}
+                onError={(m) => setError(m)}
+                onVideoReady={(v) => { videoRef.current = v }}
+              />
+            </div>
+            <div className="bg-black/70 px-2 py-1 text-[10px] text-slate-300">Your camera + pose</div>
+          </div>
+
+          {/* Colour legend */}
+          <div className="absolute left-4 top-4 hidden items-center gap-2 rounded-lg bg-black/55 px-3 py-1.5 text-[10px] text-slate-300 backdrop-blur sm:flex">
+            <span>Activation</span>
+            <span className="h-2 w-24 rounded-full" style={{ background: 'linear-gradient(90deg,#6b5b4a,#f59e0b,#b91c1c)' }} />
+            <span className="text-slate-400">rest → max</span>
           </div>
         </div>
 
-        {/* Right rail HUD */}
-        <aside className="hidden w-72 shrink-0 flex-col gap-3 overflow-y-auto border-l border-slate-800 bg-black/50 p-3 md:flex">
-          <ActivationList muscles={topMuscles} />
-          <AsymmetryMeter rows={asym} />
+        {/* Right rail */}
+        <aside className="hidden w-80 shrink-0 flex-col gap-3 overflow-y-auto border-l border-slate-800 bg-black/50 p-3 lg:flex">
+          {/* AI load */}
+          <section className="rounded-lg bg-slate-900/60 p-3">
+            <div className="mb-1.5 flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-cyan-300">
+                <Dumbbell size={12} /> External load (AI)
+              </div>
+              <button
+                onClick={rescanWeight}
+                disabled={!keyPresent}
+                className="flex items-center gap-1 rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-200 hover:bg-slate-700 disabled:opacity-40"
+                title="Re-scan the weight you're holding"
+              >
+                <RefreshCw size={10} /> Re-scan
+              </button>
+            </div>
+            {!keyPresent ? (
+              <div className="text-[11px] text-slate-400">
+                Add your Anthropic key in AI Chat to auto-detect the weight you're holding.
+                Using bodyweight for now.
+              </div>
+            ) : load ? (
+              <div className="text-xs text-slate-200">
+                <div className="font-medium">{load.item}</div>
+                <div className="mt-0.5 text-[11px] text-slate-400">
+                  Left {load.leftKg} kg · Right {load.rightKg} kg
+                  <span className="ml-1 text-slate-500">({Math.round(load.confidence * 100)}% conf)</span>
+                </div>
+              </div>
+            ) : (
+              <div className="text-[11px] text-slate-400">Scanning for a weight…</div>
+            )}
+          </section>
+
+          {/* ROM radar */}
+          <section className="rounded-lg bg-slate-900/60 p-3">
+            <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-cyan-300">
+              <Activity size={12} /> Range of motion
+            </div>
+            <MuscleRadar readings={hud.readings} />
+            <div className="mt-1 flex items-center justify-center gap-3 text-[10px] text-slate-400">
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-cyan-400" /> Left</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-violet-400" /> Right</span>
+            </div>
+          </section>
+
+          {/* Asymmetry flags (only when notable) */}
+          {hud.asym.length > 0 && (
+            <section className="rounded-lg bg-slate-900/60 p-3">
+              <div className="mb-1.5 text-[11px] uppercase tracking-wider text-amber-300">Asymmetry</div>
+              {hud.asym.map((r) => (
+                <div key={r.jointBase} className="flex items-center justify-between text-[11px] text-slate-300">
+                  <span>{prettyJoint(r.jointBase)}</span>
+                  <span className={r.asym > 0.2 ? 'text-red-300' : 'text-amber-300'}>{Math.round(r.asym * 100)}% diff</span>
+                </div>
+              ))}
+            </section>
+          )}
+
           <p className="mt-auto text-[10px] leading-relaxed text-slate-500">
-            Activation is a kinesiology estimate for biofeedback and education,
-            not an EMG measurement. Stop any movement that causes pain.
+            Activation is a kinesiology estimate for biofeedback/education, not EMG.
+            Load is estimated from the camera. Stop any movement that causes pain.
           </p>
         </aside>
-
-        {/* Mobile: condensed activation chips along the bottom */}
-        <div className="absolute inset-x-0 bottom-0 flex gap-1.5 overflow-x-auto bg-gradient-to-t from-black/80 to-transparent p-2 md:hidden">
-          {topMuscles.map((m) => (
-            <MuscleChip key={`${m.muscleId}:${m.region}`} m={m} />
-          ))}
-        </div>
       </div>
     </div>
   )
 }
 
-// ── Activation list ────────────────────────────────────────────────────────────
+// ── bits ───────────────────────────────────────────────────────────────────
 
-function ActivationList({ muscles }: { muscles: LiveMuscleActivation[] }) {
+function MovementPip({ energy }: { energy: number }) {
+  const moving = energy > 0.08
   return (
-    <section>
-      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-cyan-300">
-        <Flame size={12} /> Working now
-      </div>
-      {muscles.length === 0 ? (
-        <div className="rounded-md bg-slate-900/60 p-3 text-xs text-slate-400">
-          Move a limb and watch the muscles light up.
-        </div>
-      ) : (
-        <div className="space-y-1.5">
-          {muscles.map((m) => (
-            <div key={`${m.muscleId}:${m.region}`} className="rounded-md bg-slate-900/60 p-2">
-              <div className="flex items-center justify-between">
-                <span className="truncate text-xs font-medium text-slate-100">
-                  {prettyMuscle(m.muscleId)}
-                </span>
-                <span className={`ml-2 shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase ${phaseStyle(m)}`}>
-                  {m.role === 'agonist' ? m.phase : m.role}
-                </span>
-              </div>
-              <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
-                <div
-                  className="h-full rounded-full transition-all"
-                  style={{ width: `${Math.round(m.level * 100)}%`, background: heat(m.level) }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
+    <span className="ml-1 flex items-center gap-1 text-[10px] text-slate-400">
+      <span className={`h-2 w-2 rounded-full ${moving ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
+      {moving ? 'Moving' : 'Still'}
+    </span>
   )
-}
-
-function MuscleChip({ m }: { m: LiveMuscleActivation }) {
-  return (
-    <div className="flex shrink-0 items-center gap-1 rounded-full bg-slate-900/80 px-2 py-1 text-[10px] ring-1 ring-slate-700">
-      <span className="h-2 w-2 rounded-full" style={{ background: heat(m.level) }} />
-      <span className="text-slate-200">{prettyMuscle(m.muscleId)}</span>
-    </div>
-  )
-}
-
-// ── Asymmetry meter ──────────────────────────────────────────────────────────
-
-function AsymmetryMeter({ rows }: { rows: AsymmetryRow[] }) {
-  const flagged = rows.filter((r) => r.asym > 0.12).slice(0, 4)
-  return (
-    <section>
-      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-cyan-300">
-        <Activity size={12} /> Left / Right balance
-      </div>
-      {flagged.length === 0 ? (
-        <div className="rounded-md bg-slate-900/60 p-3 text-xs text-slate-400">
-          Move both sides through their range to compare symmetry.
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {flagged.map((r) => (
-            <div key={r.jointBase} className="rounded-md bg-slate-900/60 p-2">
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-slate-200">{prettyJoint(r.jointBase)}</span>
-                <span className={r.asym > 0.2 ? 'text-red-300' : 'text-amber-300'}>
-                  {Math.round(r.asym * 100)}% diff
-                </span>
-              </div>
-              <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-400">
-                <span className="w-8 text-right tabular-nums">{Math.round(r.left)}°</span>
-                <div className="relative h-1.5 flex-1 rounded-full bg-slate-800">
-                  <div className="absolute left-1/2 top-0 h-full w-px bg-slate-600" />
-                  <div
-                    className="absolute top-0 h-full rounded-full bg-cyan-500/70"
-                    style={{
-                      left: r.left <= r.right ? 0 : undefined,
-                      right: r.left > r.right ? 0 : undefined,
-                      width: `${Math.min(100, (Math.min(r.left, r.right) / Math.max(r.left, r.right, 1)) * 50)}%`,
-                    }}
-                  />
-                </div>
-                <span className="w-8 tabular-nums">{Math.round(r.right)}°</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  )
-}
-
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-function heat(level: number): string {
-  // cyan → orange → red as activation rises.
-  if (level < 0.33) return '#22d3ee'
-  if (level < 0.66) return '#fb923c'
-  return '#ef4444'
-}
-
-function phaseStyle(m: LiveMuscleActivation): string {
-  if (m.role !== 'agonist') return 'bg-slate-700 text-slate-300'
-  if (m.phase === 'concentric') return 'bg-emerald-500/20 text-emerald-300'
-  if (m.phase === 'eccentric')  return 'bg-amber-500/20 text-amber-300'
-  return 'bg-cyan-500/20 text-cyan-300'
-}
-
-function prettyMuscle(id: string): string {
-  return id.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 function prettyJoint(movementId: string): string {
-  return movementId
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase())
+  return movementId.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }

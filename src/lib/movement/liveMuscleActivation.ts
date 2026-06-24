@@ -1,32 +1,29 @@
 /**
  * liveMuscleActivation.ts
  *
- * The engine behind ZevaHealth's "Live Muscle Twin" — a real-time, pose-driven
- * estimate of which muscles are working RIGHT NOW, used to light up the 3-D
- * muscular-system atlas as the user moves. No other single-camera rehab
- * platform drives an anatomical digital twin from live pose; this is the
- * differentiating feature.
+ * Engine behind the Live Muscle Twin. Estimates, in real time and on-device,
+ * how hard each muscle is working, and drives the 3-D atlas's COLOUR (dim
+ * baseline at rest → deep red under load).
  *
- * How it differs from muscleActivation.ts
- * ────────────────────────────────────────
- * The original computeActivation() only fires during a *guided exercise*,
- * matching the FormSnapshot's text labels. This engine works CONTINUOUSLY from
- * raw landmarks in ANY body orientation, and adds the kinesiology that makes
- * the picture believable:
+ * Design principles (v2 — after the "everything flickers while standing" fix)
+ * ──────────────────────────────────────────────────────────────────────────
+ *   1. ISOMETRIC BASELINE. At rest every muscle sits at a low, calm baseline
+ *      tone (postural/isometric). Nothing flickers when you stand still.
+ *   2. MOVEMENT DRIVES ACTIVATION. A muscle only brightens above baseline when
+ *      its joint is actually (a) away from neutral and/or (b) moving. We blend
+ *      ROM-deviation with smoothed angular velocity, so a slow hold deep in
+ *      range still reads as work, and a fast rep reads as more.
+ *   3. SMOOTH ENVELOPE. Every muscle's displayed level is low-passed with a
+ *      fast attack / slow decay, so activation glows and fades instead of
+ *      strobing on per-frame pose noise.
+ *   4. LOAD SCALING. External load (a dumbbell the camera sees, estimated by
+ *      Claude vision — see loadEstimator.ts) multiplies agonist effort, because
+ *      the same motion under load means much higher activation. Without a known
+ *      load we assume bodyweight (factor 1).
  *
- *   • Agonist / antagonist roles — when you curl, biceps light up (agonist)
- *     and triceps glow faintly (antagonist co-contraction), and vice-versa.
- *   • Concentric / eccentric / isometric phase — derived from joint angular
- *     velocity, because a muscle lowering a weight (eccentric) is still very
- *     active. This is what most "activation" demos miss.
- *   • Effort scaling — activation rises as the joint moves deeper into its
- *     range (more mechanical demand), referenced to the ROM bounds in the
- *     biomechanics JSON.
- *   • Confidence gating — a joint the camera can't see well doesn't blast the
- *     model with false activation.
- *
- * It is a kinesiology approximation for education + engagement + biofeedback,
- * NOT an EMG simulation.
+ * It is a kinesiology estimate for biofeedback/education, not EMG. Absolute
+ * magnitude under load is approximate; an EMG sleeve would be the ground-truth
+ * upgrade and can feed the same twin.
  */
 
 import type { LandmarkSet } from './landmarks'
@@ -46,7 +43,7 @@ export interface LiveMuscleActivation extends MuscleActivation {
   side:  'L' | 'R' | 'C'
 }
 
-/** Per-joint live reading surfaced to the ROM / asymmetry HUD. */
+/** Per-joint live reading surfaced to the ROM radar + asymmetry meter. */
 export interface JointLiveReading {
   movementId: string
   side:       'L' | 'R'
@@ -60,116 +57,87 @@ export interface LiveFrame {
   activations: LiveMuscleActivation[]
   readings:    JointLiveReading[]
   orientation: OrientationEstimate
+  /** Overall movement energy 0..1 (0 = perfectly still). Drives "you're moving" UI. */
+  movementEnergy: number
 }
 
+/** External load (kg) the user is holding, per hand. 0 = bodyweight only. */
+export interface LoadInput { leftKg?: number; rightKg?: number }
+
 // ─────────────────────────────────────────────────────────────────────────────
-//  Kinesiology table
-//
-//  Each movement maps to the muscles that drive it (agonists) plus the
-//  opposing group (antagonists, which co-contract for control). muscleId stems
-//  match the GLB mesh names via MuscleActivationViewer's matchStem().
+//  Kinesiology table (unchanged structure; see v1 notes)
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface MuscleRule {
   muscleId: string
   role:     MuscleRole
   weight:   number
-  /** Fixed region override (for central muscles, e.g. trunk / neck). */
   region?:  SymmetryRegion
-  /** Side-aware region base override — when a muscle that drives this joint
-   *  visually belongs to a DIFFERENT joint's region on the SAME side
-   *  (e.g. rectus femoris drives hip flexion but glows at the knee). */
   crossBase?: 'shoulder' | 'elbow' | 'hip' | 'knee' | 'ankle'
 }
 
 interface MovementRule {
   movementId: string
-  /** Region base used to build {side}_{base} unless a muscle overrides it. */
   regionBase: 'shoulder' | 'elbow' | 'hip' | 'knee' | 'ankle' | 'neck' | 'trunk'
-  /** Working ROM band for activation (deg) + activation peak. */
   band:       { min: number; peak: number; max: number }
   muscles:    MuscleRule[]
-  /** When true the movement has no left/right side (trunk, neck flex). */
   central?:   boolean
 }
 
 const MOVEMENT_RULES: MovementRule[] = [
-  {
-    movementId: 'elbow_flexion', regionBase: 'elbow',
-    band: { min: 15, peak: 95, max: 150 },
+  { movementId: 'elbow_flexion', regionBase: 'elbow', band: { min: 15, peak: 95, max: 150 },
     muscles: [
       { muscleId: 'biceps_brachii',  role: 'agonist',    weight: 1.0 },
       { muscleId: 'brachialis',      role: 'agonist',    weight: 0.85 },
       { muscleId: 'brachioradialis', role: 'agonist',    weight: 0.55 },
       { muscleId: 'triceps_brachii', role: 'antagonist', weight: 0.30 },
-    ],
-  },
-  {
-    movementId: 'shoulder_flexion', regionBase: 'shoulder',
-    band: { min: 20, peak: 110, max: 180 },
+    ] },
+  { movementId: 'shoulder_flexion', regionBase: 'shoulder', band: { min: 20, peak: 110, max: 180 },
     muscles: [
       { muscleId: 'deltoid_anterior',  role: 'agonist',    weight: 1.0 },
       { muscleId: 'pectoralis_major',  role: 'agonist',    weight: 0.55, region: 'trunk' },
       { muscleId: 'serratus_anterior', role: 'agonist',    weight: 0.45, region: 'trunk' },
       { muscleId: 'trapezius_lower',   role: 'stabilizer', weight: 0.40, region: 'trunk' },
       { muscleId: 'latissimus_dorsi',  role: 'antagonist', weight: 0.30, region: 'trunk' },
-    ],
-  },
-  {
-    movementId: 'shoulder_abduction', regionBase: 'shoulder',
-    band: { min: 15, peak: 95, max: 180 },
+    ] },
+  { movementId: 'shoulder_abduction', regionBase: 'shoulder', band: { min: 15, peak: 95, max: 180 },
     muscles: [
       { muscleId: 'deltoid_lateral',  role: 'agonist',    weight: 1.0 },
       { muscleId: 'supraspinatus',    role: 'agonist',    weight: 0.7 },
       { muscleId: 'trapezius_upper',  role: 'stabilizer', weight: 0.5, region: 'neck' },
       { muscleId: 'serratus_anterior',role: 'stabilizer', weight: 0.4, region: 'trunk' },
-    ],
-  },
-  {
-    movementId: 'shoulder_external_rotation', regionBase: 'shoulder',
-    band: { min: 10, peak: 50, max: 90 },
+    ] },
+  { movementId: 'shoulder_external_rotation', regionBase: 'shoulder', band: { min: 10, peak: 50, max: 90 },
     muscles: [
       { muscleId: 'infraspinatus',     role: 'agonist',    weight: 1.0 },
       { muscleId: 'teres_minor',       role: 'agonist',    weight: 0.8 },
       { muscleId: 'deltoid_posterior', role: 'agonist',    weight: 0.5 },
       { muscleId: 'subscapularis',     role: 'antagonist', weight: 0.3 },
-    ],
-  },
-  {
-    movementId: 'hip_flexion', regionBase: 'hip',
-    band: { min: 20, peak: 80, max: 120 },
+    ] },
+  { movementId: 'hip_flexion', regionBase: 'hip', band: { min: 20, peak: 80, max: 120 },
     muscles: [
       { muscleId: 'iliacus',        role: 'agonist',    weight: 1.0 },
       { muscleId: 'psoas_major',    role: 'agonist',    weight: 1.0 },
       { muscleId: 'rectus_femoris', role: 'agonist',    weight: 0.6, crossBase: 'knee' },
       { muscleId: 'sartorius',      role: 'agonist',    weight: 0.4 },
       { muscleId: 'gluteus_maximus',role: 'antagonist', weight: 0.3 },
-    ],
-  },
-  {
-    movementId: 'hip_extension', regionBase: 'hip',
-    band: { min: 5, peak: 18, max: 30 },
+    ] },
+  { movementId: 'hip_extension', regionBase: 'hip', band: { min: 5, peak: 18, max: 30 },
     muscles: [
       { muscleId: 'gluteus_maximus', role: 'agonist',    weight: 1.0 },
       { muscleId: 'biceps_femoris',  role: 'agonist',    weight: 0.6, crossBase: 'knee' },
       { muscleId: 'semitendinosus',  role: 'agonist',    weight: 0.6, crossBase: 'knee' },
       { muscleId: 'erector_spinae',  role: 'stabilizer', weight: 0.4, region: 'trunk' },
       { muscleId: 'iliacus',         role: 'antagonist', weight: 0.25 },
-    ],
-  },
-  {
-    movementId: 'hip_abduction', regionBase: 'hip',
-    band: { min: 8, peak: 30, max: 45 },
+    ] },
+  { movementId: 'hip_abduction', regionBase: 'hip', band: { min: 8, peak: 30, max: 45 },
     muscles: [
       { muscleId: 'gluteus_medius',       role: 'agonist',    weight: 1.0 },
       { muscleId: 'gluteus_minimus',      role: 'agonist',    weight: 0.8 },
       { muscleId: 'tensor_fasciae_latae', role: 'agonist',    weight: 0.6 },
       { muscleId: 'adductor_longus',      role: 'antagonist', weight: 0.3 },
-    ],
-  },
-  {
-    movementId: 'knee_flexion', regionBase: 'knee',
-    band: { min: 15, peak: 90, max: 135 },
+    ] },
+  { movementId: 'knee_flexion', regionBase: 'knee', band: { min: 15, peak: 90, max: 135 },
     muscles: [
       { muscleId: 'biceps_femoris',  role: 'agonist',    weight: 1.0 },
       { muscleId: 'semitendinosus',  role: 'agonist',    weight: 0.9 },
@@ -177,91 +145,85 @@ const MOVEMENT_RULES: MovementRule[] = [
       { muscleId: 'gastrocnemius',   role: 'agonist',    weight: 0.4, crossBase: 'ankle' },
       { muscleId: 'rectus_femoris',  role: 'antagonist', weight: 0.35 },
       { muscleId: 'vastus_lateralis',role: 'antagonist', weight: 0.30 },
-    ],
-  },
-  {
-    movementId: 'ankle_plantarflexion', regionBase: 'ankle',
-    band: { min: 10, peak: 35, max: 50 },
+    ] },
+  { movementId: 'ankle_plantarflexion', regionBase: 'ankle', band: { min: 10, peak: 35, max: 50 },
     muscles: [
       { muscleId: 'gastrocnemius',     role: 'agonist',    weight: 1.0 },
       { muscleId: 'soleus',            role: 'agonist',    weight: 0.9 },
       { muscleId: 'tibialis_anterior', role: 'antagonist', weight: 0.25 },
-    ],
-  },
-  {
-    movementId: 'ankle_dorsiflexion', regionBase: 'ankle',
-    band: { min: 5, peak: 14, max: 20 },
+    ] },
+  { movementId: 'ankle_dorsiflexion', regionBase: 'ankle', band: { min: 5, peak: 14, max: 20 },
     muscles: [
       { muscleId: 'tibialis_anterior', role: 'agonist',    weight: 1.0 },
       { muscleId: 'gastrocnemius',     role: 'antagonist', weight: 0.3 },
-    ],
-  },
-  {
-    movementId: 'trunk_flexion', regionBase: 'trunk', central: true,
-    band: { min: 10, peak: 45, max: 70 },
+    ] },
+  { movementId: 'trunk_flexion', regionBase: 'trunk', central: true, band: { min: 10, peak: 45, max: 70 },
     muscles: [
       { muscleId: 'rectus_abdominis', role: 'agonist',    weight: 1.0 },
       { muscleId: 'external_oblique', role: 'agonist',    weight: 0.6 },
       { muscleId: 'erector_spinae',   role: 'antagonist', weight: 0.4 },
-    ],
-  },
-  {
-    movementId: 'trunk_extension', regionBase: 'trunk', central: true,
-    band: { min: 5, peak: 22, max: 40 },
+    ] },
+  { movementId: 'trunk_extension', regionBase: 'trunk', central: true, band: { min: 5, peak: 22, max: 40 },
     muscles: [
       { muscleId: 'erector_spinae',   role: 'agonist',    weight: 1.0 },
       { muscleId: 'multifidus',       role: 'agonist',    weight: 0.7 },
       { muscleId: 'rectus_abdominis', role: 'antagonist', weight: 0.4 },
-    ],
-  },
+    ] },
 ]
 
-const SIDED_MOVEMENTS = MOVEMENT_RULES.filter((r) => !r.central)
-const CENTRAL_MOVEMENTS = MOVEMENT_RULES.filter((r) => r.central)
+const SIDED_MOVEMENTS   = MOVEMENT_RULES.filter((r) => !r.central)
+const CENTRAL_MOVEMENTS = MOVEMENT_RULES.filter((r) =>  r.central)
 
-const STILL_DEG_PER_S = 8
+// ── Tuning ───────────────────────────────────────────────────────────────────
+const BASELINE        = 0.12   // calm isometric tone for every muscle at rest
+const VEL_DEADBAND    = 12      // deg/s below which a joint is "still" (no drive)
+const VEL_REF         = 130     // deg/s mapping to full movement energy
+const STILL_DEG_PER_S = 10      // |vel| below this → isometric phase
+const ATTACK          = 0.45    // envelope rise (fast — muscle lights quickly)
+const DECAY           = 0.08    // envelope fall (slow — fades like a real glow)
+const LOAD_PER_KG     = 0.05    // each kg adds 5% agonist effort (per hand)
+const LOAD_MAX        = 2.2     // cap the load multiplier
 
 function regionFor(base: MovementRule['regionBase'], side: 'L' | 'R'): SymmetryRegion {
   if (base === 'trunk') return 'trunk'
   if (base === 'neck')  return 'neck'
-  const prefix = side === 'L' ? 'left' : 'right'
-  return `${prefix}_${base}` as SymmetryRegion
+  return `${side === 'L' ? 'left' : 'right'}_${base}` as SymmetryRegion
 }
 
-/** Gaussian band weight centred at peak across [min,max]. */
-function bandWeight(deg: number, min: number, max: number, peak: number): number {
-  if (deg < min) return 0
-  const sigma = (max - min) / 3.2
-  const x = (deg - peak) / sigma
-  return Math.max(0, Math.min(1, Math.exp(-(x * x) / 2)))
-}
+function clamp01(x: number): number { return Math.max(0, Math.min(1, x)) }
 
-/** Role × phase factor — eccentric work still counts; antagonists co-contract. */
 function roleFactor(role: MuscleRole, phase: MovePhase): number {
-  if (role === 'agonist') {
-    return phase === 'concentric' ? 1.0 : phase === 'eccentric' ? 0.8 : 0.65
-  }
-  if (role === 'antagonist') {
-    // Antagonists are most active eccentrically (decelerating the limb).
-    return phase === 'eccentric' ? 0.5 : 0.25
-  }
-  return 0.55   // stabilizer: steady postural tone while the limb is loaded
+  if (role === 'agonist')    return phase === 'concentric' ? 1.0 : phase === 'eccentric' ? 0.85 : 0.7
+  if (role === 'antagonist') return phase === 'eccentric' ? 0.45 : 0.22
+  return 0.5   // stabilizer
 }
 
-/**
- * Stateful engine — construct once per live session, call update() each frame.
- * Tracks per-joint angular velocity to infer movement phase.
- */
+/** Unique muscle key (a muscle can appear in multiple movements / regions). */
+function muscleKey(muscleId: string, region: SymmetryRegion): string {
+  return `${muscleId}:${region}`
+}
+
 export class LiveActivationEngine {
   private tracker = new OrientationTracker()
   private prevAngle = new Map<string, number>()
-  private prevT = new Map<string, number>()
-  private vel = new Map<string, number>()        // smoothed deg/s
+  private prevT     = new Map<string, number>()
+  private vel       = new Map<string, number>()     // smoothed deg/s per joint
+  private level     = new Map<string, number>()     // smoothed displayed level per muscle
+  private meta      = new Map<string, { muscleId: string; region: SymmetryRegion; role: MuscleRole; phase: MovePhase; side: 'L'|'R'|'C' }>()
 
-  update(lms: LandmarkSet, tMs: number): LiveFrame {
+  update(lms: LandmarkSet, tMs: number, load: LoadInput = {}): LiveFrame {
     const orientation = this.tracker.update(lms)
-    const acc = new Map<string, LiveMuscleActivation>()
     const readings: JointLiveReading[] = []
+
+    // Target activation accumulator (max wins across movements per muscle).
+    const target = new Map<string, number>()
+    let energyAccum = 0
+    let energyCount = 0
+
+    const loadFactor = (side: 'L' | 'R'): number => {
+      const kg = side === 'L' ? (load.leftKg ?? 0) : (load.rightKg ?? 0)
+      return Math.min(LOAD_MAX, 1 + Math.max(0, kg) * LOAD_PER_KG)
+    }
 
     const evalMovement = (rule: MovementRule, side: 'L' | 'R') => {
       const r = readJointMovement(rule.movementId, lms, side, { orientation })
@@ -269,84 +231,104 @@ export class LiveActivationEngine {
       const key = `${rule.movementId}:${side}`
 
       // Angular velocity (deg/s), low-passed.
-      const pa = this.prevAngle.get(key)
-      const pt = this.prevT.get(key)
+      const pa = this.prevAngle.get(key); const pt = this.prevT.get(key)
       let v = this.vel.get(key) ?? 0
       if (pa !== undefined && pt !== undefined) {
         const dt = Math.max(1e-3, (tMs - pt) / 1000)
-        v = 0.6 * v + 0.4 * ((r.raw - pa) / dt)
+        v = 0.55 * v + 0.45 * ((r.raw - pa) / dt)
       }
-      this.prevAngle.set(key, r.raw)
-      this.prevT.set(key, tMs)
-      this.vel.set(key, v)
+      this.prevAngle.set(key, r.raw); this.prevT.set(key, tMs); this.vel.set(key, v)
 
-      const phase: MovePhase =
-        Math.abs(v) < STILL_DEG_PER_S ? 'isometric' : v > 0 ? 'concentric' : 'eccentric'
+      const speed = Math.abs(v)
+      const phase: MovePhase = speed < STILL_DEG_PER_S ? 'isometric' : v > 0 ? 'concentric' : 'eccentric'
 
-      const bw = bandWeight(r.value, rule.band.min, rule.band.max, rule.band.peak)
-      if (bw < 0.02 || r.confidence < 0.25) {
-        // Still surface a (low-activation) reading for the ROM HUD.
-        readings.push({
-          movementId: rule.movementId, side, angle: r.value,
-          romFrac: romFraction(rule.movementId, r.value) ?? 0,
-          confidence: r.confidence, phase,
-        })
-        return
-      }
+      // Movement energy (deadbanded so standing noise reads as zero).
+      const movEnergy = speed < VEL_DEADBAND ? 0 : clamp01((speed - VEL_DEADBAND) / VEL_REF)
+      // Deviation from neutral within the normal range.
+      const dev = clamp01(romFraction(rule.movementId, r.value) ?? 0)
+      // Combined drive (only rises with real motion / range). Confidence-gated.
+      const drive = clamp01(0.55 * dev + 0.75 * movEnergy) * clamp01(r.confidence + 0.15)
 
-      // Effort: deeper into range = more demand. Plus a mild velocity boost.
-      const rf = romFraction(rule.movementId, r.value) ?? bw
-      const effort = 0.4 + 0.6 * Math.min(1, rf)
-      const velBoost = 1 + Math.min(0.25, Math.abs(v) / 400)
+      if (r.confidence > 0.3) { energyAccum += movEnergy; energyCount += 1 }
+
+      const lf = loadFactor(side)
 
       for (const m of rule.muscles) {
-        const level = Math.max(0, Math.min(1,
-          bw * m.weight * roleFactor(m.role, phase) * effort * velBoost * r.confidence,
-        ))
-        if (level < 0.03) continue
         const region = m.region ?? regionFor(m.crossBase ?? rule.regionBase, side)
-        const mapKey = `${m.muscleId}:${region}`
-        const prev = acc.get(mapKey)
-        if (!prev || prev.level < level) {
-          acc.set(mapKey, {
-            muscleId: m.muscleId, region, level,
-            role: m.role, phase, side,
-          })
+        const k = muscleKey(m.muscleId, region)
+        // Agonists scale with external load; antagonists/stabilizers less so.
+        const loadScale = m.role === 'agonist' ? lf : 1 + (lf - 1) * 0.4
+        const t = clamp01(drive * m.weight * roleFactor(m.role, phase) * loadScale)
+        const prev = target.get(k) ?? 0
+        if (t > prev) {
+          target.set(k, t)
+          this.meta.set(k, { muscleId: m.muscleId, region, role: m.role, phase, side })
+        } else if (!this.meta.has(k)) {
+          this.meta.set(k, { muscleId: m.muscleId, region, role: m.role, phase, side })
         }
       }
 
       readings.push({
         movementId: rule.movementId, side, angle: r.value,
-        romFrac: rf, confidence: r.confidence, phase,
+        romFrac: dev, confidence: r.confidence, phase,
       })
     }
 
-    for (const rule of SIDED_MOVEMENTS) { evalMovement(rule, 'L'); evalMovement(rule, 'R') }
-    for (const rule of CENTRAL_MOVEMENTS) { evalMovement(rule, 'R') }   // central: use R as carrier
+    for (const rule of SIDED_MOVEMENTS)   { evalMovement(rule, 'L'); evalMovement(rule, 'R') }
+    for (const rule of CENTRAL_MOVEMENTS) { evalMovement(rule, 'R') }
+
+    // Envelope-smooth every known muscle toward (baseline + drive*(1-baseline)),
+    // so muscles that aren't driven this frame decay back to the calm baseline
+    // rather than blinking off.
+    const activations: LiveMuscleActivation[] = []
+    const seen = new Set<string>()
+    const applyEnvelope = (k: string, driveTarget: number) => {
+      const finalTarget = BASELINE + driveTarget * (1 - BASELINE)
+      const cur = this.level.get(k) ?? BASELINE
+      const a = finalTarget > cur ? ATTACK : DECAY
+      const next = cur + (finalTarget - cur) * a
+      this.level.set(k, next)
+      const meta = this.meta.get(k)
+      if (meta) {
+        activations.push({
+          muscleId: meta.muscleId, region: meta.region, level: next,
+          role: meta.role, phase: meta.phase, side: meta.side,
+        })
+      }
+    }
+    for (const [k, t] of target) { applyEnvelope(k, t); seen.add(k) }
+    // Decay muscles that had a level but weren't targeted this frame.
+    for (const k of this.level.keys()) {
+      if (!seen.has(k)) applyEnvelope(k, 0)
+    }
+
+    const movementEnergy = energyCount ? clamp01(energyAccum / energyCount) : 0
 
     return {
-      activations: [...acc.values()].sort((a, b) => b.level - a.level),
+      activations: activations.sort((a, b) => b.level - a.level),
       readings,
       orientation,
+      movementEnergy,
     }
   }
 
   reset(): void {
     this.tracker.reset()
     this.prevAngle.clear(); this.prevT.clear(); this.vel.clear()
+    this.level.clear(); this.meta.clear()
   }
 }
 
-/** Left/right ROM asymmetry per joint base for the HUD (0..1, 0 = symmetric). */
+// ── Asymmetry summary (unchanged) ─────────────────────────────────────────────
+
 export interface AsymmetryRow { jointBase: string; left: number; right: number; asym: number }
 
 export function summariseAsymmetry(readings: JointLiveReading[]): AsymmetryRow[] {
   const byBase = new Map<string, { L?: number; R?: number }>()
   for (const r of readings) {
-    const base = r.movementId
-    const cur = byBase.get(base) ?? {}
+    const cur = byBase.get(r.movementId) ?? {}
     cur[r.side] = Math.max(cur[r.side] ?? 0, r.angle)
-    byBase.set(base, cur)
+    byBase.set(r.movementId, cur)
   }
   const rows: AsymmetryRow[] = []
   for (const [base, v] of byBase) {

@@ -33,6 +33,9 @@ interface Props {
   onLandmarks: (lms: LandmarkSet) => void
   onReady?:    () => void
   onError?:    (message: string) => void
+  /** Called once the webcam <video> is playing — lets a parent grab still
+   *  frames (e.g. for Claude-vision load estimation) without owning the stream. */
+  onVideoReady?: (video: HTMLVideoElement) => void
   /** When true, request the WIDEST possible field of view and force the
    *  camera's minimum optical/digital zoom after the stream starts.  Used by
    *  the walking (gait) test so a whole left-to-right walk fits in frame. */
@@ -88,7 +91,7 @@ const JOINT_SIZES: Record<number, number> = {
 //  single-frame MediaPipe "jumps" that previously corrupted angle readings.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function CameraView({ active, onLandmarks, onReady, onError, maxFov }: Props) {
+export function CameraView({ active, onLandmarks, onReady, onError, maxFov, onVideoReady }: Props) {
   const videoRef    = useRef<HTMLVideoElement | null>(null)
   const canvasRef   = useRef<HTMLCanvasElement | null>(null)
   const rafRef      = useRef<number | null>(null)
@@ -146,6 +149,7 @@ export function CameraView({ active, onLandmarks, onReady, onError, maxFov }: Pr
 
       try {
         await video.play()
+        onVideoReady?.(video)
       } catch (e) {
         console.error('[camera] video.play() rejected:', e)
         onError?.(`Video could not start: ${(e as Error).message ?? e}`)
