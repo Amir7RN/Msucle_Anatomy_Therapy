@@ -122,3 +122,31 @@ src/components/movement/MuscleActivationRadars.tsx, RomBars.tsx
 
 Still verify with a local `npm run build` — the sandbox compiler can't see the
 editor's writes in this environment, so I type-reviewed by hand.
+
+## Realism pass 2 (latest)
+
+- **Forearm fundamentally fixed.** The GLB's only forearm muscle is a short
+  brachioradialis sliver that can't hold an elbow joint when rigged rigidly, so
+  it kept detaching. It's now FOLDED into the arm — the arm is one connected
+  segment that can't come apart at the elbow. (Elbow bend shows via colour, not
+  a separate moving forearm.)
+- **Pelvis-rooted rig (grounding).** Re-rooted at the pelvis: the trunk LEANS on
+  top of it (forward/back/side, derived from spine-vs-gravity → no spin), arms/
+  neck/head follow the trunk, and the legs hang from the pelvis so they stay
+  grounded when you move your trunk and only move when the leg moves. Replaces
+  the old "lock the torso" hack.
+- **More faithful mimicry.** Body-relative FK in the model's own anatomical
+  frame; per-segment clamps + slerp keep it smooth and connected.
+- **Live model in exercises.** ExerciseGuidance now drives the real pose+
+  activation `MuscleTwinModel` (shared engine via refs) in place of the old
+  blinking `MuscleActivationViewer`.
+- **Panel reorganised + responsive.** Load spans the top; muscle-activation
+  spiders and ROM bars sit SIDE BY SIDE. The whole Twin view is now responsive:
+  a right column on desktop, and on mobile the model sits on top with the
+  analytics scrolling below.
+
+Files: src/lib/movement/poseRig.ts; src/components/movement/MuscleTwinModel.tsx,
+MuscleTwinView.tsx, ExerciseGuidance.tsx.
+
+Note: if forward/back reaching looks reversed (single-camera depth sign), flip
+`ant` in MuscleTwinModel's axis build — one line.

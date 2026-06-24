@@ -1,22 +1,21 @@
 /**
- * MuscleTwinModel.tsx  (v2)
+ * MuscleTwinModel.tsx  (v3)
  *
  * Segment-rigged, pose-driven, activation-coloured render of the muscular GLB.
- * The asset has no skeleton, so at load time we group the 52 muscle meshes into
- * body segments, pivot each at its proximal joint, and nest them into a chain
- * (torso → upper-arm → forearm, torso → thigh → shank, torso → neck → head).
  *
- * v2 fixes (from user feedback on the first cut):
- *   • ANATOMICAL mapping. Pose directions arrive already decomposed into the
- *     user's own frame (right / up / anterior — see poseRig). We rebuild the
- *     target in the MODEL'S anatomical frame (derived from its geometry), so
- *     left=left, abduction=abduction, robust to the user being turned. No more
- *     guessed axis signs / mirrored sides.
- *   • TORSO LOCKED. The root no longer rotates with the spine, so the whole
- *     body stops yaw-spinning in space. Only limbs / neck / head articulate.
- *   • STABLE FOREARM. The forearm is gated on wrist visibility (poseRig) and
- *     its rotation is clamped, so it no longer detaches or flails.
- *   • Per-segment angle clamps + slerp keep everything smooth and plausible.
+ * v3 realism rig
+ * ──────────────
+ *   • PELVIS is the fixed root. The TRUNK leans on top of it (forward/back/side,
+ *     derived from spine-vs-gravity → no yaw spin). Arms/neck/head are children
+ *     of the trunk so they follow the lean. Thighs/shanks are children of the
+ *     PELVIS, so they stay grounded when the trunk moves and only move when the
+ *     leg itself moves.
+ *   • FOREARM folded into the arm (poseRig), so the arm is one connected
+ *     segment that can't detach at the elbow.
+ *   • Body-relative FK: each segment's measured anatomical direction is rebuilt
+ *     in the model's anatomical frame and applied so segments connect and the
+ *     model mimics the user. Upper segments are additionally rotated by the
+ *     trunk lean; lower segments are not (grounding).
  */
 
 import React, { Suspense, useMemo, useRef, type MutableRefObject } from 'react'
@@ -25,21 +24,18 @@ import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import type { LiveMuscleActivation } from '../../lib/movement/liveMuscleActivation'
 import {
-  SEGMENT_ORDER, SEGMENT_PARENT, segmentForMesh,
+  SEGMENT_ORDER, SEGMENT_PARENT, UPPER_SEGMENTS, segmentForMesh,
   type SegmentId, type BoneDirs,
 } from '../../lib/movement/poseRig'
 
 const MODEL_PATH = `${import.meta.env.BASE_URL}models/human-muscular-system.glb`
 
-const SLERP    = 0.3    // per-frame approach to target orientation (smoothness)
-const BASELINE = 0.12   // resting tone — must match the engine
+const SLERP    = 0.3
+const BASELINE = 0.12
 
-// Per-segment max deviation from the bind pose (deg) — keeps motion plausible
-// and stops any one joint from spinning.
 const MAX_ANGLE: Partial<Record<SegmentId, number>> = {
-  neck: 55, head: 45,
+  trunk: 45, neck: 55, head: 45,
   upperArmR: 175, upperArmL: 175,
-  forearmR: 150, forearmL: 150,
   thighR: 130, thighL: 130,
   shankR: 150, shankL: 150,
 }
@@ -72,11 +68,10 @@ useGLTF.preload(MODEL_PATH, true, true)
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface MeshDesc { mat: THREE.MeshStandardMaterial; stem: string; side: 'L' | 'R' | 'C' }
-
 interface RigData {
   outer:   THREE.Group
   groups:  Partial<Record<SegmentId, THREE.Group>>
-  neutral: Partial<Record<SegmentId, THREE.Vector3>>   // bind bone dir, model space
+  neutral: Partial<Record<SegmentId, THREE.Vector3>>
   meshes:  MeshDesc[]
   axes:    { right: THREE.Vector3; up: THREE.Vector3; ant: THREE.Vector3 }
 }
@@ -86,50 +81,57 @@ function Rig({ activationsRef, boneDirsRef }: Props) {
   const rig = useMemo<RigData>(() => buildRig(scene), [scene])
 
   const worldQuat = useRef<Record<string, THREE.Quaternion>>({})
+  const lastBody  = useRef<Record<string, THREE.Quaternion>>({})
   const tmpTarget = useRef(new THREE.Vector3())
   const tmpDesired = useRef(new THREE.Quaternion())
   const tmpLocal  = useRef(new THREE.Quaternion())
-  const IDENT = useRef(new THREE.Quaternion())
+  const IDENT     = useRef(new THREE.Quaternion())
+
+  // Lazily init persistent quaternions.
+  for (const seg of SEGMENT_ORDER) {
+    if (!worldQuat.current[seg]) worldQuat.current[seg] = new THREE.Quaternion()
+    if (!lastBody.current[seg])  lastBody.current[seg]  = new THREE.Quaternion()
+  }
 
   useFrame((state) => {
     const dirs = boneDirsRef.current || {}
     const t = state.clock.elapsedTime
     const { right, up, ant } = rig.axes
 
+    // 1. Refresh each segment's body-relative rotation from fresh pose dirs.
+    for (const seg of SEGMENT_ORDER) {
+      const neutral = rig.neutral[seg]
+      const d = dirs[seg]
+      if (!neutral || !d) continue
+      tmpTarget.current.set(0, 0, 0)
+        .addScaledVector(right, d.x).addScaledVector(up, d.y).addScaledVector(ant, d.z)
+      if (tmpTarget.current.lengthSq() > 1e-6) {
+        tmpTarget.current.normalize()
+        lastBody.current[seg].setFromUnitVectors(neutral, tmpTarget.current)
+      }
+    }
+    const leanRot = lastBody.current['trunk']
+
+    // 2. Top-down: desired world orientation → local (relative to parent).
     for (const seg of SEGMENT_ORDER) {
       const group = rig.groups[seg]
-      const neutral = rig.neutral[seg]
-      if (!group || !neutral) continue
+      if (!group) continue
       const parent = SEGMENT_PARENT[seg]
-      const parentWQ = parent ? worldQuat.current[parent] : undefined
+      const parentWQ = parent ? worldQuat.current[parent] : IDENT.current
 
-      // Torso stays upright (locked) so the body doesn't spin in space.
-      if (seg !== 'torso') {
-        const d = dirs[seg]
-        if (d) {
-          // Rebuild the target bone direction in MODEL space from the user's
-          // anatomical components (x=right, y=up, z=anterior).
-          tmpTarget.current.set(0, 0, 0)
-            .addScaledVector(right, d.x)
-            .addScaledVector(up,    d.y)
-            .addScaledVector(ant,   d.z)
-          if (tmpTarget.current.lengthSq() > 1e-6) {
-            tmpTarget.current.normalize()
-            const desiredWQ = tmpDesired.current.setFromUnitVectors(neutral, tmpTarget.current)
-            if (parentWQ) tmpLocal.current.copy(parentWQ).invert().multiply(desiredWQ)
-            else          tmpLocal.current.copy(desiredWQ)
-            clampQuat(tmpLocal.current, MAX_ANGLE[seg] ?? 160, IDENT.current)
-            group.quaternion.slerp(tmpLocal.current, SLERP)
-          }
-        }
-      }
+      const desired = tmpDesired.current
+      if (seg === 'pelvis')            desired.identity()
+      else if (seg === 'trunk')        desired.copy(leanRot)
+      else if (UPPER_SEGMENTS.has(seg)) desired.copy(leanRot).multiply(lastBody.current[seg])
+      else                              desired.copy(lastBody.current[seg])   // lower: grounded
 
-      const wq = (worldQuat.current[seg] ??= new THREE.Quaternion())
-      if (parentWQ) wq.copy(parentWQ).multiply(group.quaternion)
-      else          wq.copy(group.quaternion)
+      tmpLocal.current.copy(parentWQ).invert().multiply(desired)
+      clampQuat(tmpLocal.current, MAX_ANGLE[seg] ?? 160, IDENT.current)
+      group.quaternion.slerp(tmpLocal.current, SLERP)
+      worldQuat.current[seg].copy(desired)
     }
 
-    // Activation → colour.
+    // 3. Activation → colour.
     const acts = activationsRef.current || []
     for (const md of rig.meshes) {
       let level = BASELINE
@@ -146,13 +148,10 @@ function Rig({ activationsRef, boneDirsRef }: Props) {
   return <primitive object={rig.outer} />
 }
 
-/** Clamp a quaternion's rotation magnitude to maxDeg (slerp from identity). */
 function clampQuat(q: THREE.Quaternion, maxDeg: number, ident: THREE.Quaternion): void {
-  const angle = 2 * Math.acos(Math.min(1, Math.abs(q.w)))   // radians
+  const angle = 2 * Math.acos(Math.min(1, Math.abs(q.w)))
   const max = (maxDeg * Math.PI) / 180
-  if (angle > max && angle > 1e-4) {
-    q.slerpQuaternions(ident, q.clone(), max / angle)
-  }
+  if (angle > max && angle > 1e-4) q.slerpQuaternions(ident, q.clone(), max / angle)
 }
 
 // ── Rig construction ──────────────────────────────────────────────────────────
@@ -186,46 +185,46 @@ function buildRig(scene: THREE.Object3D): RigData {
   const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z)
 
   const bUAr = box(['upperArmR']), bUAl = box(['upperArmL'])
-  const bFAr = box(['forearmR']),  bFAl = box(['forearmL'])
   const bThR = box(['thighR']),    bThL = box(['thighL'])
   const bShR = box(['shankR']),    bShL = box(['shankL'])
-  const bTorso = box(['torso']),   bNeck = box(['neck']), bHead = box(['head'])
+  const bTrunk = box(['trunk']),   bPelv = box(['pelvis'])
+  const bNeck = box(['neck']),     bHead = box(['head'])
 
-  const shoulderR = bUAr ? topC(bUAr) : V(-0.18, 1.35, 0), elbowR = bUAr ? botC(bUAr) : V(-0.2, 1.0, 0)
-  const shoulderL = bUAl ? topC(bUAl) : V(0.18, 1.35, 0),  elbowL = bUAl ? botC(bUAl) : V(0.2, 1.0, 0)
-  const wristR = bFAr ? botC(bFAr) : V(-0.22, 0.75, 0),    wristL = bFAl ? botC(bFAl) : V(0.22, 0.75, 0)
+  const shoulderR = bUAr ? topC(bUAr) : V(-0.18, 1.35, 0), armEndR = bUAr ? botC(bUAr) : V(-0.2, 0.8, 0)
+  const shoulderL = bUAl ? topC(bUAl) : V(0.18, 1.35, 0),  armEndL = bUAl ? botC(bUAl) : V(0.2, 0.8, 0)
   const hipR = bThR ? topC(bThR) : V(-0.1, 0.9, 0),        kneeR = bThR ? botC(bThR) : V(-0.1, 0.5, 0)
   const hipL = bThL ? topC(bThL) : V(0.1, 0.9, 0),         kneeL = bThL ? botC(bThL) : V(0.1, 0.5, 0)
   const ankleR = bShR ? botC(bShR) : V(-0.1, 0.1, 0),      ankleL = bShL ? botC(bShL) : V(0.1, 0.1, 0)
-  const pelvis = hipR.clone().add(hipL).multiplyScalar(0.5)
-  const neckBase = bTorso ? topC(bTorso) : V(0, 1.4, 0)
+  const pelvisC = hipR.clone().add(hipL).multiplyScalar(0.5)
+  const neckBase = bTrunk ? topC(bTrunk) : V(0, 1.4, 0)
+  const lumbar   = pelvisC.clone().lerp(neckBase, 0.12)
   const headBase = bNeck ? topC(bNeck) : V(0, 1.55, 0)
   const headTop  = bHead ? topC(bHead) : V(0, 1.75, 0)
 
   const pivots: Record<SegmentId, THREE.Vector3> = {
-    torso: pelvis, neck: neckBase, head: headBase,
-    upperArmR: shoulderR, forearmR: elbowR, upperArmL: shoulderL, forearmL: elbowL,
+    pelvis: pelvisC, trunk: lumbar, neck: neckBase, head: headBase,
+    upperArmR: shoulderR, upperArmL: shoulderL,
     thighR: hipR, shankR: kneeR, thighL: hipL, shankL: kneeL,
   }
   const distal: Record<SegmentId, THREE.Vector3> = {
-    torso: neckBase, neck: headBase, head: headTop,
-    upperArmR: elbowR, forearmR: wristR, upperArmL: elbowL, forearmL: wristL,
+    pelvis: neckBase, trunk: neckBase, neck: headBase, head: headTop,
+    upperArmR: armEndR, upperArmL: armEndL,
     thighR: kneeR, shankR: ankleR, thighL: kneeL, shankL: ankleL,
   }
 
-  // Model anatomical axes (Gram-Schmidt from geometry).
-  const up = neckBase.clone().sub(pelvis); if (up.lengthSq() < 1e-6) up.set(0, 1, 0); up.normalize()
-  let right = shoulderR.clone().sub(shoulderL)              // anatomical left→right
+  // Model anatomical axes from geometry (Gram-Schmidt).
+  const up = neckBase.clone().sub(pelvisC); if (up.lengthSq() < 1e-6) up.set(0, 1, 0); up.normalize()
+  const right = shoulderR.clone().sub(shoulderL)
   if (right.lengthSq() < 1e-6) right.set(1, 0, 0)
-  right.addScaledVector(up, -right.dot(up)).normalize()     // orthogonalise to up
-  const ant = new THREE.Vector3().crossVectors(right, up).normalize()  // out the chest
+  right.addScaledVector(up, -right.dot(up)).normalize()
+  const ant = new THREE.Vector3().crossVectors(right, up).normalize()
 
   const groups: Partial<Record<SegmentId, THREE.Group>> = {}
   const neutral: Partial<Record<SegmentId, THREE.Vector3>> = {}
   for (const seg of SEGMENT_ORDER) {
     const g = new THREE.Group(); g.name = `seg_${seg}`; groups[seg] = g
     const d = distal[seg].clone().sub(pivots[seg])
-    neutral[seg] = d.lengthSq() > 1e-9 ? d.normalize() : new THREE.Vector3(0, -1, 0)
+    neutral[seg] = d.lengthSq() > 1e-9 ? d.normalize() : up.clone()
   }
   for (const seg of SEGMENT_ORDER) {
     const g = groups[seg]!

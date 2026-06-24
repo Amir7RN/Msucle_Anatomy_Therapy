@@ -1,22 +1,25 @@
 /**
- * poseRig.ts
+ * poseRig.ts  (v3)
  *
- * Pure-logic half of the segment-rigged Muscle Twin. The GLB has 52 separate
- * muscle meshes but NO skeleton/skin, so we group meshes into rigid body
- * SEGMENTS and rotate each at its joint from the live pose.
+ * Pure-logic half of the segment-rigged Muscle Twin.
  *
- * Direction convention — ANATOMICAL, not camera/world axes (v2 fix)
- * ─────────────────────────────────────────────────────────────────
- * The first version mapped raw MediaPipe world axes into the model with guessed
- * signs, which flipped left/right and made motions go the wrong way. We now
- * express every segment's bone direction in the USER'S OWN anatomical frame:
- *     x = toward the user's RIGHT, y = up the spine, z = anterior (out the chest)
- * These three are returned per segment. The model then rebuilds the target using
- * the MODEL'S anatomical axes (derived from its geometry), so left stays left,
- * abduction stays abduction, and it all works even if the user is turned or
- * tilted relative to the camera. No magic sign constants.
+ * v3 changes (realism pass)
+ * ─────────────────────────
+ *   • PELVIS is the fixed root. The TRUNK leans on top of it and the LEGS hang
+ *     from it, so leaning/twisting the trunk no longer drags the legs — the
+ *     feet stay grounded — and the body never yaw-spins (the trunk lean is
+ *     derived from the spine vs gravity, which has no azimuth ambiguity).
+ *   • The FOREARM is folded into the upper arm (the GLB's only forearm muscle
+ *     is a short brachioradialis sliver that can't hold an elbow joint on its
+ *     own), so the arm is one connected segment that can never detach.
  *
- * The Three.js wiring lives in components/movement/MuscleTwinModel.tsx.
+ * Direction convention stays ANATOMICAL: each limb's bone direction is the
+ * proximal→distal vector expressed in the user's own frame (x=right, y=up,
+ * z=anterior). The model rebuilds it in its own anatomical frame, so left=left
+ * and the motion is robust to the user being turned to the camera.
+ *
+ * The trunk entry is special: it carries the desired "up" direction for the
+ * trunk (a tilt of the spine), so the same model code path handles it.
  */
 
 import type { LandmarkSet } from './landmarks'
@@ -26,44 +29,48 @@ import {
 } from './anatomicalFrame'
 
 export type SegmentId =
-  | 'torso' | 'neck' | 'head'
-  | 'upperArmL' | 'forearmL' | 'upperArmR' | 'forearmR'
+  | 'pelvis' | 'trunk' | 'neck' | 'head'
+  | 'upperArmL' | 'upperArmR'
   | 'thighL' | 'shankL' | 'thighR' | 'shankR'
 
-/** UPPERCASE mesh-name substrings that belong to each segment. */
+/** UPPERCASE mesh-name substrings per segment. */
 export const SEGMENT_MESHES: Record<SegmentId, string[]> = {
-  torso: [
+  // Pelvis (root) — glutes attach here and stay grounded with the legs.
+  pelvis: ['GLUTEUS_MAXIMUS', 'GLUTEUS_MEDIUS'],
+  // Trunk leans on top of the pelvis.
+  trunk: [
     'PECTORALIS_MAJOR', 'RECTUS_ABDOMINIS', 'EXTERNAL_OBLIQUE', 'SERRATUS_ANTERIOR',
-    'TRAPEZIUS', 'LATISSIMUS_DORSI', 'ERECTOR_SPINAE', 'GLUTEUS_MAXIMUS', 'GLUTEUS_MEDIUS',
+    'TRAPEZIUS', 'LATISSIMUS_DORSI', 'ERECTOR_SPINAE',
   ],
   neck:  ['STERNOCLEIDOMASTOID'],
   head:  ['MASSETER', 'TEMPORALIS'],
-  upperArmR: ['BICEPS_BRACHII_R', 'TRICEPS_BRACHII_R', 'DELTOID_R', 'BRACHIALIS_R', 'CORACOBRACHIALIS_R', 'INFRASPINATUS_R'],
-  forearmR:  ['BRACHIORADIALIS_R'],
-  upperArmL: ['BICEPS_BRACHII_L', 'TRICEPS_BRACHII_L', 'DELTOID_L', 'BRACHIALIS_L', 'CORACOBRACHIALIS_L', 'INFRASPINATUS_L'],
-  forearmL:  ['BRACHIORADIALIS_L'],
+  // Forearm (brachioradialis) folded into the arm so it can't disconnect.
+  upperArmR: ['BICEPS_BRACHII_R', 'TRICEPS_BRACHII_R', 'DELTOID_R', 'BRACHIALIS_R', 'CORACOBRACHIALIS_R', 'INFRASPINATUS_R', 'BRACHIORADIALIS_R'],
+  upperArmL: ['BICEPS_BRACHII_L', 'TRICEPS_BRACHII_L', 'DELTOID_L', 'BRACHIALIS_L', 'CORACOBRACHIALIS_L', 'INFRASPINATUS_L', 'BRACHIORADIALIS_L'],
   thighR: ['RECTUS_FEMORIS_R', 'VASTUS_LATERALIS_R', 'VASTUS_MEDIALIS_R', 'BICEPS_FEMORIS_R', 'SARTORIUS_R'],
   shankR: ['GASTROCNEMIUS_R', 'SOLEUS_R', 'TIBIALIS_ANTERIOR_R'],
   thighL: ['RECTUS_FEMORIS_L', 'VASTUS_LATERALIS_L', 'VASTUS_MEDIALIS_L', 'BICEPS_FEMORIS_L', 'SARTORIUS_L'],
   shankL: ['GASTROCNEMIUS_L', 'SOLEUS_L', 'TIBIALIS_ANTERIOR_L'],
 }
 
-/** Parent of each segment (null = attached to root). */
+/** Parent of each segment (null = root). */
 export const SEGMENT_PARENT: Record<SegmentId, SegmentId | null> = {
-  torso: null,
-  neck: 'torso',  head: 'neck',
-  upperArmR: 'torso', forearmR: 'upperArmR',
-  upperArmL: 'torso', forearmL: 'upperArmL',
-  thighR: 'torso',    shankR: 'thighR',
-  thighL: 'torso',    shankL: 'thighL',
+  pelvis: null,
+  trunk: 'pelvis', neck: 'trunk', head: 'neck',
+  upperArmR: 'trunk', upperArmL: 'trunk',
+  thighR: 'pelvis', shankR: 'thighR',
+  thighL: 'pelvis', shankL: 'thighL',
 }
 
 /** Top-down order so parents resolve before children. */
 export const SEGMENT_ORDER: SegmentId[] = [
-  'torso', 'neck', 'head',
-  'upperArmR', 'forearmR', 'upperArmL', 'forearmL',
+  'pelvis', 'trunk', 'neck', 'head',
+  'upperArmR', 'upperArmL',
   'thighR', 'shankR', 'thighL', 'shankL',
 ]
+
+/** Upper-body segments (other than the trunk itself) lean WITH the trunk. */
+export const UPPER_SEGMENTS = new Set<SegmentId>(['neck', 'head', 'upperArmR', 'upperArmL'])
 
 export function segmentForMesh(meshName: string): SegmentId | null {
   const u = meshName.toUpperCase()
@@ -82,26 +89,26 @@ function vis(lms: LandmarkSet, i: number, min = 0.4): boolean {
   return (lms[i]?.visibility ?? 0) >= min
 }
 
+const LEAN_GAIN = 1.3
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
+
 /**
- * Live target bone directions, expressed in the user's anatomical frame.
- * Each is proximal→distal (upperArm = shoulder→elbow, forearm = elbow→wrist,
- * thigh = hip→knee, shank = knee→ankle, neck/head = shoulder→nose).
- *
- * Gating: a segment is omitted (model holds its last pose) unless its defining
- * landmarks are visible — in particular the FOREARM requires the wrist, which
- * stops the elbow joint from flailing when the hand leaves frame.
+ * Live target directions in the user's anatomical frame.
+ *   upperArm = shoulder→elbow, thigh = hip→knee, shank = knee→ankle,
+ *   neck/head = shoulder→nose.
+ * `trunk` is the desired spine "up" tilt (derived from the spine vs gravity),
+ * so the trunk bends forward/back/side without spinning. Legs are NOT driven
+ * by the trunk, so they stay grounded.
  */
 export function poseBoneDirections(lms: LandmarkSet): BoneDirs {
   const frame = computeAnatomicalFrame(lms)
   if (!frame) return {}
 
-  // Project a world-space bone vector onto the anatomical axes.
   const project = (a: Vec3 | null, b: Vec3 | null): Vec3 | null => {
     if (!a || !b) return null
     const d = sub(b, a)
     if (d.x === 0 && d.y === 0 && d.z === 0) return null
-    const v: Vec3 = { x: dot(d, frame.xAxis), y: dot(d, frame.yAxis), z: dot(d, frame.zAxis) }
-    return normalize(v)
+    return normalize({ x: dot(d, frame.xAxis), y: dot(d, frame.yAxis), z: dot(d, frame.zAxis) })
   }
   const w = (i: number, min = 0.4) => (vis(lms, i, min) ? worldVec(lms[i]) : null)
 
@@ -112,15 +119,17 @@ export function poseBoneDirections(lms: LandmarkSet): BoneDirs {
   const out: BoneDirs = {}
   const set = (seg: SegmentId, d: Vec3 | null) => { if (d) out[seg] = d }
 
-  // Torso is locked upright in the model, so we don't drive it from pose.
-  set('neck',  project(midSh, nose))
-  set('head',  project(midSh, nose))
+  // Trunk lean: how far the spine tilts from vertical, in forward/side terms.
+  // frame.zAxis.y < 0 when bent forward; frame.xAxis.y < 0 when side-bent right.
+  const leanFwd  = clamp(-frame.zAxis.y * LEAN_GAIN, -0.9, 0.9)
+  const leanSide = clamp(-frame.xAxis.y * LEAN_GAIN, -0.9, 0.9)
+  out['trunk'] = normalize({ x: leanSide, y: 1, z: leanFwd })
+
+  set('neck', project(midSh, nose))
+  set('head', project(midSh, nose))
 
   set('upperArmR', project(rs, w(LM.R_ELBOW)))
   set('upperArmL', project(ls, w(LM.L_ELBOW)))
-  // Forearm only when the wrist is genuinely visible (avoids flailing).
-  set('forearmR',  project(w(LM.R_ELBOW), w(LM.R_WRIST, 0.5)))
-  set('forearmL',  project(w(LM.L_ELBOW), w(LM.L_WRIST, 0.5)))
 
   set('thighR', project(w(LM.R_HIP), w(LM.R_KNEE)))
   set('thighL', project(w(LM.L_HIP), w(LM.L_KNEE)))

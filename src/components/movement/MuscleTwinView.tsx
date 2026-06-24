@@ -136,9 +136,10 @@ export function MuscleTwinView({ open, onClose }: Props) {
         <button onClick={onClose} className="rounded p-1 hover:bg-slate-800" title="Close"><X size={16} /></button>
       </header>
 
-      <div className="relative flex flex-1 overflow-hidden">
+      {/* Mobile = column (model on top, analytics below, scrolls). Desktop = row. */}
+      <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
         {/* 3-D animated twin */}
-        <div className="relative h-full w-full">
+        <div className="relative h-[42vh] w-full shrink-0 lg:h-auto lg:flex-1">
           <MuscleTwinModel activationsRef={activationsRef} boneDirsRef={boneDirsRef} />
 
           {!ready && (
@@ -150,8 +151,8 @@ export function MuscleTwinView({ open, onClose }: Props) {
             <div className="absolute inset-x-0 top-3 mx-auto w-fit rounded border border-red-700 bg-red-950/70 px-3 py-1.5 text-xs text-red-200">{error}</div>
           )}
 
-          {/* Camera preview — large + clear so the pose overlay is readable */}
-          <div className="absolute bottom-4 left-4 w-44 overflow-hidden rounded-xl ring-1 ring-slate-600 shadow-2xl sm:w-60 md:w-72">
+          {/* Camera preview with the live pose overlay */}
+          <div className="absolute bottom-3 left-3 w-28 overflow-hidden rounded-xl ring-1 ring-slate-600 shadow-2xl sm:w-40 lg:w-56">
             <div className="aspect-[3/4] w-full">
               <CameraView
                 active={open}
@@ -161,19 +162,20 @@ export function MuscleTwinView({ open, onClose }: Props) {
                 onVideoReady={(v) => { videoRef.current = v }}
               />
             </div>
-            <div className="bg-black/70 px-2 py-1 text-[10px] text-slate-300">Your camera + pose</div>
+            <div className="bg-black/70 px-2 py-1 text-[9px] text-slate-300 sm:text-[10px]">Your camera + pose</div>
           </div>
 
           {/* Colour legend */}
-          <div className="absolute left-4 top-4 hidden items-center gap-2 rounded-lg bg-black/55 px-3 py-1.5 text-[10px] text-slate-300 backdrop-blur sm:flex">
+          <div className="absolute left-3 top-3 hidden items-center gap-2 rounded-lg bg-black/55 px-3 py-1.5 text-[10px] text-slate-300 backdrop-blur sm:flex">
             <span>Activation</span>
             <span className="h-2 w-24 rounded-full" style={{ background: 'linear-gradient(90deg,#6b5b4a,#f59e0b,#b91c1c)' }} />
             <span className="text-slate-400">rest → max</span>
           </div>
         </div>
 
-        {/* Right rail */}
-        <aside className="hidden w-96 shrink-0 flex-col gap-3 overflow-y-auto border-l border-slate-800 bg-black/50 p-3 lg:flex">
+        {/* Analytics — below the model on mobile, a right column on desktop.
+            Load spans the top; activation + range-of-motion sit side by side. */}
+        <aside className="flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-t border-slate-800 bg-black/50 p-3 lg:w-[34rem] lg:border-l lg:border-t-0">
           {/* AI load */}
           <section className="rounded-lg bg-slate-900/60 p-3">
             <div className="mb-1.5 flex items-center justify-between">
@@ -191,39 +193,39 @@ export function MuscleTwinView({ open, onClose }: Props) {
             </div>
             {!keyPresent ? (
               <div className="text-[11px] text-slate-400">
-                Add your Anthropic key in AI Chat to auto-detect the weight you're holding.
-                Using bodyweight for now.
+                Add your Anthropic key in AI Chat to auto-detect the weight you're holding. Using bodyweight for now.
               </div>
             ) : load ? (
-              <div className="text-xs text-slate-200">
-                <div className="font-medium">{load.item}</div>
-                <div className="mt-0.5 text-[11px] text-slate-400">
-                  Left {load.leftKg} kg · Right {load.rightKg} kg
-                  <span className="ml-1 text-slate-500">({Math.round(load.confidence * 100)}% conf)</span>
-                </div>
+              <div className="flex items-baseline gap-3 text-xs text-slate-200">
+                <span className="font-medium">{load.item}</span>
+                <span className="text-[11px] text-slate-400">
+                  L {load.leftKg} kg · R {load.rightKg} kg
+                  <span className="ml-1 text-slate-500">({Math.round(load.confidence * 100)}%)</span>
+                </span>
               </div>
             ) : (
               <div className="text-[11px] text-slate-400">Scanning for a weight…</div>
             )}
           </section>
 
-          {/* Muscle activation — four spider plots by body section */}
-          <section className="rounded-lg bg-slate-900/60 p-3">
-            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-cyan-300">
-              <Flame size={12} /> Muscle activation
-            </div>
-            <MuscleActivationRadars activations={hud.activations} />
-          </section>
+          {/* Activation + ROM side by side */}
+          <div className="grid gap-3 md:grid-cols-2">
+            <section className="rounded-lg bg-slate-900/60 p-3">
+              <div className="mb-1.5 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-cyan-300">
+                <Flame size={12} /> Muscle activation
+              </div>
+              <MuscleActivationRadars activations={hud.activations} />
+            </section>
 
-          {/* Range of motion — per-joint bars */}
-          <section className="rounded-lg bg-slate-900/60 p-3">
-            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-cyan-300">
-              <Activity size={12} /> Range of motion
-            </div>
-            <RomBars readings={hud.readings} />
-          </section>
+            <section className="rounded-lg bg-slate-900/60 p-3">
+              <div className="mb-1.5 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-cyan-300">
+                <Activity size={12} /> Range of motion
+              </div>
+              <RomBars readings={hud.readings} />
+            </section>
+          </div>
 
-          <p className="mt-auto text-[10px] leading-relaxed text-slate-500">
+          <p className="text-[10px] leading-relaxed text-slate-500">
             Activation is a kinesiology estimate for biofeedback/education, not EMG.
             Load is estimated from the camera. Stop any movement that causes pain.
           </p>

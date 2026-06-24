@@ -51,6 +51,9 @@ import {
 import { loadROMHistory } from '../../lib/movement/romHistory'
 import { computeActivation } from '../../lib/movement/muscleActivation'
 import { MuscleActivationViewer } from './MuscleActivationViewer'
+import { MuscleTwinModel } from './MuscleTwinModel'
+import { LiveActivationEngine, type LiveMuscleActivation } from '../../lib/movement/liveMuscleActivation'
+import { poseBoneDirections, type BoneDirs } from '../../lib/movement/poseRig'
 import { useAtlasStore } from '../../store/atlasStore'
 
 // ── Smoothing buffer ──────────────────────────────────────────────────────────
@@ -135,9 +138,22 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
   const [poseLocked, setPoseLocked] = useState(false)
   const [poseHint,   setPoseHint]   = useState<string>('Step into frame…')
 
+  // ── Live Muscle Twin engine — drives the 3-D model + activation colour ──
+  const liveEngineRef = useRef<LiveActivationEngine | null>(null)
+  const liveActsRef   = useRef<LiveMuscleActivation[]>([])
+  const liveBoneRef   = useRef<BoneDirs>({})
+  useEffect(() => () => { liveEngineRef.current?.reset(); liveEngineRef.current = null }, [])
+
   const handleLandmarks = useCallback((lms: LandmarkSet) => {
     // Always update lmsRef so AiCoach step-machine can read it
     lmsRef.current = lms
+
+    // Drive the live muscle twin every frame (runs even with no exercise def
+    // so the model mirrors the user and shows real activation).
+    if (!liveEngineRef.current) liveEngineRef.current = new LiveActivationEngine()
+    const liveFrame = liveEngineRef.current.update(lms, performance.now())
+    liveActsRef.current = liveFrame.activations
+    liveBoneRef.current = poseBoneDirections(lms)
 
     // Torso-anchor readiness check — runs even when there's no biofeedback def
     const ls = lms[LM.L_SHOULDER], rs = lms[LM.R_SHOULDER]
@@ -430,10 +446,7 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
             </div>
             {/* Muscle Activation - JUST the 3D body, no header/label/target text */}
             <div className="flex-1 min-w-0 relative bg-gradient-to-b from-slate-900 to-black overflow-hidden">
-              <MuscleActivationViewer
-                activations={def ? computeActivation(snapshot) : []}
-                targetMuscleId={muscleId}
-              />
+              <MuscleTwinModel activationsRef={liveActsRef} boneDirsRef={liveBoneRef} />
             </div>
           </div>
           {/* Rep history - compact horizontal bar chart spanning full width */}
@@ -483,7 +496,7 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
             rendered in red, with a pulse keyed to activation intensity.
             The rest of the body is a faint translucent shell so the user
             sees clearly where the load is going. */}
-        <ActivationOverlay snapshot={snapshot} hasDef={!!def} targetMuscleId={muscleId} />
+        <ActivationOverlay snapshot={snapshot} hasDef={!!def} targetMuscleId={muscleId} activationsRef={liveActsRef} boneDirsRef={liveBoneRef} />
 
         {/* Performance tracker — fills the previously-empty area */}
         <PerformanceTracker
@@ -1478,11 +1491,13 @@ function ReferenceVideo({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ActivationOverlay({
-  snapshot, hasDef, targetMuscleId,
+  snapshot, hasDef, targetMuscleId, activationsRef, boneDirsRef,
 }: {
   snapshot:        FormSnapshot | null
   hasDef:          boolean
   targetMuscleId?: string
+  activationsRef:  React.MutableRefObject<LiveMuscleActivation[]>
+  boneDirsRef:     React.MutableRefObject<BoneDirs>
 }) {
   // Render whenever we know at least the target muscle id - even without a
   // biofeedback def we can still pre-glow the targeted muscle so the user
@@ -1505,7 +1520,7 @@ function ActivationOverlay({
       {/* 3D anatomical viewer - faded body + pulsing target muscle. Tall and
           contrasty so the pulse reads from across the room. */}
       <div className="flex-1 min-h-0 md:min-h-[360px] rounded-md bg-gradient-to-b from-slate-900 to-black ring-1 ring-orange-500/30 overflow-hidden relative">
-        <MuscleActivationViewer activations={activations} targetMuscleId={targetMuscleId} />
+        <MuscleTwinModel activationsRef={activationsRef} boneDirsRef={boneDirsRef} />
         {/* Soft halo pulse around the frame - independent of the WebGL
             canvas so the user notices the activity even before the muscle
             mesh renders. */}
