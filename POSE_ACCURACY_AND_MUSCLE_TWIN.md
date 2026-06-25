@@ -227,3 +227,41 @@ Activation enrichment (from the datasets research):
 Files: src/lib/movement/poseRig.ts, liveMuscleActivation.ts, activationPriors.ts,
 loadEstimator.ts; src/components/movement/MuscleTwinModel.tsx, MuscleTwinView.tsx,
 ExerciseGuidance.tsx.
+
+## Realism pass 5 — twin behaves like a real digital twin (latest)
+
+From a fresh video review (twin reversing when seated, no jump reaction, limbs
+detaching, ignoring side-on turns). Root cause for most of these was the
+anatomical frame's lateral/anterior axes flipping sign under MediaPipe's noisy
+depth, plus the rig having no global yaw or vertical translation. Introduced a
+stateful **`PoseRigEngine`** (in `poseRig.ts`) that the standalone Twin now drives,
+and taught the model two new globals.
+
+- **No more L/R or front/back flips.** The engine sign-stabilises the lateral
+  axis by temporal continuity (anchored to the reliable spine axis) and rebuilds
+  anterior = right×up from it. A slow genuine turn is tracked; a one-frame 180°
+  depth flip is rejected. Fixes the segment-switching when walking toward/away
+  from the camera AND the "sitting looked reversed / legs flew to the stomach"
+  bug (the anterior sign no longer inverts).
+- **The twin turns when you turn (sagittal).** A facing `yaw` is derived from the
+  now-continuous anterior axis, zeroed to the user's start, unwrapped, rate-
+  limited and EMA-smoothed, then applied as a global Y-rotation on the model. Turn
+  to your side and the model turns with you. Tunable: `YAW_SIGN` (one line in
+  MuscleTwinModel) if it should rotate the other way.
+- **Gravity / jump reaction.** World coords are hip-centred so they can't see
+  global rise/fall; the engine reads the pelvis height from the IMAGE against a
+  slow baseline and the model translates up on a jump, dips on a squat
+  (`rootY`). Tunables: `JUMP_GAIN`, `ROOT_MIN/MAX` in poseRig.
+- **Limbs stay attached.** Per-limb visibility gating + direction smoothing
+  (`nlerp`) in the engine (a limb that drops out HOLDS its last good pose instead
+  of flinging), tighter anatomical joint clamps (thigh 100°, arm 165°), and a
+  hard per-frame slew limit (`MAX_STEP_DEG`, `slewQuat`) in the model so one bad
+  frame can't teleport a joint.
+
+`poseBoneDirections` is unchanged and still used by guided exercises (known
+posture, user faces the camera). Verified poseRig.ts with `tsc --strict` (clean);
+please run `npm run build` to confirm the two view files — the sandbox's
+OneDrive mount only had a half-synced copy so it couldn't compile them here.
+
+Files: src/lib/movement/poseRig.ts; src/components/movement/MuscleTwinModel.tsx,
+MuscleTwinView.tsx.

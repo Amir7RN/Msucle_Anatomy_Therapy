@@ -29,7 +29,7 @@ import {
   LiveActivationEngine,
   type LiveMuscleActivation, type JointLiveReading, type LoadInput,
 } from '../../lib/movement/liveMuscleActivation'
-import { poseBoneDirections, type BoneDirs } from '../../lib/movement/poseRig'
+import { PoseRigEngine, type BoneDirs } from '../../lib/movement/poseRig'
 import { LoadEstimator, type LoadEstimate } from '../../lib/movement/loadEstimator'
 import type { BodyOrientation } from '../../lib/movement/bodyOrientation'
 import type { Posture } from '../../lib/movement/exercisePose'
@@ -70,24 +70,30 @@ export function MuscleTwinView({ open, onClose }: Props) {
   const [loadErr, setLoadErr] = useState<string | null>(null)
 
   const engineRef = useRef<LiveActivationEngine | null>(null)
+  const poseEngineRef = useRef<PoseRigEngine | null>(null)
   const loadEstRef = useRef<LoadEstimator | null>(null)
   const videoRef   = useRef<HTMLVideoElement | null>(null)
   // Refs read by the 3-D model every frame (no React churn).
   const activationsRef = useRef<LiveMuscleActivation[]>([])
   const boneDirsRef    = useRef<BoneDirs>({})
   const postureRef     = useRef<Posture | null>(null)
+  const yawRef         = useRef(0)     // live facing yaw → the twin turns with you
+  const rootYRef       = useRef(0)     // live vertical offset → jump / gravity
   const loadRef        = useRef<LoadInput>({})
   const lastHudRef     = useRef(0)
 
   useEffect(() => {
     if (open) {
       engineRef.current = new LiveActivationEngine()
+      poseEngineRef.current = new PoseRigEngine()
       loadEstRef.current = new LoadEstimator()
       setHasKey(loadEstRef.current.isEnabled())
     } else {
       setReady(false); setError(null); setLoad(null); setLoadErr(null)
       activationsRef.current = []; boneDirsRef.current = {}; loadRef.current = {}
+      yawRef.current = 0; rootYRef.current = 0
       engineRef.current?.reset(); engineRef.current = null
+      poseEngineRef.current?.reset(); poseEngineRef.current = null
       loadEstRef.current?.reset(); loadEstRef.current = null
       videoRef.current = null
       try { window.speechSynthesis?.cancel() } catch { /* ignore */ }
@@ -125,7 +131,14 @@ export function MuscleTwinView({ open, onClose }: Props) {
     const now = performance.now()
     const frame = eng.update(lms, now, loadRef.current)
     activationsRef.current = frame.activations
-    boneDirsRef.current = poseBoneDirections(lms)
+    // Stabilised rig: removes L/R + front/back flips, and adds facing yaw +
+    // jump/squat vertical offset so the twin turns and reacts to gravity.
+    const rig = poseEngineRef.current?.update(lms)
+    if (rig) {
+      boneDirsRef.current = rig.dirs
+      yawRef.current = rig.yaw
+      rootYRef.current = rig.rootY
+    }
     postureRef.current = toPosture(frame.orientation.orientation)
 
     if (now - lastHudRef.current >= HUD_MS) {
@@ -168,7 +181,7 @@ export function MuscleTwinView({ open, onClose }: Props) {
       <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
         {/* 3-D animated twin */}
         <div className="relative h-[42vh] w-full shrink-0 lg:h-auto lg:flex-1">
-          <MuscleTwinModel activationsRef={activationsRef} boneDirsRef={boneDirsRef} postureRef={postureRef} />
+          <MuscleTwinModel activationsRef={activationsRef} boneDirsRef={boneDirsRef} postureRef={postureRef} yawRef={yawRef} rootYRef={rootYRef} />
 
           {!ready && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/60">

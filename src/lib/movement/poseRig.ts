@@ -25,7 +25,8 @@
 import type { LandmarkSet } from './landmarks'
 import { LM } from './landmarks'
 import {
-  computeAnatomicalFrame, worldVec, sub, midpoint, normalize, dot, type Vec3,
+  computeAnatomicalFrame, worldVec, sub, midpoint, normalize, dot, cross,
+  type Vec3, type AnatomicalFrame,
 } from './anatomicalFrame'
 
 export type SegmentId =
@@ -85,6 +86,22 @@ export function segmentForMesh(meshName: string): SegmentId | null {
 /** Bone direction in the user's anatomical frame: x=right, y=up, z=anterior. */
 export type BoneDirs = Partial<Record<SegmentId, Vec3>>
 
+/**
+ * Globals the digital twin needs that a per-segment direction can't carry:
+ *   • `yaw`    — the user's facing azimuth (rad). 0 ≈ how they started; turning
+ *                to a side rotates this so the model turns WITH them (sagittal).
+ *   • `rootY`  — vertical body offset (model units). Rises on a jump, dips on a
+ *                squat — the model's gravity/jump reaction.
+ *   • `quality`— 0..1 trust in this frame (visibility × depth sanity).
+ *   • `dirs`   — the per-segment anatomical directions (as before).
+ */
+export interface PoseRigFrame {
+  dirs:    BoneDirs
+  yaw:     number
+  rootY:   number
+  quality: number
+}
+
 function vis(lms: LandmarkSet, i: number, min = 0.4): boolean {
   return (lms[i]?.visibility ?? 0) >= min
 }
@@ -93,17 +110,11 @@ const LEAN_GAIN = 1.3
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
 
 /**
- * Live target directions in the user's anatomical frame.
- *   upperArm = shoulder→elbow, thigh = hip→knee, shank = knee→ankle,
- *   neck/head = shoulder→nose.
- * `trunk` is the desired spine "up" tilt (derived from the spine vs gravity),
- * so the trunk bends forward/back/side without spinning. Legs are NOT driven
- * by the trunk, so they stay grounded.
+ * Build the per-segment anatomical directions from a (possibly stabilised)
+ * frame. Pure: same input → same output. The stateful smoothing/gating lives in
+ * `PoseRigEngine`; this is shared by it and the back-compat helper below.
  */
-export function poseBoneDirections(lms: LandmarkSet): BoneDirs {
-  const frame = computeAnatomicalFrame(lms)
-  if (!frame) return {}
-
+function boneDirsFromFrame(frame: AnatomicalFrame, lms: LandmarkSet): BoneDirs {
   const project = (a: Vec3 | null, b: Vec3 | null): Vec3 | null => {
     if (!a || !b) return null
     const d = sub(b, a)
@@ -148,4 +159,141 @@ export function poseBoneDirections(lms: LandmarkSet): BoneDirs {
   set('shankL', project(w(LM.R_KNEE), w(LM.R_ANKLE)))
 
   return out
+}
+
+/**
+ * Stateless target directions (back-compat for callers that don't need the
+ * stabilised globals — e.g. guided exercises, where the posture is known and
+ * the user faces the camera). Live single-camera use should prefer
+ * `PoseRigEngine`, which removes the L/R / forward-back flips and adds yaw +
+ * jump.
+ */
+export function poseBoneDirections(lms: LandmarkSet): BoneDirs {
+  const frame = computeAnatomicalFrame(lms)
+  if (!frame) return {}
+  return boneDirsFromFrame(frame, lms)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  PoseRigEngine — stateful, the robust path for the live twin
+//
+//  Fixes (from video review):
+//   1. SEGMENT / SIDE SWITCHING and FORWARD-BACK REVERSAL as the user moves
+//      toward/away from the camera. MediaPipe's depth is noisy at range, which
+//      lets the lateral (x) and anterior (z) axes flip sign frame-to-frame —
+//      flipping abduction↔adduction and front↔back. We enforce TEMPORAL SIGN
+//      CONTINUITY on the lateral axis (the spine `y` is reliable, so we anchor
+//      to it and only resolve the x sign by continuity), then rebuild z from it.
+//      A genuine slow turn moves the axis a few degrees per frame and is tracked;
+//      a one-frame 180° flip is rejected.
+//   2. THE TWIN NEVER TURNED. We derive a facing `yaw` from the now-continuous
+//      anterior axis, zero it to the user's starting orientation, rate-limit and
+//      smooth it, so turning to the side turns the model to the side.
+//   3. NO JUMP / GRAVITY REACTION. World coords are hip-centred (origin at the
+//      pelvis) so they can't see global rise/fall; we read the pelvis height from
+//      the IMAGE against a slow baseline and translate the model up on a jump,
+//      down on a squat.
+//   4. LIMBS FLINGING OFF. Per-limb visibility gating + direction smoothing here,
+//      plus tighter clamps/slew in the model, keep segments connected.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const YAW_MAX_RATE   = 0.20   // rad/frame ceiling on facing change (~11°/frame)
+const YAW_SMOOTH     = 0.18   // EMA toward the (rate-limited) raw yaw
+const YAW_MIN_QUAL   = 0.45   // don't trust yaw below this frame quality
+const DIR_SMOOTH     = 0.45   // nlerp factor for per-segment direction smoothing
+const JUMP_GAIN      = 5.0    // image-Δ (frac of frame height) → model units
+const JUMP_SMOOTH    = 0.40
+const ROOT_MIN       = -0.55  // deepest squat dip (model units)
+const ROOT_MAX       = 1.30   // highest jump
+const BASE_ALPHA     = 0.012  // slow drift of the resting-height baseline
+
+function nlerp(a: Vec3, b: Vec3, t: number): Vec3 {
+  return normalize({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t })
+}
+
+export class PoseRigEngine {
+  private prevX: Vec3 | null = null          // last stabilised lateral axis (world)
+  private smoothed: BoneDirs = {}            // smoothed per-segment dirs
+  private yaw = 0
+  private yawOffset: number | null = null    // captured on first good frame → start ≈ 0
+  private baseHipY: number | null = null     // resting pelvis image-y
+  private rootY = 0
+
+  reset(): void {
+    this.prevX = null
+    this.smoothed = {}
+    this.yaw = 0
+    this.yawOffset = null
+    this.baseHipY = null
+    this.rootY = 0
+  }
+
+  update(lms: LandmarkSet): PoseRigFrame {
+    const raw = computeAnatomicalFrame(lms)
+    if (!raw) return { dirs: this.smoothed, yaw: this.yaw, rootY: this.rootY, quality: 0 }
+
+    // 1. Sign-stabilise the lateral axis against the previous frame, then
+    //    rebuild a right-handed frame around the reliable spine axis. This is
+    //    the core fix for L/R switching and front/back reversal.
+    const frame = this.stabilise(raw)
+
+    // 2. Per-segment directions, smoothed + gated (held when a limb drops out).
+    const target = boneDirsFromFrame(frame, lms)
+    for (const seg of SEGMENT_ORDER) {
+      const t = target[seg]
+      if (!t) continue                       // limb not visible → hold last good
+      const prev = this.smoothed[seg]
+      this.smoothed[seg] = prev ? nlerp(prev, t, DIR_SMOOTH) : t
+    }
+
+    // 3. Facing yaw from the (continuous) anterior axis, zeroed to the start.
+    this.updateYaw(frame, raw.quality ?? 0)
+
+    // 4. Vertical body offset (jump / squat) from the pelvis image-height.
+    this.updateRootY(lms)
+
+    return { dirs: this.smoothed, yaw: this.yaw, rootY: this.rootY, quality: raw.quality ?? 0 }
+  }
+
+  /** Lock the lateral axis sign by continuity, rebuild z = x×y right-handed. */
+  private stabilise(f: AnatomicalFrame): AnatomicalFrame {
+    let x = { ...f.xAxis }
+    if (this.prevX && dot(x, this.prevX) < 0) { x = { x: -x.x, y: -x.y, z: -x.z } }
+    // Re-orthonormalise against the (reliable) spine axis and rebuild anterior.
+    const y = f.yAxis
+    x = normalize(sub(x, { x: y.x * dot(x, y), y: y.y * dot(x, y), z: y.z * dot(x, y) }))
+    const z = normalize(cross(x, y))         // x×y → anterior (right-handed)
+    // Track the chosen axis (lightly) so genuine turns are followed but noise
+    // doesn't drag it.
+    this.prevX = this.prevX ? nlerp(this.prevX, x, 0.5) : x
+    return { ...f, xAxis: x, zAxis: z }
+  }
+
+  private updateYaw(frame: AnatomicalFrame, quality: number): void {
+    // Need enough horizontal torso spread for a meaningful azimuth, else hold.
+    const horiz = Math.hypot(frame.zAxis.x, frame.zAxis.z)
+    if (quality < YAW_MIN_QUAL || horiz < 0.15) return
+    const rawYaw = Math.atan2(frame.zAxis.x, frame.zAxis.z)
+    if (this.yawOffset === null) { this.yawOffset = rawYaw; this.yaw = 0; return }
+    // Deviation from the start, unwrapped to (-π, π].
+    let d = rawYaw - this.yawOffset
+    while (d >  Math.PI) d -= 2 * Math.PI
+    while (d < -Math.PI) d += 2 * Math.PI
+    // Rate-limit, then EMA — no teleport on a flip we didn't catch.
+    const step = clamp(d - this.yaw, -YAW_MAX_RATE, YAW_MAX_RATE)
+    this.yaw += YAW_SMOOTH * step
+  }
+
+  private updateRootY(lms: LandmarkSet): void {
+    const lh = lms[LM.L_HIP], rh = lms[LM.R_HIP]
+    if (!lh || !rh || (lh.visibility ?? 0) < 0.4 || (rh.visibility ?? 0) < 0.4) return
+    const hipY = (lh.y + rh.y) / 2            // image-y, 0 top → 1 bottom
+    if (this.baseHipY === null) { this.baseHipY = hipY; this.rootY = 0; return }
+    // Rising in the image (smaller y) = jumping up → positive offset.
+    const target = clamp((this.baseHipY - hipY) * JUMP_GAIN, ROOT_MIN, ROOT_MAX)
+    this.rootY += JUMP_SMOOTH * (target - this.rootY)
+    // Slowly re-centre the baseline so walking closer/farther doesn't bias it,
+    // but a fast jump/squat (large deviation) barely moves it.
+    this.baseHipY += BASE_ALPHA * (hipY - this.baseHipY)
+  }
 }

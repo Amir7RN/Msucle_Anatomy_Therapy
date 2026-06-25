@@ -38,11 +38,21 @@ const BASELINE = 0.12
 // mirror the ACTIVATION side too so the limb that moves is the limb that lights
 // up. Set false for a "facing-partner" (same-anatomical-side) view.
 const MIRROR = true
+// Sign of the global facing rotation. If turning to your right turns the model
+// the *opposite* way, flip this to -1 (one line). The model is a mirror, so the
+// natural sign makes the twin rotate to show the same side you turned toward.
+const YAW_SIGN = 1
+// Per-frame ceiling on how far a segment may rotate (degrees) — a hard slew
+// limit on top of the slerp so a single bad pose frame can't fling a limb.
+const MAX_STEP_DEG = 14
 
+// Anatomically-bounded joint limits (degrees from the model's neutral). Tighter
+// than before so limbs can't hyper-extend off the body, and the hips can't fold
+// the thighs up to the stomach when seated (the "sitting looked reversed" bug).
 const MAX_ANGLE: Partial<Record<SegmentId, number>> = {
   trunk: 45, neck: 55, head: 45,
-  upperArmR: 175, upperArmL: 175,
-  thighR: 130, thighL: 130,
+  upperArmR: 165, upperArmL: 165,
+  thighR: 100, thighL: 100,
   shankR: 150, shankL: 150,
 }
 
@@ -54,9 +64,15 @@ interface Props {
    *  the limbs track live on top of it. When absent, the caller can update it
    *  from the live orientation classifier. */
   postureRef?:    MutableRefObject<Posture | null>
+  /** Optional live facing yaw (radians) — turns the whole twin so it faces the
+   *  way the user is facing (sagittal-plane motion). 0 ≈ user's start. */
+  yawRef?:        MutableRefObject<number>
+  /** Optional vertical body offset (model units) — lifts the twin on a jump,
+   *  dips it on a squat, so the model reacts to gravity. */
+  rootYRef?:      MutableRefObject<number>
 }
 
-export function MuscleTwinModel({ activationsRef, boneDirsRef, postureRef }: Props) {
+export function MuscleTwinModel({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef }: Props) {
   return (
     <Canvas
       gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
@@ -69,7 +85,8 @@ export function MuscleTwinModel({ activationsRef, boneDirsRef, postureRef }: Pro
       <directionalLight position={[-3, 2, 3]} intensity={0.4} color="#a5f3fc" />
       <Ground />
       <Suspense fallback={null}>
-        <Rig activationsRef={activationsRef} boneDirsRef={boneDirsRef} postureRef={postureRef} />
+        <Rig activationsRef={activationsRef} boneDirsRef={boneDirsRef} postureRef={postureRef}
+             yawRef={yawRef} rootYRef={rootYRef} />
       </Suspense>
     </Canvas>
   )
@@ -93,6 +110,7 @@ function Ground() {
 }
 
 const AXIS_X = new THREE.Vector3(1, 0, 0)
+const AXIS_Y = new THREE.Vector3(0, 1, 0)
 const AXIS_Z = new THREE.Vector3(0, 0, 1)
 function postureToQuat(posture: Posture | null | undefined, out: THREE.Quaternion): THREE.Quaternion {
   switch (posture) {
@@ -116,7 +134,7 @@ interface RigData {
   axes:    { right: THREE.Vector3; up: THREE.Vector3; ant: THREE.Vector3 }
 }
 
-function Rig({ activationsRef, boneDirsRef, postureRef }: Props) {
+function Rig({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef }: Props) {
   const { scene } = useGLTF(MODEL_PATH, true, true) as any
   const rig = useMemo<RigData>(() => buildRig(scene), [scene])
 
@@ -126,6 +144,8 @@ function Rig({ activationsRef, boneDirsRef, postureRef }: Props) {
   const tmpDesired = useRef(new THREE.Quaternion())
   const tmpLocal  = useRef(new THREE.Quaternion())
   const tmpPosture = useRef(new THREE.Quaternion())
+  const tmpYaw    = useRef(new THREE.Quaternion())
+  const tmpOuter  = useRef(new THREE.Quaternion())
   const IDENT     = useRef(new THREE.Quaternion())
 
   // Lazily init persistent quaternions.
@@ -139,10 +159,17 @@ function Rig({ activationsRef, boneDirsRef, postureRef }: Props) {
     const t = state.clock.elapsedTime
     const { right, up, ant } = rig.axes
 
-    // Global posture (gravity awareness): adopt the exercise's expected posture
-    // (or the live orientation) so the body stands / sits / lies appropriately.
+    // Global orientation: facing YAW (the twin turns the way the user turns) ∘
+    // POSTURE tilt (gravity awareness — stand/sit/lie). Yaw is applied first
+    // (about world-up), then the posture tilt, then slerped for smoothness.
+    tmpYaw.current.setFromAxisAngle(AXIS_Y, YAW_SIGN * (yawRef?.current ?? 0))
     postureToQuat(postureRef?.current, tmpPosture.current)
-    rig.outer.quaternion.slerp(tmpPosture.current, 0.12)
+    tmpOuter.current.copy(tmpPosture.current).multiply(tmpYaw.current)
+    rig.outer.quaternion.slerp(tmpOuter.current, 0.15)
+
+    // Vertical body offset — lifts on a jump, dips on a squat (gravity reaction).
+    const ry = rootYRef?.current ?? 0
+    rig.outer.position.y += 0.35 * (ry - rig.outer.position.y)
 
     // 1. Refresh each segment's body-relative rotation from fresh pose dirs.
     for (const seg of SEGMENT_ORDER) {
@@ -173,7 +200,9 @@ function Rig({ activationsRef, boneDirsRef, postureRef }: Props) {
 
       tmpLocal.current.copy(parentWQ).invert().multiply(desired)
       clampQuat(tmpLocal.current, MAX_ANGLE[seg] ?? 160, IDENT.current)
-      group.quaternion.slerp(tmpLocal.current, SLERP)
+      // Hard per-frame slew limit (on top of the slerp) so one noisy frame can't
+      // snap a joint — keeps limbs connected and the motion calm.
+      slewQuat(group.quaternion, tmpLocal.current, MAX_STEP_DEG, SLERP)
       worldQuat.current[seg].copy(desired)
     }
 
@@ -200,6 +229,20 @@ function clampQuat(q: THREE.Quaternion, maxDeg: number, ident: THREE.Quaternion)
   const angle = 2 * Math.acos(Math.min(1, Math.abs(q.w)))
   const max = (maxDeg * Math.PI) / 180
   if (angle > max && angle > 1e-4) q.slerpQuaternions(ident, q.clone(), max / angle)
+}
+
+/**
+ * Move `current` toward `target` by at most `maxStepDeg` this frame, otherwise
+ * by the slerp fraction `frac`. The hard cap is what stops a single noisy pose
+ * frame from teleporting a joint and flinging the limb off the body.
+ */
+const _slewTo = new THREE.Quaternion()
+function slewQuat(current: THREE.Quaternion, target: THREE.Quaternion, maxStepDeg: number, frac: number): void {
+  _slewTo.copy(current).invert().multiply(target)               // delta current→target
+  const angle = 2 * Math.acos(Math.min(1, Math.abs(_slewTo.w))) // 0..π
+  const maxStep = (maxStepDeg * Math.PI) / 180
+  const tFrac = angle > 1e-6 ? Math.min(frac, maxStep / angle) : frac
+  current.slerp(target, tFrac)
 }
 
 // ── Rig construction ──────────────────────────────────────────────────────────
