@@ -117,7 +117,12 @@ export function poseBoneDirections(lms: LandmarkSet): BoneDirs {
   const nose  = w(LM.NOSE, 0.3)
 
   const out: BoneDirs = {}
-  const set = (seg: SegmentId, d: Vec3 | null) => { if (d) out[seg] = d }
+  // MIRROR: the model faces the user like a mirror — the user's LEFT limb drives
+  // the model's RIGHT segment, and the lateral (x) component is negated so
+  // abduction stays abduction. `set` applies the x-negation; the limb sources
+  // below are swapped L↔R. (MuscleTwinModel mirrors the activation side to match.)
+  const mir = (d: Vec3 | null): Vec3 | null => (d ? { x: -d.x, y: d.y, z: d.z } : null)
+  const set = (seg: SegmentId, d: Vec3 | null) => { const m = mir(d); if (m) out[seg] = m }
 
   // Trunk lean: how far the spine tilts from vertical, in forward/side terms.
   // frame.zAxis.y < 0 when bent forward; frame.xAxis.y < 0 when side-bent right.
@@ -128,18 +133,19 @@ export function poseBoneDirections(lms: LandmarkSet): BoneDirs {
   const leanScale = upright < 0.5 ? 0 : 1
   const leanFwd  = clamp(-frame.zAxis.y * LEAN_GAIN, -0.9, 0.9) * leanScale
   const leanSide = clamp(-frame.xAxis.y * LEAN_GAIN, -0.9, 0.9) * leanScale
-  out['trunk'] = normalize({ x: leanSide, y: 1, z: leanFwd })
+  out['trunk'] = normalize({ x: -leanSide, y: 1, z: leanFwd })   // -leanSide = mirror
 
   set('neck', project(midSh, nose))
   set('head', project(midSh, nose))
 
-  set('upperArmR', project(rs, w(LM.R_ELBOW)))
-  set('upperArmL', project(ls, w(LM.L_ELBOW)))
+  // Limb sources swapped L↔R for the mirror (user left → model right).
+  set('upperArmR', project(ls, w(LM.L_ELBOW)))
+  set('upperArmL', project(rs, w(LM.R_ELBOW)))
 
-  set('thighR', project(w(LM.R_HIP), w(LM.R_KNEE)))
-  set('thighL', project(w(LM.L_HIP), w(LM.L_KNEE)))
-  set('shankR', project(w(LM.R_KNEE), w(LM.R_ANKLE)))
-  set('shankL', project(w(LM.L_KNEE), w(LM.L_ANKLE)))
+  set('thighR', project(w(LM.L_HIP), w(LM.L_KNEE)))
+  set('thighL', project(w(LM.R_HIP), w(LM.R_KNEE)))
+  set('shankR', project(w(LM.L_KNEE), w(LM.L_ANKLE)))
+  set('shankL', project(w(LM.R_KNEE), w(LM.R_ANKLE)))
 
   return out
 }

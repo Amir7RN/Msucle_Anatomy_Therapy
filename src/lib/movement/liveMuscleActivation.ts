@@ -32,6 +32,7 @@ import { OrientationTracker, type OrientationEstimate } from './bodyOrientation'
 import { romFraction } from './constraints'
 import type { MuscleActivation } from './muscleActivation'
 import type { SymmetryRegion } from '../insights/symmetry'
+import type { ActivationPattern } from './activationPriors'
 
 type MovePhase = 'concentric' | 'eccentric' | 'isometric'
 type MuscleRole = 'agonist' | 'antagonist' | 'stabilizer'
@@ -229,7 +230,7 @@ export class LiveActivationEngine {
   private level     = new Map<string, number>()     // smoothed displayed level per muscle
   private meta      = new Map<string, { muscleId: string; region: SymmetryRegion; role: MuscleRole; phase: MovePhase; side: 'L'|'R'|'C' }>()
 
-  update(lms: LandmarkSet, tMs: number, load: LoadInput = {}): LiveFrame {
+  update(lms: LandmarkSet, tMs: number, load: LoadInput = {}, prior?: ActivationPattern | null): LiveFrame {
     const orientation = this.tracker.update(lms)
     const readings: JointLiveReading[] = []
 
@@ -300,11 +301,16 @@ export class LiveActivationEngine {
       evalMovement(rule, side)
     }
 
+    // Movement energy first, so the exercise prior can scale with how hard the
+    // user is actually moving.
+    const movementEnergy = energyCount ? clamp01(energyAccum / energyCount) : 0
+    // Exercise prior: when a known exercise is active, drive its canonical
+    // muscles toward their literature/MinT peak, scaled by movement energy.
+    const priorScale = prior ? clamp01(0.15 + movementEnergy * 1.4) : 0
+
     // Envelope-smooth every known muscle toward (baseline + drive*(1-baseline)),
-    // so muscles that aren't driven this frame decay back to the calm baseline
-    // rather than blinking off.
+    // so muscles that aren't driven this frame decay back to the calm baseline.
     const activations: LiveMuscleActivation[] = []
-    const seen = new Set<string>()
     const applyEnvelope = (k: string, driveTarget: number) => {
       const finalTarget = BASELINE + driveTarget * (1 - BASELINE)
       const cur = this.level.get(k) ?? BASELINE
@@ -319,13 +325,18 @@ export class LiveActivationEngine {
         })
       }
     }
-    for (const [k, t] of target) { applyEnvelope(k, t); seen.add(k) }
-    // Decay muscles that had a level but weren't targeted this frame.
-    for (const k of this.level.keys()) {
-      if (!seen.has(k)) applyEnvelope(k, 0)
+    // One pass over every muscle seen this frame, decaying, or in the prior;
+    // blend the geometric estimate with the exercise prior (max wins).
+    const allKeys = new Set<string>([...this.level.keys(), ...this.meta.keys(), ...target.keys()])
+    for (const k of allKeys) {
+      let drive = target.get(k) ?? 0
+      if (prior) {
+        const meta = this.meta.get(k)
+        const p = meta ? prior[meta.muscleId] : undefined
+        if (p !== undefined) drive = Math.max(drive, p * priorScale)
+      }
+      applyEnvelope(k, drive)
     }
-
-    const movementEnergy = energyCount ? clamp01(energyAccum / energyCount) : 0
 
     return {
       activations: activations.sort((a, b) => b.level - a.level),

@@ -65,6 +65,9 @@ export function MuscleTwinView({ open, onClose }: Props) {
     energy: number
   }>({ readings: [], activations: [], orientation: 'unknown', energy: 0 })
   const [load, setLoad]     = useState<LoadEstimate | null>(null)
+  const [hasKey, setHasKey] = useState(false)
+  const [keyInput, setKeyInput] = useState('')
+  const [loadErr, setLoadErr] = useState<string | null>(null)
 
   const engineRef = useRef<LiveActivationEngine | null>(null)
   const loadEstRef = useRef<LoadEstimator | null>(null)
@@ -80,8 +83,9 @@ export function MuscleTwinView({ open, onClose }: Props) {
     if (open) {
       engineRef.current = new LiveActivationEngine()
       loadEstRef.current = new LoadEstimator()
+      setHasKey(loadEstRef.current.isEnabled())
     } else {
-      setReady(false); setError(null); setLoad(null)
+      setReady(false); setError(null); setLoad(null); setLoadErr(null)
       activationsRef.current = []; boneDirsRef.current = {}; loadRef.current = {}
       engineRef.current?.reset(); engineRef.current = null
       loadEstRef.current?.reset(); loadEstRef.current = null
@@ -100,9 +104,20 @@ export function MuscleTwinView({ open, onClose }: Props) {
       const r = await est.maybeRefresh(videoRef.current)
       loadRef.current = { leftKg: r.leftKg, rightKg: r.rightKg }
       setLoad(r.at ? r : null)
+      setLoadErr(est.lastError())
     }, 1500)
     return () => window.clearInterval(id)
   }, [open])
+
+  function saveKey() {
+    const est = loadEstRef.current
+    if (!est) return
+    est.setKey(keyInput)
+    setHasKey(est.isEnabled())
+    setKeyInput('')
+    setLoadErr(null)
+    void rescanWeight()
+  }
 
   function handleLandmarks(lms: LandmarkSet) {
     const eng = engineRef.current
@@ -133,8 +148,6 @@ export function MuscleTwinView({ open, onClose }: Props) {
   }
 
   if (!open) return null
-
-  const keyPresent = loadEstRef.current?.isEnabled() ?? false
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-slate-950 to-black text-white">
@@ -199,27 +212,50 @@ export function MuscleTwinView({ open, onClose }: Props) {
               </div>
               <button
                 onClick={rescanWeight}
-                disabled={!keyPresent}
+                disabled={!hasKey}
                 className="flex items-center gap-1 rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-200 hover:bg-slate-700 disabled:opacity-40"
-                title="Re-scan the weight you're holding"
+                title="Re-scan what you're holding"
               >
                 <RefreshCw size={10} /> Re-scan
               </button>
             </div>
-            {!keyPresent ? (
-              <div className="text-[11px] text-slate-400">
-                Add your Anthropic key in AI Chat to auto-detect the weight you're holding. Using bodyweight for now.
+            {!hasKey ? (
+              <div className="space-y-1.5">
+                <div className="text-[11px] text-slate-400">
+                  Paste your Anthropic API key to let the camera detect what you're holding and scale activation by load. Stored only on this device.
+                </div>
+                <div className="flex gap-1.5">
+                  <input
+                    type="password"
+                    value={keyInput}
+                    onChange={(e) => setKeyInput(e.target.value)}
+                    placeholder="sk-ant-…"
+                    className="min-w-0 flex-1 rounded bg-slate-800 px-2 py-1 text-[11px] text-slate-100 placeholder:text-slate-500 outline-none ring-1 ring-slate-700 focus:ring-cyan-500/50"
+                  />
+                  <button
+                    onClick={saveKey}
+                    disabled={!keyInput.trim()}
+                    className="rounded bg-cyan-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-cyan-500 disabled:opacity-40"
+                  >
+                    Save
+                  </button>
+                </div>
               </div>
             ) : load ? (
-              <div className="flex items-baseline gap-3 text-xs text-slate-200">
-                <span className="font-medium">{load.item}</span>
-                <span className="text-[11px] text-slate-400">
-                  L {load.leftKg} kg · R {load.rightKg} kg
-                  <span className="ml-1 text-slate-500">({Math.round(load.confidence * 100)}%)</span>
-                </span>
+              <div>
+                <div className="flex items-baseline gap-2 text-sm text-slate-100">
+                  <span className="font-semibold capitalize">{load.item}</span>
+                  <span className="text-[11px] text-slate-400">({Math.round(load.confidence * 100)}% conf)</span>
+                </div>
+                <div className="mt-0.5 text-[11px] text-slate-400">
+                  Left hand {load.leftKg} kg · Right hand {load.rightKg} kg
+                </div>
+                {loadErr && <div className="mt-1 text-[10px] text-amber-400">Last scan error: {loadErr}</div>}
               </div>
             ) : (
-              <div className="text-[11px] text-slate-400">Scanning for a weight…</div>
+              <div className="text-[11px] text-slate-400">
+                {loadErr ? <span className="text-amber-400">Scan error: {loadErr}</span> : 'Scanning for what you\'re holding…'}
+              </div>
             )}
           </section>
 

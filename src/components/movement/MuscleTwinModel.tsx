@@ -33,10 +33,11 @@ const MODEL_PATH = `${import.meta.env.BASE_URL}models/human-muscular-system.glb`
 
 const SLERP    = 0.3
 const BASELINE = 0.12
-// The GLB's chest faces -Z by default, so the model's anterior axis comes out
-// reversed; flip it so forward/back (trunk lean, arm/hip flexion) match the
-// user. (If reaching forward ever looks backward again, flip this.)
-const ANTERIOR_SIGN = -1
+// The twin is a MIRROR (the user faces it): the user's left side drives the
+// model's right and vice-versa. poseRig already mirrors the MOTION; here we
+// mirror the ACTIVATION side too so the limb that moves is the limb that lights
+// up. Set false for a "facing-partner" (same-anatomical-side) view.
+const MIRROR = true
 
 const MAX_ANGLE: Partial<Record<SegmentId, number>> = {
   trunk: 45, neck: 55, head: 45,
@@ -182,7 +183,9 @@ function Rig({ activationsRef, boneDirsRef, postureRef }: Props) {
       let level = BASELINE
       for (const a of acts) {
         if (actStem(a.muscleId) !== md.stem) continue
-        const aSide = a.region.startsWith('left') ? 'L' : a.region.startsWith('right') ? 'R' : 'C'
+        // Mirror the activation side to match the mirrored motion.
+        const raw = a.region.startsWith('left') ? 'L' : a.region.startsWith('right') ? 'R' : 'C'
+        const aSide = raw === 'C' ? 'C' : MIRROR ? (raw === 'L' ? 'R' : 'L') : raw
         if (aSide !== 'C' && md.side !== 'C' && aSide !== md.side) continue
         if (a.level > level) level = a.level
       }
@@ -225,6 +228,15 @@ function buildRig(scene: THREE.Object3D): RigData {
     for (const s of segs) for (const m of (bySeg[s] ?? [])) { b.expandByObject(m); any = true }
     return any ? b : null
   }
+  // Union box of all meshes whose name contains a fragment (used to find the
+  // front/back muscles that define the model's true anterior axis).
+  const boxFrag = (frag: string) => {
+    const b = new THREE.Box3(); let any = false
+    cloned.traverse((o: THREE.Object3D) => {
+      if (o instanceof THREE.Mesh && o.name.toUpperCase().includes(frag)) { b.expandByObject(o); any = true }
+    })
+    return any ? b : null
+  }
   const topC = (b: THREE.Box3) => new THREE.Vector3((b.min.x + b.max.x) / 2, b.max.y, (b.min.z + b.max.z) / 2)
   const botC = (b: THREE.Box3) => new THREE.Vector3((b.min.x + b.max.x) / 2, b.min.y, (b.min.z + b.max.z) / 2)
   const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z)
@@ -235,11 +247,22 @@ function buildRig(scene: THREE.Object3D): RigData {
   const bTrunk = box(['trunk']),   bPelv = box(['pelvis'])
   const bNeck = box(['neck']),     bHead = box(['head'])
 
-  const shoulderR = bUAr ? topC(bUAr) : V(-0.18, 1.35, 0), armEndR = bUAr ? botC(bUAr) : V(-0.2, 0.8, 0)
-  const shoulderL = bUAl ? topC(bUAl) : V(0.18, 1.35, 0),  armEndL = bUAl ? botC(bUAl) : V(0.2, 0.8, 0)
-  const hipR = bThR ? topC(bThR) : V(-0.1, 0.9, 0),        kneeR = bThR ? botC(bThR) : V(-0.1, 0.5, 0)
-  const hipL = bThL ? topC(bThL) : V(0.1, 0.9, 0),         kneeL = bThL ? botC(bThL) : V(0.1, 0.5, 0)
-  const ankleR = bShR ? botC(bShR) : V(-0.1, 0.1, 0),      ankleL = bShL ? botC(bShL) : V(0.1, 0.1, 0)
+  // Shoulders/hips pivot at the MEDIAL-top of the limb box (near the torso
+  // socket), not the lateral acromion — so a raised/abducted limb stays
+  // attached to the body instead of swinging away and detaching.
+  const midX = bTrunk ? (bTrunk.min.x + bTrunk.max.x) / 2 : 0
+  const innerX = (b: THREE.Box3) => Math.abs(b.min.x - midX) < Math.abs(b.max.x - midX) ? b.min.x : b.max.x
+  const cz = (b: THREE.Box3) => (b.min.z + b.max.z) / 2
+  const shoulderR = bUAr ? V(innerX(bUAr), bUAr.max.y, cz(bUAr)) : V(-0.12, 1.35, 0)
+  const shoulderL = bUAl ? V(innerX(bUAl), bUAl.max.y, cz(bUAl)) : V(0.12, 1.35, 0)
+  const armEndR = bUAr ? botC(bUAr) : V(-0.2, 0.8, 0)
+  const armEndL = bUAl ? botC(bUAl) : V(0.2, 0.8, 0)
+  const hipR = bThR ? V(innerX(bThR), bThR.max.y, cz(bThR)) : V(-0.1, 0.9, 0)
+  const hipL = bThL ? V(innerX(bThL), bThL.max.y, cz(bThL)) : V(0.1, 0.9, 0)
+  const kneeR = bThR ? botC(bThR) : V(-0.1, 0.5, 0)
+  const kneeL = bThL ? botC(bThL) : V(0.1, 0.5, 0)
+  const ankleR = bShR ? botC(bShR) : V(-0.1, 0.1, 0)
+  const ankleL = bShL ? botC(bShL) : V(0.1, 0.1, 0)
   const pelvisC = hipR.clone().add(hipL).multiplyScalar(0.5)
   const neckBase = bTrunk ? topC(bTrunk) : V(0, 1.4, 0)
   const lumbar   = pelvisC.clone().lerp(neckBase, 0.12)
@@ -257,13 +280,23 @@ function buildRig(scene: THREE.Object3D): RigData {
     thighR: kneeR, shankR: ankleR, thighL: kneeL, shankL: ankleL,
   }
 
-  // Model anatomical axes from geometry (Gram-Schmidt).
+  // ── Anatomical frame from GEOMETRY (no sign guessing) ───────────────────────
+  // up   = pelvis → neck
+  // ant  = erector-spinae (back) → pectoralis (front)  == true anterior
+  // right= up × ant, sign-checked to point toward the model's _R arm
+  // Deriving the axes from the actual mesh layout fixes forward/back (trunk lean
+  // AND hip/leg flexion) consistently, instead of guessing a flip sign.
   const up = neckBase.clone().sub(pelvisC); if (up.lengthSq() < 1e-6) up.set(0, 1, 0); up.normalize()
-  const right = shoulderR.clone().sub(shoulderL)
-  if (right.lengthSq() < 1e-6) right.set(1, 0, 0)
-  right.addScaledVector(up, -right.dot(up)).normalize()
-  // ANTERIOR_SIGN corrects the GLB's facing so forward/back matches the user.
-  const ant = new THREE.Vector3().crossVectors(right, up).normalize().multiplyScalar(ANTERIOR_SIGN)
+  const ant = new THREE.Vector3(0, 0, 1)
+  const pecBox = boxFrag('PECTORALIS'), erBox = boxFrag('ERECTOR_SPINAE')
+  if (pecBox && erBox) {
+    ant.copy(pecBox.getCenter(new THREE.Vector3())).sub(erBox.getCenter(new THREE.Vector3()))
+    ant.addScaledVector(up, -ant.dot(up))
+    if (ant.lengthSq() < 1e-6) ant.set(0, 0, 1)
+    ant.normalize()
+  }
+  const right = new THREE.Vector3().crossVectors(up, ant).normalize()
+  if (right.dot(shoulderR.clone().sub(shoulderL)) < 0) right.multiplyScalar(-1)
 
   const groups: Partial<Record<SegmentId, THREE.Group>> = {}
   const neutral: Partial<Record<SegmentId, THREE.Vector3>> = {}

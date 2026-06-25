@@ -17,7 +17,7 @@
  * caller triggers it occasionally (e.g. when movement starts), not per frame.
  */
 
-import { getStoredApiKey } from '../triage/llm'
+import { getStoredApiKey, setStoredApiKey } from '../triage/llm'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 // Haiku is vision-capable, fast, and cheap — ample for "what weight is this".
@@ -122,6 +122,7 @@ export class LoadEstimator {
   private lastCallAt = 0
   private inFlight = false
   private enabled: boolean
+  private error: string | null = null
 
   constructor(private refreshMs = 6000) {
     this.enabled = !!getStoredApiKey()
@@ -129,6 +130,16 @@ export class LoadEstimator {
 
   isEnabled(): boolean { return this.enabled }
   current(): LoadEstimate { return this.last }
+  lastError(): string | null { return this.error }
+  /** Save the user's Anthropic key (shared with the AI Chat) and enable. */
+  setKey(key: string): void {
+    const k = key.trim()
+    if (!k) return
+    setStoredApiKey(k)
+    this.enabled = true
+    this.error = null
+    this.lastCallAt = 0   // allow an immediate scan
+  }
 
   /** Trigger a refresh if due. `forced` ignores the debounce (manual button). */
   async maybeRefresh(video: HTMLVideoElement | null, forced = false): Promise<LoadEstimate> {
@@ -147,10 +158,11 @@ export class LoadEstimator {
     this.lastCallAt = now
     try {
       const est = await callClaudeVision(b64, key)
-      if (est) this.last = est
+      if (est) { this.last = est; this.error = null }
     } catch (e) {
-      // Non-fatal: keep the previous estimate, just log.
-      console.warn('[load] vision estimate failed:', (e as Error).message)
+      // Non-fatal: keep the previous estimate; surface the error to the UI.
+      this.error = (e as Error).message || 'vision request failed'
+      console.warn('[load] vision estimate failed:', this.error)
     } finally {
       this.inFlight = false
     }

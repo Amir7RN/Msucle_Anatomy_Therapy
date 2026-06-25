@@ -55,6 +55,7 @@ import { MuscleTwinModel } from './MuscleTwinModel'
 import { LiveActivationEngine, type LiveMuscleActivation } from '../../lib/movement/liveMuscleActivation'
 import { poseBoneDirections, type BoneDirs } from '../../lib/movement/poseRig'
 import { postureForExercise, type Posture } from '../../lib/movement/exercisePose'
+import { priorFor } from '../../lib/movement/activationPriors'
 import { useAtlasStore } from '../../store/atlasStore'
 
 // ── Smoothing buffer ──────────────────────────────────────────────────────────
@@ -160,7 +161,8 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
     // so the model mirrors the user and shows real activation).
     if (!liveEngineRef.current) liveEngineRef.current = new LiveActivationEngine()
     const liveNow = performance.now()
-    const liveFrame = liveEngineRef.current.update(lms, liveNow, undefined)
+    // Exercise-grounded activation prior (literature/MinT pattern) for accuracy.
+    const liveFrame = liveEngineRef.current.update(lms, liveNow, undefined, priorFor(exerciseId))
     liveActsRef.current = liveFrame.activations
     liveBoneRef.current = poseBoneDirections(lms)
     // Surface the few muscles actually engaged for THIS exercise (top distinct,

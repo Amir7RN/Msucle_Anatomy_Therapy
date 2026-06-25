@@ -176,3 +176,54 @@ MuscleActivationRadars.tsx, RomBars.tsx.
 
 Tunables if a posture looks off: the rotations in `postureToQuat` (MuscleTwin
 Model) and the per-exercise postures in `exercisePose.ts`.
+
+## Realism pass 4 + activation enrichment (latest)
+
+Rig fixes (from video review):
+
+- **Anatomy from geometry, not sign-guessing.** The model's anatomical axes are
+  now derived from the GLB itself — up = pelvis→neck, anterior = erector-spinae
+  (back) → pectoralis (front), right = up×anterior sign-checked to the _R arm.
+  This fixes forward/back consistently (trunk lean AND hip/leg flexion), which
+  also fixes the "I sat down but the legs flew up" bug.
+- **Limbs stay attached.** Shoulders/hips now pivot at the MEDIAL-top of the
+  limb (the joint socket near the torso) instead of the lateral acromion, so a
+  raised/abducted limb stays connected to the body.
+- **True mirror.** The model is now a mirror: the user's LEFT limb drives the
+  model's RIGHT segment (poseRig swaps L↔R and negates the lateral axis), and
+  the activation side is mirrored to match (the limb that moves is the limb that
+  lights up). Abduction/adduction read correctly. Toggle `MIRROR` in
+  MuscleTwinModel for facing-partner mode.
+- **Object detection usable.** No Anthropic key was configured (that's why it
+  "didn't work"). The Twin's load panel now has an inline key field (stored on
+  device, shared with AI Chat), surfaces scan errors, and reports the detected
+  carried object ("water bottle", per-hand kg, confidence).
+
+Activation enrichment (from the datasets research):
+
+- The research's recommended pipeline is MinT (OpenSim pose→activation) →
+  collapse to ~13 muscle groups → fine-tune on MIA real-EMG. That needs an 11 GB
+  dataset + offline training, so it can't run at inference in-browser yet.
+- As the real-time stand-in, `activationPriors.ts` encodes each exercise's
+  canonical muscle-group activation (consistent with the EMG literature and the
+  representative MinT/OpenSim patterns in the research appendix — squat →
+  quads/glutes/erectors, hip-hinge → glutes/hams/erectors, curl →
+  biceps/brachialis, etc.). During an exercise the live engine blends toward
+  this prior, scaled by movement energy and external load, so the activation
+  tracks the literature instead of the per-frame geometric estimate alone.
+- **Staged ML path to swap in later** (documented for when you train it):
+  1. `pip install musint`; train a seq2seq (transformer) pose-window → [0,1]
+     activations on MinT; collapse 402 strands → your muscle groups; score with
+     PCC/SMAPE (not just RMSE).
+  2. Bridge your MediaPipe pose → the joint-angle representation MinT expects;
+     budget a domain-shift fine-tune.
+  3. Fine-tune/validate on MIA's 8 real-EMG muscles for the exercise subset.
+  4. Close the gym-lift gap with self-recorded OpenCap → OpenSim static-
+     optimization data.
+  Export the trained net to TF.js/ONNX-web and replace the prior blend with the
+  model's per-frame output (same `ActivationPattern` shape). Note MinT is
+  CC BY-NC — resolve licensing before shipping commercially.
+
+Files: src/lib/movement/poseRig.ts, liveMuscleActivation.ts, activationPriors.ts,
+loadEstimator.ts; src/components/movement/MuscleTwinModel.tsx, MuscleTwinView.tsx,
+ExerciseGuidance.tsx.
