@@ -1,21 +1,22 @@
 /**
- * MuscleTwinModel.tsx  (v3)
+ * MuscleTwinModel.tsx  (v4 — realism rewrite)
  *
  * Segment-rigged, pose-driven, activation-coloured render of the muscular GLB.
  *
- * v3 realism rig
- * ──────────────
- *   • PELVIS is the fixed root. The TRUNK leans on top of it (forward/back/side,
- *     derived from spine-vs-gravity → no yaw spin). Arms/neck/head are children
- *     of the trunk so they follow the lean. Thighs/shanks are children of the
- *     PELVIS, so they stay grounded when the trunk moves and only move when the
- *     leg itself moves.
- *   • FOREARM folded into the arm (poseRig), so the arm is one connected
- *     segment that can't detach at the elbow.
- *   • Body-relative FK: each segment's measured anatomical direction is rebuilt
- *     in the model's anatomical frame and applied so segments connect and the
- *     model mimics the user. Upper segments are additionally rotated by the
- *     trunk lean; lower segments are not (grounding).
+ * What changed vs v3 (the issues from the user's recording)
+ * ─────────────────────────────────────────────────────────
+ *   0. FOREARM BENDS. The forearm (brachioradialis) is its own segment, a child
+ *      of the upper arm, driven by the elbow→wrist direction. The elbow now
+ *      flexes instead of the arm being one rigid stick.
+ *   2/3. NO TANGLING / DETACHING. Every segment is oriented by its own
+ *      gravity-referenced world direction (from poseRig v4) and then localised
+ *      to its parent, so children stay attached and limbs can't cross or fly
+ *      off. Joints are clamped and slew-limited.
+ *   "floating". GROUNDED. Each frame we measure the posed model's lowest point
+ *      and translate it so the feet rest on the floor — in any posture.
+ *   4/5. REAL WEIGHT, NO BALLOON. A jump lifts the model by the user's measured
+ *      hip rise and settles with a mass-tuned, non-overshooting follower that
+ *      snaps back to the ground on landing (no drift, no bobbing).
  */
 
 import React, { Suspense, useMemo, useRef, type MutableRefObject } from 'react'
@@ -24,61 +25,61 @@ import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import type { LiveMuscleActivation } from '../../lib/movement/liveMuscleActivation'
 import {
-  SEGMENT_ORDER, SEGMENT_PARENT, UPPER_SEGMENTS, segmentForMesh,
+  SEGMENT_ORDER, SEGMENT_PARENT, segmentForMesh,
   type SegmentId, type BoneDirs,
 } from '../../lib/movement/poseRig'
 import { type Posture } from '../../lib/movement/exercisePose'
+import { heavinessFactor, DEFAULT_WEIGHT_KG } from '../../lib/movement/bodySegments'
 
 const MODEL_PATH = `${import.meta.env.BASE_URL}models/human-muscular-system.glb`
 
-const SLERP    = 0.3
+const SLERP    = 0.32
 const BASELINE = 0.12
 // The twin is a MIRROR (the user faces it): the user's left side drives the
 // model's right and vice-versa. poseRig already mirrors the MOTION; here we
 // mirror the ACTIVATION side too so the limb that moves is the limb that lights
 // up. Set false for a "facing-partner" (same-anatomical-side) view.
 const MIRROR = true
-// Sign of the global facing rotation. If turning to your right turns the model
-// the *opposite* way, flip this to -1 (one line). The model is a mirror, so the
-// natural sign makes the twin rotate to show the same side you turned toward.
-const YAW_SIGN = 1
 // Per-frame ceiling on how far a segment may rotate (degrees) — a hard slew
 // limit on top of the slerp so a single bad pose frame can't fling a limb.
-const MAX_STEP_DEG = 14
+const MAX_STEP_DEG = 13
 
-// Anatomically-bounded joint limits (degrees from the model's neutral). Tighter
-// than before so limbs can't hyper-extend off the body, and the hips can't fold
-// the thighs up to the stomach when seated (the "sitting looked reversed" bug).
+// Where the floor sits (model world units) and how a unit of jump maps to it.
+const GROUND_Y     = -1.28
+const JUMP_WORLD   = 0.7    // rig rootY (≈1 person-height units) → world units
+
+// Anatomically-bounded joint limits (degrees of LOCAL rotation from neutral,
+// i.e. relative to the parent segment). Tight enough that nothing hyper-extends
+// off the body; loose enough for full, real range.
 const MAX_ANGLE: Partial<Record<SegmentId, number>> = {
-  trunk: 45, neck: 55, head: 45,
-  upperArmR: 165, upperArmL: 165,
-  thighR: 100, thighL: 100,
-  shankR: 150, shankL: 150,
+  trunk: 42, neck: 55, head: 45,
+  upperArmR: 172, upperArmL: 172,
+  forearmR: 155, forearmL: 155,     // elbow flexion
+  thighR: 115, thighL: 115,
+  shankR: 150, shankL: 150,         // knee flexion
 }
 
 interface Props {
   activationsRef: MutableRefObject<LiveMuscleActivation[]>
   boneDirsRef:    MutableRefObject<BoneDirs>
-  /** Optional posture prior (e.g. the selected exercise's expected posture).
-   *  When set, the model adopts that global posture (stand/sit/lie/side) and
-   *  the limbs track live on top of it. When absent, the caller can update it
-   *  from the live orientation classifier. */
+  /** Optional posture prior (e.g. the selected exercise's expected posture). */
   postureRef?:    MutableRefObject<Posture | null>
-  /** Optional live facing yaw (radians) — turns the whole twin so it faces the
-   *  way the user is facing (sagittal-plane motion). 0 ≈ user's start. */
+  /** Optional live facing yaw (radians). v4 keeps the twin front-facing, so this
+   *  is normally 0; still honoured if a caller sets it. */
   yawRef?:        MutableRefObject<number>
-  /** Optional vertical body offset (model units) — lifts the twin on a jump,
-   *  dips it on a squat, so the model reacts to gravity. */
+  /** Optional vertical JUMP offset (rig units, ≥0) — lifts the twin on a jump. */
   rootYRef?:      MutableRefObject<number>
+  /** Optional body mass (kg) — tunes how weighty the jump/landing feels. */
+  bodyMassRef?:   MutableRefObject<number>
 }
 
-export function MuscleTwinModel({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef }: Props) {
+export function MuscleTwinModel({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMassRef }: Props) {
   return (
     <Canvas
       gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
       dpr={[1, 2]}
       style={{ background: 'transparent' }}
-      camera={{ position: [0, 0.1, 3.6], fov: 42, near: 0.1, far: 100 }}
+      camera={{ position: [0, 0.15, 3.7], fov: 42, near: 0.1, far: 100 }}
     >
       <ambientLight intensity={0.6} />
       <directionalLight position={[3, 5, 4]}  intensity={0.8} />
@@ -86,7 +87,7 @@ export function MuscleTwinModel({ activationsRef, boneDirsRef, postureRef, yawRe
       <Ground />
       <Suspense fallback={null}>
         <Rig activationsRef={activationsRef} boneDirsRef={boneDirsRef} postureRef={postureRef}
-             yawRef={yawRef} rootYRef={rootYRef} />
+             yawRef={yawRef} rootYRef={rootYRef} bodyMassRef={bodyMassRef} />
       </Suspense>
     </Canvas>
   )
@@ -95,14 +96,14 @@ export function MuscleTwinModel({ activationsRef, boneDirsRef, postureRef, yawRe
 /** Solid soil-coloured floor so the user can see the ground / grounding. */
 function Ground() {
   return (
-    <group position={[0, -1.28, 0]}>
+    <group position={[0, GROUND_Y, 0]}>
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[2.8, 56]} />
         <meshStandardMaterial color="#5b4a37" roughness={1} metalness={0} />
       </mesh>
       {/* faint contact ring for depth */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]}>
-        <ringGeometry args={[1.0, 1.05, 48]} />
+        <ringGeometry args={[0.95, 1.0, 48]} />
         <meshBasicMaterial color="#3f3328" transparent opacity={0.6} />
       </mesh>
     </group>
@@ -134,85 +135,97 @@ interface RigData {
   axes:    { right: THREE.Vector3; up: THREE.Vector3; ant: THREE.Vector3 }
 }
 
-function Rig({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef }: Props) {
+function Rig({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMassRef }: Props) {
   const { scene } = useGLTF(MODEL_PATH, true, true) as any
   const rig = useMemo<RigData>(() => buildRig(scene), [scene])
 
-  const worldQuat = useRef<Record<string, THREE.Quaternion>>({})
-  const lastBody  = useRef<Record<string, THREE.Quaternion>>({})
-  const tmpTarget = useRef(new THREE.Vector3())
-  const tmpDesired = useRef(new THREE.Quaternion())
-  const tmpLocal  = useRef(new THREE.Quaternion())
+  const worldQuat  = useRef<Record<string, THREE.Quaternion>>({})  // achieved world per segment
+  const desiredW   = useRef<Record<string, THREE.Quaternion>>({})  // desired world per segment
+  const tmpTarget  = useRef(new THREE.Vector3())
+  const tmpLocal   = useRef(new THREE.Quaternion())
   const tmpPosture = useRef(new THREE.Quaternion())
-  const tmpYaw    = useRef(new THREE.Quaternion())
-  const tmpOuter  = useRef(new THREE.Quaternion())
-  const IDENT     = useRef(new THREE.Quaternion())
+  const tmpYaw     = useRef(new THREE.Quaternion())
+  const tmpOuter   = useRef(new THREE.Quaternion())
+  const IDENT      = useRef(new THREE.Quaternion())
+  const box        = useRef(new THREE.Box3())
+  const groundReady = useRef(false)
+  const jumpVel    = useRef(0)
 
   // Lazily init persistent quaternions.
   for (const seg of SEGMENT_ORDER) {
     if (!worldQuat.current[seg]) worldQuat.current[seg] = new THREE.Quaternion()
-    if (!lastBody.current[seg])  lastBody.current[seg]  = new THREE.Quaternion()
+    if (!desiredW.current[seg])  desiredW.current[seg]  = new THREE.Quaternion()
   }
 
-  useFrame((state) => {
+  useFrame((state, delta) => {
     const dirs = boneDirsRef.current || {}
     const t = state.clock.elapsedTime
     const { right, up, ant } = rig.axes
 
-    // Global orientation: facing YAW (the twin turns the way the user turns) ∘
-    // POSTURE tilt (gravity awareness — stand/sit/lie). Yaw is applied first
-    // (about world-up), then the posture tilt, then slerped for smoothness.
-    tmpYaw.current.setFromAxisAngle(AXIS_Y, YAW_SIGN * (yawRef?.current ?? 0))
+    // ── Global orientation: facing yaw ∘ posture tilt (gravity awareness) ──────
+    tmpYaw.current.setFromAxisAngle(AXIS_Y, yawRef?.current ?? 0)
     postureToQuat(postureRef?.current, tmpPosture.current)
     tmpOuter.current.copy(tmpPosture.current).multiply(tmpYaw.current)
     rig.outer.quaternion.slerp(tmpOuter.current, 0.15)
 
-    // Vertical body offset — lifts on a jump, dips on a squat (gravity reaction).
-    const ry = rootYRef?.current ?? 0
-    rig.outer.position.y += 0.35 * (ry - rig.outer.position.y)
-
-    // 1. Refresh each segment's body-relative rotation from fresh pose dirs.
+    // ── 1. Each segment's DESIRED world orientation from its own pose dir ──────
     for (const seg of SEGMENT_ORDER) {
       const neutral = rig.neutral[seg]
       const d = dirs[seg]
-      if (!neutral || !d) continue
+      if (!neutral) continue
+      if (seg === 'pelvis') { desiredW.current[seg].identity(); continue }
+      if (!d) continue                         // no fresh dir → keep last desired
       tmpTarget.current.set(0, 0, 0)
         .addScaledVector(right, d.x).addScaledVector(up, d.y).addScaledVector(ant, d.z)
       if (tmpTarget.current.lengthSq() > 1e-6) {
         tmpTarget.current.normalize()
-        lastBody.current[seg].setFromUnitVectors(neutral, tmpTarget.current)
+        desiredW.current[seg].setFromUnitVectors(neutral, tmpTarget.current)
       }
     }
-    const leanRot = lastBody.current['trunk']
 
-    // 2. Top-down: desired world orientation → local (relative to parent).
+    // ── 2. Top-down: desired world → local (relative to parent's ACHIEVED world),
+    //       clamp the joint, slew-limit, then accumulate the achieved world so
+    //       children hang off where the parent actually is (stays connected). ──
     for (const seg of SEGMENT_ORDER) {
       const group = rig.groups[seg]
       if (!group) continue
       const parent = SEGMENT_PARENT[seg]
       const parentWQ = parent ? worldQuat.current[parent] : IDENT.current
 
-      const desired = tmpDesired.current
-      if (seg === 'pelvis')            desired.identity()
-      else if (seg === 'trunk')        desired.copy(leanRot)
-      else if (UPPER_SEGMENTS.has(seg)) desired.copy(leanRot).multiply(lastBody.current[seg])
-      else                              desired.copy(lastBody.current[seg])   // lower: grounded
-
-      tmpLocal.current.copy(parentWQ).invert().multiply(desired)
+      tmpLocal.current.copy(parentWQ).invert().multiply(desiredW.current[seg])
       clampQuat(tmpLocal.current, MAX_ANGLE[seg] ?? 160, IDENT.current)
-      // Hard per-frame slew limit (on top of the slerp) so one noisy frame can't
-      // snap a joint — keeps limbs connected and the motion calm.
       slewQuat(group.quaternion, tmpLocal.current, MAX_STEP_DEG, SLERP)
-      worldQuat.current[seg].copy(desired)
+      // achieved world = parentWorld ∘ achievedLocal
+      worldQuat.current[seg].copy(parentWQ).multiply(group.quaternion)
     }
 
-    // 3. Activation → colour.
+    // ── 3. Ground the model + apply the jump offset (mass-tuned, no overshoot) ─
+    rig.outer.updateMatrixWorld(true)
+    box.current.setFromObject(rig.outer)
+    if (isFinite(box.current.min.y)) {
+      const intrinsicFootY = box.current.min.y - rig.outer.position.y    // foot height sans offset
+      const jump = (rootYRef?.current ?? 0) * JUMP_WORLD
+      const targetY = (GROUND_Y - intrinsicFootY) + jump
+      if (!groundReady.current) { rig.outer.position.y = targetY; groundReady.current = true }
+      else {
+        // Critically-damped spring → weighty, never balloons. Heavier bodies are
+        // a touch stiffer (less float, firmer landing).
+        const heavy = heavinessFactor(bodyMassRef?.current ?? DEFAULT_WEIGHT_KG)
+        const stiffness = 90 * heavy
+        const damping = 2 * Math.sqrt(stiffness)        // ζ = 1 (no overshoot)
+        const dt = Math.min(0.05, Math.max(1e-3, delta))
+        const accel = stiffness * (targetY - rig.outer.position.y) - damping * jumpVel.current
+        jumpVel.current += accel * dt
+        rig.outer.position.y += jumpVel.current * dt
+      }
+    }
+
+    // ── 4. Activation → colour. ───────────────────────────────────────────────
     const acts = activationsRef.current || []
     for (const md of rig.meshes) {
       let level = BASELINE
       for (const a of acts) {
         if (actStem(a.muscleId) !== md.stem) continue
-        // Mirror the activation side to match the mirrored motion.
         const raw = a.region.startsWith('left') ? 'L' : a.region.startsWith('right') ? 'R' : 'C'
         const aSide = raw === 'C' ? 'C' : MIRROR ? (raw === 'L' ? 'R' : 'L') : raw
         if (aSide !== 'C' && md.side !== 'C' && aSide !== md.side) continue
@@ -233,8 +246,8 @@ function clampQuat(q: THREE.Quaternion, maxDeg: number, ident: THREE.Quaternion)
 
 /**
  * Move `current` toward `target` by at most `maxStepDeg` this frame, otherwise
- * by the slerp fraction `frac`. The hard cap is what stops a single noisy pose
- * frame from teleporting a joint and flinging the limb off the body.
+ * by the slerp fraction `frac`. The hard cap stops a single noisy pose frame
+ * from teleporting a joint and flinging the limb off the body.
  */
 const _slewTo = new THREE.Quaternion()
 function slewQuat(current: THREE.Quaternion, target: THREE.Quaternion, maxStepDeg: number, frac: number): void {
@@ -258,6 +271,7 @@ function buildRig(scene: THREE.Object3D): RigData {
     if (!(o instanceof THREE.Mesh)) return
     const seg = segmentForMesh(o.name)
     if (seg) (bySeg[seg] ??= []).push(o)
+    if (o.geometry && !o.geometry.boundingBox) o.geometry.computeBoundingBox()
     const mat = new THREE.MeshStandardMaterial({
       color: new THREE.Color('#6b5b4a'), roughness: 0.6, metalness: 0.0,
       emissive: new THREE.Color('#000000'), emissiveIntensity: 0.15,
@@ -271,8 +285,6 @@ function buildRig(scene: THREE.Object3D): RigData {
     for (const s of segs) for (const m of (bySeg[s] ?? [])) { b.expandByObject(m); any = true }
     return any ? b : null
   }
-  // Union box of all meshes whose name contains a fragment (used to find the
-  // front/back muscles that define the model's true anterior axis).
   const boxFrag = (frag: string) => {
     const b = new THREE.Box3(); let any = false
     cloned.traverse((o: THREE.Object3D) => {
@@ -285,23 +297,27 @@ function buildRig(scene: THREE.Object3D): RigData {
   const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z)
 
   const bUAr = box(['upperArmR']), bUAl = box(['upperArmL'])
+  const bFAr = box(['forearmR']),  bFAl = box(['forearmL'])
   const bThR = box(['thighR']),    bThL = box(['thighL'])
   const bShR = box(['shankR']),    bShL = box(['shankL'])
   const bTrunk = box(['trunk']),   bPelv = box(['pelvis'])
   const bNeck = box(['neck']),     bHead = box(['head'])
 
-  // Shoulders/hips pivot at the MEDIAL-top of the limb box (near the torso
-  // socket), not the lateral acromion — so a raised/abducted limb stays
-  // attached to the body instead of swinging away and detaching.
-  const midX = bTrunk ? (bTrunk.min.x + bTrunk.max.x) / 2 : 0
-  const innerX = (b: THREE.Box3) => Math.abs(b.min.x - midX) < Math.abs(b.max.x - midX) ? b.min.x : b.max.x
-  const cz = (b: THREE.Box3) => (b.min.z + b.max.z) / 2
-  const shoulderR = bUAr ? V(innerX(bUAr), bUAr.max.y, cz(bUAr)) : V(-0.12, 1.35, 0)
-  const shoulderL = bUAl ? V(innerX(bUAl), bUAl.max.y, cz(bUAl)) : V(0.12, 1.35, 0)
-  const armEndR = bUAr ? botC(bUAr) : V(-0.2, 0.8, 0)
-  const armEndL = bUAl ? botC(bUAl) : V(0.2, 0.8, 0)
-  const hipR = bThR ? V(innerX(bThR), bThR.max.y, cz(bThR)) : V(-0.1, 0.9, 0)
-  const hipL = bThL ? V(innerX(bThL), bThL.max.y, cz(bThL)) : V(0.1, 0.9, 0)
+  // Limb joints pivot at the TOP-CENTRE of the limb's own muscle box (right at
+  // the socket), NOT a lateral/medial edge — so a raised limb rotates about the
+  // joint and stays attached, and the legs don't swing across the midline.
+  const shoulderR = bUAr ? topC(bUAr) : V(-0.12, 1.35, 0)
+  const shoulderL = bUAl ? topC(bUAl) : V(0.12, 1.35, 0)
+  const elbowR = bUAr ? botC(bUAr) : V(-0.2, 0.95, 0)
+  const elbowL = bUAl ? botC(bUAl) : V(0.2, 0.95, 0)
+  // Forearm pivots at the elbow (top of its own box, falling back to the upper
+  // arm's distal end) and ends at the wrist.
+  const faTopR = bFAr ? topC(bFAr) : elbowR.clone()
+  const faTopL = bFAl ? topC(bFAl) : elbowL.clone()
+  const wristR = bFAr ? botC(bFAr) : V(-0.2, 0.6, 0)
+  const wristL = bFAl ? botC(bFAl) : V(0.2, 0.6, 0)
+  const hipR = bThR ? topC(bThR) : V(-0.1, 0.9, 0)
+  const hipL = bThL ? topC(bThL) : V(0.1, 0.9, 0)
   const kneeR = bThR ? botC(bThR) : V(-0.1, 0.5, 0)
   const kneeL = bThL ? botC(bThL) : V(0.1, 0.5, 0)
   const ankleR = bShR ? botC(bShR) : V(-0.1, 0.1, 0)
@@ -315,20 +331,19 @@ function buildRig(scene: THREE.Object3D): RigData {
   const pivots: Record<SegmentId, THREE.Vector3> = {
     pelvis: pelvisC, trunk: lumbar, neck: neckBase, head: headBase,
     upperArmR: shoulderR, upperArmL: shoulderL,
+    forearmR: faTopR, forearmL: faTopL,
     thighR: hipR, shankR: kneeR, thighL: hipL, shankL: kneeL,
   }
   const distal: Record<SegmentId, THREE.Vector3> = {
     pelvis: neckBase, trunk: neckBase, neck: headBase, head: headTop,
-    upperArmR: armEndR, upperArmL: armEndL,
+    upperArmR: elbowR, upperArmL: elbowL,
+    forearmR: wristR, forearmL: wristL,
     thighR: kneeR, shankR: ankleR, thighL: kneeL, shankL: ankleL,
   }
 
   // ── Anatomical frame from GEOMETRY (no sign guessing) ───────────────────────
-  // up   = pelvis → neck
-  // ant  = erector-spinae (back) → pectoralis (front)  == true anterior
-  // right= up × ant, sign-checked to point toward the model's _R arm
-  // Deriving the axes from the actual mesh layout fixes forward/back (trunk lean
-  // AND hip/leg flexion) consistently, instead of guessing a flip sign.
+  // up   = pelvis → neck ; ant = erector-spinae(back) → pectoralis(front) ;
+  // right = up × ant, sign-checked toward the model's R arm.
   const up = neckBase.clone().sub(pelvisC); if (up.lengthSq() < 1e-6) up.set(0, 1, 0); up.normalize()
   const ant = new THREE.Vector3(0, 0, 1)
   const pecBox = boxFrag('PECTORALIS'), erBox = boxFrag('ERECTOR_SPINAE')

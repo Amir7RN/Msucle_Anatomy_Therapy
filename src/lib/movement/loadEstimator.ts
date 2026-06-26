@@ -35,6 +35,38 @@ export interface LoadEstimate {
 
 const EMPTY: LoadEstimate = { leftKg: 0, rightKg: 0, item: 'no weight', confidence: 0, at: 0 }
 
+/**
+ * Tiny grayscale signature of the current frame (a 24×24 average-pooled grid).
+ * Comparing successive signatures lets us notice when the scene actually changes
+ * — e.g. the user picks up or sets down a weight — and pull the next AI scan
+ * forward, instead of waiting out the full idle interval. Cheap enough to run
+ * every poll.
+ */
+const SIG_N = 24
+function frameSignature(video: HTMLVideoElement): Float32Array | null {
+  if (!video.videoWidth) return null
+  const canvas = document.createElement('canvas')
+  canvas.width = SIG_N; canvas.height = SIG_N
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  if (!ctx) return null
+  ctx.drawImage(video, 0, 0, SIG_N, SIG_N)
+  const data = ctx.getImageData(0, 0, SIG_N, SIG_N).data
+  const sig = new Float32Array(SIG_N * SIG_N)
+  for (let i = 0; i < sig.length; i++) {
+    const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2]
+    sig[i] = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  }
+  return sig
+}
+
+/** Mean absolute difference between two signatures (0 = identical, 1 = max). */
+function signatureDiff(a: Float32Array | null, b: Float32Array | null): number {
+  if (!a || !b || a.length !== b.length) return 1
+  let s = 0
+  for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i])
+  return s / a.length
+}
+
 /** Downscale a video frame to a small JPEG and return base64 (no data: prefix). */
 function grabFrameBase64(video: HTMLVideoElement, maxW = 448): string | null {
   if (!video.videoWidth) return null
@@ -123,8 +155,20 @@ export class LoadEstimator {
   private inFlight = false
   private enabled: boolean
   private error: string | null = null
+  private lastSig: Float32Array | null = null   // frame at the last scan
 
-  constructor(private refreshMs = 6000) {
+  /**
+   * @param refreshMs  steady cadence for an unchanged scene.
+   * @param minMs      shortest gap allowed when the scene CHANGES (so a newly
+   *                   picked-up weight is re-estimated quickly without hammering
+   *                   the API while you move).
+   * @param changeThresh  mean frame-difference that counts as "scene changed".
+   */
+  constructor(
+    private refreshMs = 4000,
+    private minMs = 2000,
+    private changeThresh = 0.05,
+  ) {
     this.enabled = !!getStoredApiKey()
   }
 
@@ -141,7 +185,11 @@ export class LoadEstimator {
     this.lastCallAt = 0   // allow an immediate scan
   }
 
-  /** Trigger a refresh if due. `forced` ignores the debounce (manual button). */
+  /**
+   * Trigger a refresh if due. Runs automatically on a steady cadence, and pulls
+   * the next scan forward when the camera scene changes (you grab or drop a
+   * weight). `forced` ignores all debouncing (the manual "Scan now" button).
+   */
   async maybeRefresh(video: HTMLVideoElement | null, forced = false): Promise<LoadEstimate> {
     if (!video) return this.last
     const key = getStoredApiKey()
@@ -149,13 +197,21 @@ export class LoadEstimator {
     if (!key) return this.last
     const now = Date.now()
     if (this.inFlight) return this.last
-    if (!forced && now - this.lastCallAt < this.refreshMs) return this.last
+
+    const sig = frameSignature(video)
+    const sinceLast = now - this.lastCallAt
+    const changed = signatureDiff(sig, this.lastSig) > this.changeThresh
+    // Due when: forced, the steady interval elapsed, OR the scene changed and at
+    // least the short minimum has elapsed.
+    const due = forced || sinceLast >= this.refreshMs || (changed && sinceLast >= this.minMs)
+    if (!due) return this.last
 
     const b64 = grabFrameBase64(video)
     if (!b64) return this.last
 
     this.inFlight = true
     this.lastCallAt = now
+    this.lastSig = sig
     try {
       const est = await callClaudeVision(b64, key)
       if (est) { this.last = est; this.error = null }
@@ -169,5 +225,5 @@ export class LoadEstimator {
     return this.last
   }
 
-  reset(): void { this.last = EMPTY; this.lastCallAt = 0; this.inFlight = false }
+  reset(): void { this.last = EMPTY; this.lastCallAt = 0; this.inFlight = false; this.lastSig = null }
 }

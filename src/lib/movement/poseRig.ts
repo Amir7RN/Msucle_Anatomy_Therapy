@@ -1,37 +1,54 @@
 /**
- * poseRig.ts  (v3)
+ * poseRig.ts  (v4 — realism rewrite)
  *
- * Pure-logic half of the segment-rigged Muscle Twin.
+ * Pure-logic half of the segment-rigged Muscle Twin: it turns a frame of
+ * MediaPipe pose landmarks into a set of per-segment bone DIRECTIONS that the
+ * 3-D model rebuilds on its own rig.
  *
- * v3 changes (realism pass)
- * ─────────────────────────
- *   • PELVIS is the fixed root. The TRUNK leans on top of it and the LEGS hang
- *     from it, so leaning/twisting the trunk no longer drags the legs — the
- *     feet stay grounded — and the body never yaw-spins (the trunk lean is
- *     derived from the spine vs gravity, which has no azimuth ambiguity).
- *   • The FOREARM is folded into the upper arm (the GLB's only forearm muscle
- *     is a short brachioradialis sliver that can't hold an elbow joint on its
- *     own), so the arm is one connected segment that can never detach.
+ * Why this was rewritten
+ * ──────────────────────
+ * The v3 rig derived a body frame whose "up" was the spine and then guessed
+ * sign-continuity for the lateral/anterior axes and re-derived a facing yaw.
+ * Those heuristics flipped under noise, which is what produced the symptoms in
+ * the user's recording: limbs splayed/drooping at rest, legs crossing, the
+ * trunk diving 90° forward, and segments appearing to detach. It also folded
+ * the forearm into the upper arm, so the elbow could never bend.
  *
- * Direction convention stays ANATOMICAL: each limb's bone direction is the
- * proximal→distal vector expressed in the user's own frame (x=right, y=up,
- * z=anterior). The model rebuilds it in its own anatomical frame, so left=left
- * and the motion is robust to the user being turned to the camera.
+ * v4 fixes the root cause by building ONE gravity-referenced, de-yawed body
+ * frame straight from MediaPipe's WORLD landmarks (which are already
+ * gravity-aligned and roughly rotation-invariant):
  *
- * The trunk entry is special: it carries the desired "up" direction for the
- * trunk (a tilt of the spine), so the same model code path handles it.
+ *     up    = world vertical (0,1,0)
+ *     right = the user's shoulder+hip line, flattened to horizontal
+ *     ant   = right × up        (out through the chest)
+ *
+ * Every bone direction is just (distal − proximal) expressed in that frame, so:
+ *   • a hanging arm is (0,−1,0) — it can't splay at rest;
+ *   • left and right legs get their true small lateral angle — they can't cross;
+ *   • the trunk lean is the spine's real tilt from vertical, hard-clamped so it
+ *     can never dive;
+ *   • there are no sign-continuity or yaw heuristics left to flip.
+ *
+ * The FOREARM is its own segment (elbow → wrist), so the elbow bends. The model
+ * keeps the arm connected because the forearm is a child of the upper arm.
+ *
+ * Convention: each direction is ANATOMICAL — x = the user's right, y = up,
+ * z = anterior — and MIRRORED (the twin is a mirror you face), so the user's
+ * left limb drives the model's right segment and the lateral sign is flipped.
+ * MuscleTwinModel mirrors the activation side to match.
  */
 
 import type { LandmarkSet } from './landmarks'
 import { LM } from './landmarks'
 import {
-  computeAnatomicalFrame, worldVec, sub, midpoint, normalize, dot, cross,
-  type Vec3, type AnatomicalFrame,
+  worldVec, sub, midpoint, normalize, dot, cross, magnitude,
+  type Vec3,
 } from './anatomicalFrame'
 
 export type SegmentId =
   | 'pelvis' | 'trunk' | 'neck' | 'head'
   | 'upperArmL' | 'upperArmR'
+  | 'forearmL' | 'forearmR'
   | 'thighL' | 'shankL' | 'thighR' | 'shankR'
 
 /** UPPERCASE mesh-name substrings per segment. */
@@ -45,9 +62,14 @@ export const SEGMENT_MESHES: Record<SegmentId, string[]> = {
   ],
   neck:  ['STERNOCLEIDOMASTOID'],
   head:  ['MASSETER', 'TEMPORALIS'],
-  // Forearm (brachioradialis) folded into the arm so it can't disconnect.
-  upperArmR: ['BICEPS_BRACHII_R', 'TRICEPS_BRACHII_R', 'DELTOID_R', 'BRACHIALIS_R', 'CORACOBRACHIALIS_R', 'INFRASPINATUS_R', 'BRACHIORADIALIS_R'],
-  upperArmL: ['BICEPS_BRACHII_L', 'TRICEPS_BRACHII_L', 'DELTOID_L', 'BRACHIALIS_L', 'CORACOBRACHIALIS_L', 'INFRASPINATUS_L', 'BRACHIORADIALIS_L'],
+  // Upper arm: shoulder/elbow crossing muscles. (brachioradialis lives on the
+  // forearm now so the elbow can flex.)
+  upperArmR: ['BICEPS_BRACHII_R', 'TRICEPS_BRACHII_R', 'DELTOID_R', 'BRACHIALIS_R', 'CORACOBRACHIALIS_R', 'INFRASPINATUS_R'],
+  upperArmL: ['BICEPS_BRACHII_L', 'TRICEPS_BRACHII_L', 'DELTOID_L', 'BRACHIALIS_L', 'CORACOBRACHIALIS_L', 'INFRASPINATUS_L'],
+  // Forearm — the brachioradialis sliver spans the elbow, so rotating it about
+  // the elbow reads as forearm flexion and keeps the arm one connected chain.
+  forearmR: ['BRACHIORADIALIS_R'],
+  forearmL: ['BRACHIORADIALIS_L'],
   thighR: ['RECTUS_FEMORIS_R', 'VASTUS_LATERALIS_R', 'VASTUS_MEDIALIS_R', 'BICEPS_FEMORIS_R', 'SARTORIUS_R'],
   shankR: ['GASTROCNEMIUS_R', 'SOLEUS_R', 'TIBIALIS_ANTERIOR_R'],
   thighL: ['RECTUS_FEMORIS_L', 'VASTUS_LATERALIS_L', 'VASTUS_MEDIALIS_L', 'BICEPS_FEMORIS_L', 'SARTORIUS_L'],
@@ -59,6 +81,7 @@ export const SEGMENT_PARENT: Record<SegmentId, SegmentId | null> = {
   pelvis: null,
   trunk: 'pelvis', neck: 'trunk', head: 'neck',
   upperArmR: 'trunk', upperArmL: 'trunk',
+  forearmR: 'upperArmR', forearmL: 'upperArmL',
   thighR: 'pelvis', shankR: 'thighR',
   thighL: 'pelvis', shankL: 'thighL',
 }
@@ -66,12 +89,14 @@ export const SEGMENT_PARENT: Record<SegmentId, SegmentId | null> = {
 /** Top-down order so parents resolve before children. */
 export const SEGMENT_ORDER: SegmentId[] = [
   'pelvis', 'trunk', 'neck', 'head',
-  'upperArmR', 'upperArmL',
+  'upperArmR', 'forearmR', 'upperArmL', 'forearmL',
   'thighR', 'shankR', 'thighL', 'shankL',
 ]
 
-/** Upper-body segments (other than the trunk itself) lean WITH the trunk. */
-export const UPPER_SEGMENTS = new Set<SegmentId>(['neck', 'head', 'upperArmR', 'upperArmL'])
+/** Upper-body segments (kept for back-compat with older callers). */
+export const UPPER_SEGMENTS = new Set<SegmentId>([
+  'neck', 'head', 'upperArmR', 'upperArmL', 'forearmR', 'forearmL',
+])
 
 export function segmentForMesh(meshName: string): SegmentId | null {
   const u = meshName.toUpperCase()
@@ -88,12 +113,15 @@ export type BoneDirs = Partial<Record<SegmentId, Vec3>>
 
 /**
  * Globals the digital twin needs that a per-segment direction can't carry:
- *   • `yaw`    — the user's facing azimuth (rad). 0 ≈ how they started; turning
- *                to a side rotates this so the model turns WITH them (sagittal).
- *   • `rootY`  — vertical body offset (model units). Rises on a jump, dips on a
- *                squat — the model's gravity/jump reaction.
- *   • `quality`— 0..1 trust in this frame (visibility × depth sanity).
- *   • `dirs`   — the per-segment anatomical directions (as before).
+ *   • `yaw`    — facing azimuth (rad). Kept at 0 in v4: the twin is a stable
+ *                front-facing mirror, which is what biofeedback wants and what
+ *                removes the spinning/instability the yaw heuristic caused.
+ *   • `rootY`  — vertical JUMP offset (model units), ≥ 0. Rises when the user's
+ *                feet leave the ground and snaps back to 0 on landing. Squats
+ *                are handled by the model's grounding (feet stay planted), not
+ *                here, so this never goes negative and can't drift.
+ *   • `quality`— 0..1 trust in this frame (torso-anchor visibility).
+ *   • `dirs`   — the per-segment anatomical directions.
  */
 export interface PoseRigFrame {
   dirs:    BoneDirs
@@ -102,61 +130,115 @@ export interface PoseRigFrame {
   quality: number
 }
 
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
+
 function vis(lms: LandmarkSet, i: number, min = 0.4): boolean {
   return (lms[i]?.visibility ?? 0) >= min
 }
 
-const LEAN_GAIN = 1.3
-const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
+/** World coord of a landmark, but only if visible enough. */
+function wpt(lms: LandmarkSet, i: number, min = 0.4): Vec3 | null {
+  return vis(lms, i, min) ? worldVec(lms[i]) : null
+}
+
+// Largest tilt of the trunk from vertical we will ever show (degrees). Stops
+// the "90° forward dive" — a real forward bend at the hips still reads, but the
+// rigid trunk segment never folds past a believable lean.
+const MAX_TRUNK_LEAN_DEG = 40
+const MAX_TRUNK_SIN = Math.sin((MAX_TRUNK_LEAN_DEG * Math.PI) / 180)
 
 /**
- * Build the per-segment anatomical directions from a (possibly stabilised)
- * frame. Pure: same input → same output. The stateful smoothing/gating lives in
- * `PoseRigEngine`; this is shared by it and the back-compat helper below.
+ * The gravity-referenced, de-yawed body frame for this pose, plus a quality
+ * score. `right` is smoothed/continued by the caller; here it is computed fresh.
  */
-function boneDirsFromFrame(frame: AnatomicalFrame, lms: LandmarkSet): BoneDirs {
-  const project = (a: Vec3 | null, b: Vec3 | null): Vec3 | null => {
+export interface BodyFrame {
+  up: Vec3; right: Vec3; ant: Vec3
+  quality: number
+}
+
+/** Build the gravity body frame from the four torso anchors. */
+export function computeBodyFrame(lms: LandmarkSet, prevRight?: Vec3 | null): BodyFrame | null {
+  const ls = wpt(lms, LM.L_SHOULDER, 0.3), rs = wpt(lms, LM.R_SHOULDER, 0.3)
+  const lh = wpt(lms, LM.L_HIP, 0.3),       rh = wpt(lms, LM.R_HIP, 0.3)
+  if (!ls || !rs || !lh || !rh) return null
+
+  const up: Vec3 = { x: 0, y: 1, z: 0 }   // worldVec already flips +y to up
+  // User's right = shoulder line + hip line, flattened to horizontal so torso
+  // pitch/roll doesn't leak into the lateral axis.
+  let right: Vec3 = {
+    x: ((rs.x - ls.x) + (rh.x - lh.x)) / 2,
+    y: 0,
+    z: ((rs.z - ls.z) + (rh.z - lh.z)) / 2,
+  }
+  if (magnitude(right) < 1e-4) {
+    // Degenerate (user perfectly side-on) — keep the previous right if we have
+    // one, else fall back to world +x.
+    right = prevRight ? { ...prevRight } : { x: 1, y: 0, z: 0 }
+  }
+  right = normalize(right)
+  // Continuity guard: don't let the lateral axis flip 180° on a noisy frame.
+  if (prevRight && dot(right, prevRight) < 0) right = { x: -right.x, y: -right.y, z: -right.z }
+  const ant = normalize(cross(right, up))   // out through the chest
+
+  const visQ = Math.min(
+    lms[LM.L_SHOULDER]?.visibility ?? 0, lms[LM.R_SHOULDER]?.visibility ?? 0,
+    lms[LM.L_HIP]?.visibility ?? 0,      lms[LM.R_HIP]?.visibility ?? 0,
+  )
+  return { up, right, ant, quality: clamp(visQ, 0, 1) }
+}
+
+/**
+ * Per-segment anatomical directions for one frame, in the gravity body frame,
+ * MIRRORED. Pure: same input → same output. Shared by the stateless helper and
+ * the stateful engine.
+ */
+function boneDirsFromBodyFrame(f: BodyFrame, lms: LandmarkSet): BoneDirs {
+  // Express a world vector (a→b) in the body frame, then mirror (negate x).
+  const proj = (a: Vec3 | null, b: Vec3 | null): Vec3 | null => {
     if (!a || !b) return null
     const d = sub(b, a)
-    if (d.x === 0 && d.y === 0 && d.z === 0) return null
-    return normalize({ x: dot(d, frame.xAxis), y: dot(d, frame.yAxis), z: dot(d, frame.zAxis) })
+    if (magnitude(d) < 1e-6) return null
+    const v = normalize({ x: dot(d, f.right), y: dot(d, f.up), z: dot(d, f.ant) })
+    return { x: -v.x, y: v.y, z: v.z }   // mirror
   }
-  const w = (i: number, min = 0.4) => (vis(lms, i, min) ? worldVec(lms[i]) : null)
-
-  const ls = w(LM.L_SHOULDER), rs = w(LM.R_SHOULDER)
-  const midSh = ls && rs ? midpoint(ls, rs) : null
-  const nose  = w(LM.NOSE, 0.3)
-
   const out: BoneDirs = {}
-  // MIRROR: the model faces the user like a mirror — the user's LEFT limb drives
-  // the model's RIGHT segment, and the lateral (x) component is negated so
-  // abduction stays abduction. `set` applies the x-negation; the limb sources
-  // below are swapped L↔R. (MuscleTwinModel mirrors the activation side to match.)
-  const mir = (d: Vec3 | null): Vec3 | null => (d ? { x: -d.x, y: d.y, z: d.z } : null)
-  const set = (seg: SegmentId, d: Vec3 | null) => { const m = mir(d); if (m) out[seg] = m }
+  const set = (seg: SegmentId, d: Vec3 | null) => { if (d) out[seg] = d }
 
-  // Trunk lean: how far the spine tilts from vertical, in forward/side terms.
-  // frame.zAxis.y < 0 when bent forward; frame.xAxis.y < 0 when side-bent right.
-  // Gate by uprightness: when the user is lying (spine horizontal) the gravity-
-  // lean is meaningless and would bend the trunk wildly — the model's global
-  // posture handles lying instead, so we keep the trunk straight.
-  const upright   = Math.abs(frame.yAxis.y)            // 1 = vertical spine, ~0 = lying
-  const leanScale = upright < 0.5 ? 0 : 1
-  const leanFwd  = clamp(-frame.zAxis.y * LEAN_GAIN, -0.9, 0.9) * leanScale
-  const leanSide = clamp(-frame.xAxis.y * LEAN_GAIN, -0.9, 0.9) * leanScale
-  out['trunk'] = normalize({ x: -leanSide, y: 1, z: leanFwd })   // -leanSide = mirror
+  const ls = wpt(lms, LM.L_SHOULDER), rs = wpt(lms, LM.R_SHOULDER)
+  const lh = wpt(lms, LM.L_HIP),       rh = wpt(lms, LM.R_HIP)
+  const midSh = ls && rs ? midpoint(ls, rs) : null
+  const midHip = lh && rh ? midpoint(lh, rh) : null
+  const nose = wpt(lms, LM.NOSE, 0.3)
 
-  set('neck', project(midSh, nose))
-  set('head', project(midSh, nose))
+  // Trunk: the spine's real tilt from vertical, hard-clamped so it never dives.
+  if (midSh && midHip) {
+    const spine = normalize(sub(midSh, midHip))
+    let side = dot(spine, f.right)
+    let fwd  = dot(spine, f.ant)
+    // Clamp the horizontal tilt to a believable lean.
+    const horiz = Math.hypot(side, fwd)
+    if (horiz > MAX_TRUNK_SIN && horiz > 1e-6) {
+      const s = MAX_TRUNK_SIN / horiz
+      side *= s; fwd *= s
+    }
+    const vert = Math.sqrt(Math.max(0, 1 - side * side - fwd * fwd))
+    out['trunk'] = normalize({ x: -side, y: vert, z: fwd })   // -side = mirror
+  }
 
-  // Limb sources swapped L↔R for the mirror (user left → model right).
-  set('upperArmR', project(ls, w(LM.L_ELBOW)))
-  set('upperArmL', project(rs, w(LM.R_ELBOW)))
+  // Head / neck from the shoulders→nose line.
+  set('neck', proj(midSh, nose))
+  set('head', proj(midSh, nose))
 
-  set('thighR', project(w(LM.L_HIP), w(LM.L_KNEE)))
-  set('thighL', project(w(LM.R_HIP), w(LM.R_KNEE)))
-  set('shankR', project(w(LM.L_KNEE), w(LM.L_ANKLE)))
-  set('shankL', project(w(LM.R_KNEE), w(LM.R_ANKLE)))
+  // Limbs — user LEFT drives model RIGHT (mirror). proj() already negates x.
+  const le = wpt(lms, LM.L_ELBOW), re = wpt(lms, LM.R_ELBOW)
+  const lw = wpt(lms, LM.L_WRIST), rw = wpt(lms, LM.R_WRIST)
+  const lk = wpt(lms, LM.L_KNEE),  rk = wpt(lms, LM.R_KNEE)
+  const la = wpt(lms, LM.L_ANKLE), ra = wpt(lms, LM.R_ANKLE)
+
+  set('upperArmR', proj(ls, le)); set('upperArmL', proj(rs, re))
+  set('forearmR',  proj(le, lw)); set('forearmL',  proj(re, rw))
+  set('thighR', proj(lh, lk));    set('thighL', proj(rh, rk))
+  set('shankR', proj(lk, la));    set('shankL', proj(rk, ra))
 
   return out
 }
@@ -165,135 +247,127 @@ function boneDirsFromFrame(frame: AnatomicalFrame, lms: LandmarkSet): BoneDirs {
  * Stateless target directions (back-compat for callers that don't need the
  * stabilised globals — e.g. guided exercises, where the posture is known and
  * the user faces the camera). Live single-camera use should prefer
- * `PoseRigEngine`, which removes the L/R / forward-back flips and adds yaw +
- * jump.
+ * `PoseRigEngine`, which adds smoothing + the jump offset.
  */
 export function poseBoneDirections(lms: LandmarkSet): BoneDirs {
-  const frame = computeAnatomicalFrame(lms)
-  if (!frame) return {}
-  return boneDirsFromFrame(frame, lms)
+  const f = computeBodyFrame(lms)
+  if (!f) return {}
+  return boneDirsFromBodyFrame(f, lms)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  PoseRigEngine — stateful, the robust path for the live twin
-//
-//  Fixes (from video review):
-//   1. SEGMENT / SIDE SWITCHING and FORWARD-BACK REVERSAL as the user moves
-//      toward/away from the camera. MediaPipe's depth is noisy at range, which
-//      lets the lateral (x) and anterior (z) axes flip sign frame-to-frame —
-//      flipping abduction↔adduction and front↔back. We enforce TEMPORAL SIGN
-//      CONTINUITY on the lateral axis (the spine `y` is reliable, so we anchor
-//      to it and only resolve the x sign by continuity), then rebuild z from it.
-//      A genuine slow turn moves the axis a few degrees per frame and is tracked;
-//      a one-frame 180° flip is rejected.
-//   2. THE TWIN NEVER TURNED. We derive a facing `yaw` from the now-continuous
-//      anterior axis, zero it to the user's starting orientation, rate-limit and
-//      smooth it, so turning to the side turns the model to the side.
-//   3. NO JUMP / GRAVITY REACTION. World coords are hip-centred (origin at the
-//      pelvis) so they can't see global rise/fall; we read the pelvis height from
-//      the IMAGE against a slow baseline and translate the model up on a jump,
-//      down on a squat.
-//   4. LIMBS FLINGING OFF. Per-limb visibility gating + direction smoothing here,
-//      plus tighter clamps/slew in the model, keep segments connected.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const YAW_MAX_RATE   = 0.20   // rad/frame ceiling on facing change (~11°/frame)
-const YAW_SMOOTH     = 0.18   // EMA toward the (rate-limited) raw yaw
-const YAW_MIN_QUAL   = 0.45   // don't trust yaw below this frame quality
-const DIR_SMOOTH     = 0.45   // nlerp factor for per-segment direction smoothing
-const JUMP_GAIN      = 5.0    // image-Δ (frac of frame height) → model units
-const JUMP_SMOOTH    = 0.40
-const ROOT_MIN       = -0.55  // deepest squat dip (model units)
-const ROOT_MAX       = 1.30   // highest jump
-const BASE_ALPHA     = 0.012  // slow drift of the resting-height baseline
+const DIR_SMOOTH   = 0.5     // nlerp factor toward each fresh segment direction
+
+// Jump (vertical) model — see updateRootY. All image-space (fraction of frame
+// height), since MediaPipe world coords are hip-centred and can't see a jump.
+const JUMP_GAIN     = 4.5    // image-Δ (frac of frame height) → model units
+const ROOT_MAX      = 1.4    // tallest jump we render (model units)
+const BASE_ALPHA    = 0.02   // resting-height baseline tracking (grounded only)
+const TAKEOFF_DISP  = 0.022  // image rise that counts as leaving the ground
+const TAKEOFF_VEL   = 0.06   // image rise speed (per s) that confirms a jump
+const LAND_DISP     = 0.012  // back within this of resting ⇒ feet down again
+const RISE_SMOOTH   = 0.5    // follow upward fast
+const FALL_SMOOTH   = 0.35   // come down a touch softer, then snap on contact
 
 function nlerp(a: Vec3, b: Vec3, t: number): Vec3 {
   return normalize({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t })
 }
 
 export class PoseRigEngine {
-  private prevX: Vec3 | null = null          // last stabilised lateral axis (world)
+  private right: Vec3 | null = null          // smoothed lateral axis (continuity)
   private smoothed: BoneDirs = {}            // smoothed per-segment dirs
-  private yaw = 0
-  private yawOffset: number | null = null    // captured on first good frame → start ≈ 0
+
+  // Jump state machine.
   private baseHipY: number | null = null     // resting pelvis image-y
+  private prevHipY: number | null = null
+  private prevT = 0
+  private vImg = 0                            // smoothed image vertical velocity
+  private airborne = false
   private rootY = 0
 
   reset(): void {
-    this.prevX = null
+    this.right = null
     this.smoothed = {}
-    this.yaw = 0
-    this.yawOffset = null
     this.baseHipY = null
+    this.prevHipY = null
+    this.prevT = 0
+    this.vImg = 0
+    this.airborne = false
     this.rootY = 0
   }
 
-  update(lms: LandmarkSet): PoseRigFrame {
-    const raw = computeAnatomicalFrame(lms)
-    if (!raw) return { dirs: this.smoothed, yaw: this.yaw, rootY: this.rootY, quality: 0 }
+  update(lms: LandmarkSet, tMs = performance.now()): PoseRigFrame {
+    const f = computeBodyFrame(lms, this.right)
+    if (!f) return { dirs: this.smoothed, yaw: 0, rootY: this.rootY, quality: 0 }
+    // Lightly track the lateral axis so genuine slow turns follow but noise can't.
+    this.right = this.right ? normalize({
+      x: this.right.x + (f.right.x - this.right.x) * 0.4,
+      y: 0,
+      z: this.right.z + (f.right.z - this.right.z) * 0.4,
+    }) : f.right
+    const frame: BodyFrame = { up: f.up, right: this.right, ant: normalize(cross(this.right, f.up)), quality: f.quality }
 
-    // 1. Sign-stabilise the lateral axis against the previous frame, then
-    //    rebuild a right-handed frame around the reliable spine axis. This is
-    //    the core fix for L/R switching and front/back reversal.
-    const frame = this.stabilise(raw)
-
-    // 2. Per-segment directions, smoothed + gated (held when a limb drops out).
-    const target = boneDirsFromFrame(frame, lms)
+    // Per-segment directions, smoothed + held when a limb drops out of view.
+    const target = boneDirsFromBodyFrame(frame, lms)
     for (const seg of SEGMENT_ORDER) {
       const t = target[seg]
-      if (!t) continue                       // limb not visible → hold last good
+      if (!t) continue                       // not visible → keep last good
       const prev = this.smoothed[seg]
       this.smoothed[seg] = prev ? nlerp(prev, t, DIR_SMOOTH) : t
     }
 
-    // 3. Facing yaw from the (continuous) anterior axis, zeroed to the start.
-    this.updateYaw(frame, raw.quality ?? 0)
+    this.updateRootY(lms, tMs)
 
-    // 4. Vertical body offset (jump / squat) from the pelvis image-height.
-    this.updateRootY(lms)
-
-    return { dirs: this.smoothed, yaw: this.yaw, rootY: this.rootY, quality: raw.quality ?? 0 }
+    return { dirs: this.smoothed, yaw: 0, rootY: this.rootY, quality: f.quality }
   }
 
-  /** Lock the lateral axis sign by continuity, rebuild z = x×y right-handed. */
-  private stabilise(f: AnatomicalFrame): AnatomicalFrame {
-    let x = { ...f.xAxis }
-    if (this.prevX && dot(x, this.prevX) < 0) { x = { x: -x.x, y: -x.y, z: -x.z } }
-    // Re-orthonormalise against the (reliable) spine axis and rebuild anterior.
-    const y = f.yAxis
-    x = normalize(sub(x, { x: y.x * dot(x, y), y: y.y * dot(x, y), z: y.z * dot(x, y) }))
-    const z = normalize(cross(x, y))         // x×y → anterior (right-handed)
-    // Track the chosen axis (lightly) so genuine turns are followed but noise
-    // doesn't drag it.
-    this.prevX = this.prevX ? nlerp(this.prevX, x, 0.5) : x
-    return { ...f, xAxis: x, zAxis: z }
-  }
+  /**
+   * Vertical JUMP offset from the pelvis image height, as a small ground-contact
+   * state machine. Grounded ⇒ rootY decays to 0 and the resting baseline tracks
+   * the hips. A fast upward rise ⇒ airborne, rootY lifts with the hips. Coming
+   * back to resting height ⇒ grounded again, rootY snaps to 0 and the baseline
+   * re-locks — so the model never "keeps landing" after the user is back down,
+   * and never balloons (rootY only goes up then cleanly back to 0).
+   */
+  private updateRootY(lms: LandmarkSet, tMs: number): void {
+    const lhp = lms[LM.L_HIP], rhp = lms[LM.R_HIP]
+    if (!lhp || !rhp || (lhp.visibility ?? 0) < 0.4 || (rhp.visibility ?? 0) < 0.4) {
+      // Lost the hips — ease back to the ground rather than freeze mid-air.
+      this.rootY += (0 - this.rootY) * FALL_SMOOTH
+      return
+    }
+    const hipY = (lhp.y + rhp.y) / 2          // image-y, 0 top → 1 bottom
+    if (this.baseHipY === null) {
+      this.baseHipY = hipY; this.prevHipY = hipY; this.prevT = tMs; this.rootY = 0
+      return
+    }
+    const dt = Math.max(1e-3, (tMs - this.prevT) / 1000)
+    const dispNow = this.baseHipY - hipY      // + = hips higher in image = up
+    const rawV = (this.prevHipY! - hipY) / dt  // + = rising this frame
+    this.vImg = 0.5 * this.vImg + 0.5 * rawV
+    this.prevHipY = hipY; this.prevT = tMs
 
-  private updateYaw(frame: AnatomicalFrame, quality: number): void {
-    // Need enough horizontal torso spread for a meaningful azimuth, else hold.
-    const horiz = Math.hypot(frame.zAxis.x, frame.zAxis.z)
-    if (quality < YAW_MIN_QUAL || horiz < 0.15) return
-    const rawYaw = Math.atan2(frame.zAxis.x, frame.zAxis.z)
-    if (this.yawOffset === null) { this.yawOffset = rawYaw; this.yaw = 0; return }
-    // Deviation from the start, unwrapped to (-π, π].
-    let d = rawYaw - this.yawOffset
-    while (d >  Math.PI) d -= 2 * Math.PI
-    while (d < -Math.PI) d += 2 * Math.PI
-    // Rate-limit, then EMA — no teleport on a flip we didn't catch.
-    const step = clamp(d - this.yaw, -YAW_MAX_RATE, YAW_MAX_RATE)
-    this.yaw += YAW_SMOOTH * step
-  }
-
-  private updateRootY(lms: LandmarkSet): void {
-    const lh = lms[LM.L_HIP], rh = lms[LM.R_HIP]
-    if (!lh || !rh || (lh.visibility ?? 0) < 0.4 || (rh.visibility ?? 0) < 0.4) return
-    const hipY = (lh.y + rh.y) / 2            // image-y, 0 top → 1 bottom
-    if (this.baseHipY === null) { this.baseHipY = hipY; this.rootY = 0; return }
-    // Rising in the image (smaller y) = jumping up → positive offset.
-    const target = clamp((this.baseHipY - hipY) * JUMP_GAIN, ROOT_MIN, ROOT_MAX)
-    this.rootY += JUMP_SMOOTH * (target - this.rootY)
-    // Slowly re-centre the baseline so walking closer/farther doesn't bias it,
-    // but a fast jump/squat (large deviation) barely moves it.
-    this.baseHipY += BASE_ALPHA * (hipY - this.baseHipY)
+    if (!this.airborne) {
+      // Grounded: settle to the floor, track the resting baseline slowly.
+      this.rootY += (0 - this.rootY) * FALL_SMOOTH
+      this.baseHipY += BASE_ALPHA * (hipY - this.baseHipY)
+      if (dispNow > TAKEOFF_DISP && this.vImg > TAKEOFF_VEL) {
+        this.airborne = true                  // takeoff
+      }
+    } else {
+      // Airborne: lift with the hips (clamped), don't move the baseline.
+      const targetRoot = clamp(dispNow * JUMP_GAIN, 0, ROOT_MAX)
+      const k = targetRoot > this.rootY ? RISE_SMOOTH : FALL_SMOOTH
+      this.rootY += (targetRoot - this.rootY) * k
+      if (dispNow < LAND_DISP && this.vImg < TAKEOFF_VEL) {
+        // Back at resting height and no longer rising ⇒ landed.
+        this.airborne = false
+        this.baseHipY = hipY                  // re-lock — kills post-landing drift
+      }
+    }
+    if (this.rootY < 0) this.rootY = 0
   }
 }
