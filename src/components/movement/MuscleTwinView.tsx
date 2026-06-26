@@ -18,7 +18,7 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { X, Sparkles, Activity, RefreshCw, Dumbbell, Flame, Scale, Ruler } from 'lucide-react'
+import { X, Sparkles, Activity, RefreshCw, Dumbbell, Flame, Scale } from 'lucide-react'
 import { CameraView } from './CameraView'
 import { MuscleTwinModel } from './MuscleTwinModel'
 import { MuscleActivationRadars } from './MuscleActivationRadars'
@@ -35,15 +35,19 @@ import type { BodyOrientation } from '../../lib/movement/bodyOrientation'
 import type { Posture } from '../../lib/movement/exercisePose'
 import {
   buildBodyMassModel, clampWeight, clampHeight,
-  DEFAULT_WEIGHT_KG, DEFAULT_HEIGHT_CM, type SegmentMass,
+  DEFAULT_WEIGHT_KG, DEFAULT_HEIGHT_CM, DEFAULT_SEX, type Sex, type SegmentFamily,
 } from '../../lib/movement/bodySegments'
 
-// Persisted so the twin remembers the user's body between sessions (used for
-// the scientific per-segment mass distribution that gives the model weight).
+// Persisted so the twin remembers the user's body between sessions (used for the
+// De Leva segment-inertia distribution that gives the model real weight).
 const LS_WEIGHT = 'muscleTwin.weightKg'
 const LS_HEIGHT = 'muscleTwin.heightCm'
+const LS_SEX    = 'muscleTwin.sex'
 function loadNum(key: string, fallback: number): number {
   try { const v = parseFloat(localStorage.getItem(key) || ''); return isFinite(v) ? v : fallback } catch { return fallback }
+}
+function loadSex(): Sex {
+  try { return localStorage.getItem(LS_SEX) === 'female' ? 'female' : 'male' } catch { return DEFAULT_SEX }
 }
 
 /** Map the live orientation classification to a model posture. */
@@ -82,8 +86,9 @@ export function MuscleTwinView({ open, onClose }: Props) {
   const [loadErr, setLoadErr] = useState<string | null>(null)
   const [weightKg, setWeightKg] = useState(() => loadNum(LS_WEIGHT, DEFAULT_WEIGHT_KG))
   const [heightCm, setHeightCm] = useState(() => loadNum(LS_HEIGHT, DEFAULT_HEIGHT_CM))
+  const [sex, setSex]           = useState<Sex>(() => loadSex())
 
-  const bodyModel = useMemo(() => buildBodyMassModel(weightKg, heightCm), [weightKg, heightCm])
+  const bodyModel = useMemo(() => buildBodyMassModel(weightKg, heightCm, sex), [weightKg, heightCm, sex])
 
   const engineRef = useRef<LiveActivationEngine | null>(null)
   const poseEngineRef = useRef<PoseRigEngine | null>(null)
@@ -95,16 +100,20 @@ export function MuscleTwinView({ open, onClose }: Props) {
   const postureRef     = useRef<Posture | null>(null)
   const yawRef         = useRef(0)     // live facing yaw → the twin turns with you
   const rootYRef       = useRef(0)     // live vertical offset → jump / gravity
+  const groundedRef    = useRef(true)  // foot-contact flag → crisp landings
   const bodyMassRef    = useRef(bodyModel.totalKg)   // read by the model physics
+  const agilityRef     = useRef<Partial<Record<SegmentFamily, number>>>(bodyModel.agility)
   const loadRef        = useRef<LoadInput>({})
   const lastHudRef     = useRef(0)
 
-  // Keep the physics mass live and persist the user's body between sessions.
+  // Keep the physics mass + inertia live and persist the user's body.
   useEffect(() => {
     bodyMassRef.current = bodyModel.totalKg
+    agilityRef.current = bodyModel.agility
     try {
       localStorage.setItem(LS_WEIGHT, String(bodyModel.totalKg))
       localStorage.setItem(LS_HEIGHT, String(bodyModel.heightCm))
+      localStorage.setItem(LS_SEX, bodyModel.sex)
     } catch { /* ignore */ }
   }, [bodyModel])
 
@@ -164,6 +173,7 @@ export function MuscleTwinView({ open, onClose }: Props) {
       boneDirsRef.current = rig.dirs
       yawRef.current = rig.yaw
       rootYRef.current = rig.rootY
+      groundedRef.current = rig.grounded
     }
     postureRef.current = toPosture(frame.orientation.orientation)
 
@@ -207,7 +217,7 @@ export function MuscleTwinView({ open, onClose }: Props) {
       <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
         {/* 3-D animated twin */}
         <div className="relative h-[42vh] w-full shrink-0 lg:h-auto lg:flex-1">
-          <MuscleTwinModel activationsRef={activationsRef} boneDirsRef={boneDirsRef} postureRef={postureRef} yawRef={yawRef} rootYRef={rootYRef} bodyMassRef={bodyMassRef} />
+          <MuscleTwinModel activationsRef={activationsRef} boneDirsRef={boneDirsRef} postureRef={postureRef} yawRef={yawRef} rootYRef={rootYRef} bodyMassRef={bodyMassRef} groundedRef={groundedRef} agilityRef={agilityRef} />
 
           {!ready && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/60">
@@ -243,12 +253,12 @@ export function MuscleTwinView({ open, onClose }: Props) {
         {/* Analytics — below the model on mobile, a right column on desktop.
             Load spans the top; activation + range-of-motion sit side by side. */}
         <aside className="flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-t border-slate-800 bg-black/50 p-3 lg:w-[44rem] lg:border-l lg:border-t-0">
-          {/* Body mass model — gives each segment its real share of body mass */}
+          {/* Body model — De Leva mass/inertia from weight, height, sex */}
           <BodyMassPanel
-            weightKg={weightKg} heightCm={heightCm}
+            weightKg={weightKg} heightCm={heightCm} sex={sex} totalKg={bodyModel.totalKg}
             onWeight={(v) => setWeightKg(clampWeight(v))}
             onHeight={(v) => setHeightCm(clampHeight(v))}
-            segments={bodyModel.segments} totalKg={bodyModel.totalKg}
+            onSex={setSex}
           />
 
           {/* AI load */}
@@ -342,17 +352,16 @@ export function MuscleTwinView({ open, onClose }: Props) {
 // ── bits ───────────────────────────────────────────────────────────────────
 
 /**
- * Body-mass model: the user enters height + weight once, and we distribute that
- * mass across the segments using the Winter (2009) anthropometric table, so the
- * twin moves with real inertia instead of like a balloon. Shows the total and
- * the per-segment breakdown.
+ * Compact body model: weight + height + sex in, total body mass out. The full
+ * De Leva per-segment mass / centre-of-mass / inertia distribution is computed
+ * internally and fed to the physics — it isn't listed here (kept deliberately
+ * small). Persisted by the parent.
  */
 function BodyMassPanel({
-  weightKg, heightCm, onWeight, onHeight, segments, totalKg,
+  weightKg, heightCm, sex, totalKg, onWeight, onHeight, onSex,
 }: {
-  weightKg: number; heightCm: number
-  onWeight: (v: number) => void; onHeight: (v: number) => void
-  segments: SegmentMass[]; totalKg: number
+  weightKg: number; heightCm: number; sex: Sex; totalKg: number
+  onWeight: (v: number) => void; onHeight: (v: number) => void; onSex: (s: Sex) => void
 }) {
   // Local text state so the user can clear/retype freely; commit on blur/enter.
   const [w, setW] = useState(String(Math.round(weightKg)))
@@ -360,65 +369,49 @@ function BodyMassPanel({
   useEffect(() => { setW(String(Math.round(weightKg))) }, [weightKg])
   useEffect(() => { setH(String(Math.round(heightCm))) }, [heightCm])
 
-  // Collapse L/R pairs for a compact read-out (they're symmetric).
-  const rows = [
-    { label: 'Trunk',          kg: kgOf(segments, 'trunk') },
-    { label: 'Head + neck',    kg: kgOf(segments, 'head') },
-    { label: 'Thigh (each)',   kg: kgOf(segments, 'thighL') },
-    { label: 'Shank + foot',   kg: kgOf(segments, 'shankL') },
-    { label: 'Upper arm',      kg: kgOf(segments, 'upperArmL') },
-    { label: 'Forearm + hand', kg: kgOf(segments, 'forearmL') },
-  ]
-
   return (
-    <section className="rounded-lg bg-slate-900/60 p-3">
-      <div className="mb-2 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-cyan-300">
-        <Scale size={12} /> Body-mass model
-      </div>
-      <div className="flex flex-wrap items-end gap-3">
+    <section className="rounded-lg bg-slate-900/60 px-2.5 py-2">
+      <div className="flex flex-wrap items-end gap-2.5">
+        <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-cyan-300">
+          <Scale size={11} /> Body
+        </div>
         <label className="flex flex-col gap-0.5">
-          <span className="flex items-center gap-1 text-[10px] text-slate-400"><Scale size={10} /> Weight (kg)</span>
+          <span className="text-[9px] text-slate-400">Weight kg</span>
           <input
             type="number" inputMode="decimal" value={w}
-            onChange={(e) => setW(e.target.value)}
-            onBlur={() => onWeight(parseFloat(w))}
+            onChange={(e) => setW(e.target.value)} onBlur={() => onWeight(parseFloat(w))}
             onKeyDown={(e) => { if (e.key === 'Enter') onWeight(parseFloat(w)) }}
-            className="w-20 rounded bg-slate-800 px-2 py-1 text-sm text-slate-100 outline-none ring-1 ring-slate-700 focus:ring-cyan-500/50"
+            className="w-14 rounded bg-slate-800 px-1.5 py-0.5 text-[13px] text-slate-100 outline-none ring-1 ring-slate-700 focus:ring-cyan-500/50"
           />
         </label>
         <label className="flex flex-col gap-0.5">
-          <span className="flex items-center gap-1 text-[10px] text-slate-400"><Ruler size={10} /> Height (cm)</span>
+          <span className="text-[9px] text-slate-400">Height cm</span>
           <input
             type="number" inputMode="decimal" value={h}
-            onChange={(e) => setH(e.target.value)}
-            onBlur={() => onHeight(parseFloat(h))}
+            onChange={(e) => setH(e.target.value)} onBlur={() => onHeight(parseFloat(h))}
             onKeyDown={(e) => { if (e.key === 'Enter') onHeight(parseFloat(h)) }}
-            className="w-20 rounded bg-slate-800 px-2 py-1 text-sm text-slate-100 outline-none ring-1 ring-slate-700 focus:ring-cyan-500/50"
+            className="w-14 rounded bg-slate-800 px-1.5 py-0.5 text-[13px] text-slate-100 outline-none ring-1 ring-slate-700 focus:ring-cyan-500/50"
           />
         </label>
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[9px] text-slate-400">Sex</span>
+          <div className="flex overflow-hidden rounded ring-1 ring-slate-700">
+            {(['male', 'female'] as Sex[]).map((s) => (
+              <button key={s} onClick={() => onSex(s)} title={s}
+                className={`px-2 py-0.5 text-[11px] ${sex === s ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
+                {s === 'male' ? 'M' : 'F'}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="ml-auto text-right">
-          <div className="text-[10px] text-slate-400">Total</div>
-          <div className="text-lg font-semibold text-cyan-200">{Math.round(totalKg)} kg</div>
+          <div className="text-[9px] text-slate-400">Total</div>
+          <div className="text-base font-semibold leading-none text-cyan-200">{Math.round(totalKg)} kg</div>
         </div>
       </div>
-      <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] text-slate-300 sm:grid-cols-3">
-        {rows.map((r) => (
-          <div key={r.label} className="flex items-baseline justify-between gap-2">
-            <span className="text-slate-400">{r.label}</span>
-            <span className="tabular-nums">{r.kg.toFixed(1)} kg</span>
-          </div>
-        ))}
-      </div>
-      <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
-        Distributed by the Winter anthropometric table. Gives the twin real
-        inertia so a jump settles with weight instead of floating.
-      </p>
+      <p className="mt-1 text-[9px] leading-snug text-slate-500">De Leva segment mass &amp; inertia → real weight and momentum.</p>
     </section>
   )
-}
-
-function kgOf(segments: SegmentMass[], id: string): number {
-  return segments.find((s) => s.id === id)?.kg ?? 0
 }
 
 function MovementPip({ energy }: { energy: number }) {

@@ -34,26 +34,26 @@ export function RomBars({ readings }: { readings: JointLiveReading[] }) {
     byId.set(r.movementId, cur)
   }
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1">
       {ROWS.map((row) => {
         const ref = romFor(row.id)
         const max = ref?.max ?? 120
         const v = byId.get(row.id) ?? {}
         return (
           <div key={row.id}>
-            <div className="flex items-center justify-between text-[11px] text-slate-300">
+            <div className="flex items-center justify-between text-[9px] text-slate-400">
               <span>{row.label}</span>
-              <span className="tabular-nums text-slate-500">norm {max}°</span>
+              <span className="tabular-nums text-slate-600">{max}°</span>
             </div>
             <Bar deg={v.L} max={max} color="#22d3ee" tag="L" />
             <Bar deg={v.R} max={max} color="#a78bfa" tag="R" />
           </div>
         )
       })}
-      <div className="flex items-center gap-3 pt-0.5 text-[9px] text-slate-500">
-        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-cyan-400" /> Left</span>
-        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-violet-400" /> Right</span>
-        <span>· full bar = normal end-range</span>
+      <div className="flex items-center gap-2 pt-0.5 text-[8px] text-slate-500">
+        <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-cyan-400" /> Left</span>
+        <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-violet-400" /> Right</span>
+        <span>· full = end-range</span>
       </div>
     </div>
   )
@@ -62,12 +62,12 @@ export function RomBars({ readings }: { readings: JointLiveReading[] }) {
 function Bar({ deg, max, color, tag }: { deg?: number; max: number; color: string; tag: string }) {
   const pct = deg === undefined ? 0 : Math.max(0, Math.min(1, deg / max)) * 100
   return (
-    <div className="mt-1 flex items-center gap-1.5">
-      <span className="w-2.5 text-[9px] text-slate-500">{tag}</span>
-      <div className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-slate-800">
+    <div className="mt-0.5 flex items-center gap-1">
+      <span className="w-2 text-[8px] text-slate-500">{tag}</span>
+      <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-slate-800">
         <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
       </div>
-      <span className="w-9 text-right text-[10px] tabular-nums text-slate-400">
+      <span className="w-7 text-right text-[9px] tabular-nums text-slate-400">
         {deg === undefined ? '—' : `${Math.round(deg)}°`}
       </span>
     </div>

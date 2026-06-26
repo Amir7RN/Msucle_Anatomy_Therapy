@@ -128,6 +128,9 @@ export interface PoseRigFrame {
   yaw:     number
   rootY:   number
   quality: number
+  /** True when the feet are on (or assumed on) the floor — the model snaps to
+   *  the ground and zeroes any jump velocity. */
+  grounded: boolean
 }
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
@@ -261,16 +264,24 @@ export function poseBoneDirections(lms: LandmarkSet): BoneDirs {
 
 const DIR_SMOOTH   = 0.5     // nlerp factor toward each fresh segment direction
 
-// Jump (vertical) model — see updateRootY. All image-space (fraction of frame
-// height), since MediaPipe world coords are hip-centred and can't see a jump.
-const JUMP_GAIN     = 4.5    // image-Δ (frac of frame height) → model units
-const ROOT_MAX      = 1.4    // tallest jump we render (model units)
-const BASE_ALPHA    = 0.02   // resting-height baseline tracking (grounded only)
-const TAKEOFF_DISP  = 0.022  // image rise that counts as leaving the ground
-const TAKEOFF_VEL   = 0.06   // image rise speed (per s) that confirms a jump
-const LAND_DISP     = 0.012  // back within this of resting ⇒ feet down again
-const RISE_SMOOTH   = 0.5    // follow upward fast
-const FALL_SMOOTH   = 0.35   // come down a touch softer, then snap on contact
+// Vertical (jump) model — operates in IMAGE space, since MediaPipe world coords
+// are hip-centred and can't see global rise. The metric is the body-center
+// vertical velocity NORMALISED by torso size (shoulder↔hip image distance), so
+// it reads the same whether the user is near or far. This is what rejects
+// "stepping back": that's a slow, scale-changing move and never trips the
+// ballistic takeoff threshold. A neutral-pose CALIBRATION gate must pass first
+// (still + fully in frame), and an airborne TIMEOUT guarantees the model always
+// returns to the ground — no flying at the start, no floating landings.
+const CALIB_STABLE_S = 0.6    // hold still + fully in frame this long to calibrate
+const STILL_VN       = 0.5    // |normalised vY| below this counts as "still"
+const VN_TAKEOFF     = 1.8    // normalised upward velocity (torso-lengths/s) ⇒ jump
+const JUMP_GAIN      = 1.25   // normalised rise (torso-lengths) → model units
+const ROOT_MAX       = 1.4    // tallest jump we render (model units)
+const MAX_AIR_S      = 1.0    // hard cap on airborne time ⇒ never float
+const LAND_DISP      = 0.04   // back within this (torso-lengths) of rest ⇒ landed
+const BASE_ALPHA     = 0.05   // grounded baseline tracking (absorbs slow drift)
+const RISE_SMOOTH    = 0.55   // follow the rise quickly
+const FALL_SMOOTH    = 0.4    // ease down, then snap on contact
 
 function nlerp(a: Vec3, b: Vec3, t: number): Vec3 {
   return normalize({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t })
@@ -280,28 +291,34 @@ export class PoseRigEngine {
   private right: Vec3 | null = null          // smoothed lateral axis (continuity)
   private smoothed: BoneDirs = {}            // smoothed per-segment dirs
 
-  // Jump state machine.
-  private baseHipY: number | null = null     // resting pelvis image-y
-  private prevHipY: number | null = null
+  // Vertical state: neutral-pose calibration + ballistic jump with ground contact.
+  private calibrated = false
+  private stableS = 0
+  private floorBaseY: number | null = null   // resting body-center image-y
+  private prevCenterY: number | null = null
   private prevT = 0
-  private vImg = 0                            // smoothed image vertical velocity
   private airborne = false
+  private airS = 0
+  private grounded = true
   private rootY = 0
 
   reset(): void {
     this.right = null
     this.smoothed = {}
-    this.baseHipY = null
-    this.prevHipY = null
+    this.calibrated = false
+    this.stableS = 0
+    this.floorBaseY = null
+    this.prevCenterY = null
     this.prevT = 0
-    this.vImg = 0
     this.airborne = false
+    this.airS = 0
+    this.grounded = true
     this.rootY = 0
   }
 
   update(lms: LandmarkSet, tMs = performance.now()): PoseRigFrame {
     const f = computeBodyFrame(lms, this.right)
-    if (!f) return { dirs: this.smoothed, yaw: 0, rootY: this.rootY, quality: 0 }
+    if (!f) return { dirs: this.smoothed, yaw: 0, rootY: this.rootY, quality: 0, grounded: this.grounded }
     // Lightly track the lateral axis so genuine slow turns follow but noise can't.
     this.right = this.right ? normalize({
       x: this.right.x + (f.right.x - this.right.x) * 0.4,
@@ -319,55 +336,84 @@ export class PoseRigEngine {
       this.smoothed[seg] = prev ? nlerp(prev, t, DIR_SMOOTH) : t
     }
 
-    this.updateRootY(lms, tMs)
+    this.updateGround(lms, tMs)
 
-    return { dirs: this.smoothed, yaw: 0, rootY: this.rootY, quality: f.quality }
+    return { dirs: this.smoothed, yaw: 0, rootY: this.rootY, quality: f.quality, grounded: this.grounded }
   }
 
   /**
-   * Vertical JUMP offset from the pelvis image height, as a small ground-contact
-   * state machine. Grounded ⇒ rootY decays to 0 and the resting baseline tracks
-   * the hips. A fast upward rise ⇒ airborne, rootY lifts with the hips. Coming
-   * back to resting height ⇒ grounded again, rootY snaps to 0 and the baseline
-   * re-locks — so the model never "keeps landing" after the user is back down,
-   * and never balloons (rootY only goes up then cleanly back to 0).
+   * Ground-truth vertical model.
+   *
+   *  • CALIBRATION: nothing leaves the ground until the user has stood still and
+   *    fully in frame for `CALIB_STABLE_S`. This is why the twin no longer flies
+   *    at the very start while the user is close to the camera and only partly
+   *    visible — until it's calibrated, the model is simply planted.
+   *  • GROUND TRUTH: a jump is a brief BALLISTIC spike in the body-center
+   *    vertical velocity, normalised by torso size so it's range-invariant.
+   *    Stepping toward/away from the camera is slow and never trips it, and a
+   *    jump is only allowed while the FEET are actually in frame.
+   *  • CONTACT: airborne ends the moment the body returns to its resting height
+   *    OR a hard timeout — so the model lands exactly when the user does and can
+   *    never drift or "keep landing".
    */
-  private updateRootY(lms: LandmarkSet, tMs: number): void {
-    const lhp = lms[LM.L_HIP], rhp = lms[LM.R_HIP]
-    if (!lhp || !rhp || (lhp.visibility ?? 0) < 0.4 || (rhp.visibility ?? 0) < 0.4) {
-      // Lost the hips — ease back to the ground rather than freeze mid-air.
-      this.rootY += (0 - this.rootY) * FALL_SMOOTH
+  private updateGround(lms: LandmarkSet, tMs: number): void {
+    const dt = this.prevT ? Math.max(1e-3, Math.min(0.1, (tMs - this.prevT) / 1000)) : 1 / 30
+    this.prevT = tMs
+
+    const ls = lms[LM.L_SHOULDER], rs = lms[LM.R_SHOULDER]
+    const lh = lms[LM.L_HIP], rh = lms[LM.R_HIP]
+    const la = lms[LM.L_ANKLE], ra = lms[LM.R_ANKLE]
+    const okTorso = !!ls && !!rs && !!lh && !!rh &&
+      Math.min(ls.visibility ?? 0, rs.visibility ?? 0, lh.visibility ?? 0, rh.visibility ?? 0) > 0.4
+    if (!okTorso) { this.toGround(); return }
+
+    const centerY = (lh!.y + rh!.y) / 2
+    const midShY  = (ls!.y + rs!.y) / 2
+    const scale = Math.max(0.05, Math.abs(centerY - midShY))    // torso length in image
+    const anklesVisible = !!la && !!ra && (la.visibility ?? 0) > 0.5 && (ra.visibility ?? 0) > 0.5
+    const fullBody = anklesVisible && (lms[LM.NOSE]?.visibility ?? 0) > 0.4
+
+    // Normalised vertical velocity (torso-lengths/s, + = rising).
+    let vN = 0
+    if (this.prevCenterY !== null) vN = (this.prevCenterY - centerY) / (dt * scale)
+    this.prevCenterY = centerY
+
+    if (!this.calibrated) {
+      this.toGround()
+      if (fullBody && Math.abs(vN) < STILL_VN) {
+        this.stableS += dt
+        if (this.stableS >= CALIB_STABLE_S) { this.calibrated = true; this.floorBaseY = centerY }
+      } else {
+        this.stableS = 0
+      }
       return
     }
-    const hipY = (lhp.y + rhp.y) / 2          // image-y, 0 top → 1 bottom
-    if (this.baseHipY === null) {
-      this.baseHipY = hipY; this.prevHipY = hipY; this.prevT = tMs; this.rootY = 0
-      return
-    }
-    const dt = Math.max(1e-3, (tMs - this.prevT) / 1000)
-    const dispNow = this.baseHipY - hipY      // + = hips higher in image = up
-    const rawV = (this.prevHipY! - hipY) / dt  // + = rising this frame
-    this.vImg = 0.5 * this.vImg + 0.5 * rawV
-    this.prevHipY = hipY; this.prevT = tMs
 
     if (!this.airborne) {
-      // Grounded: settle to the floor, track the resting baseline slowly.
+      this.grounded = true
       this.rootY += (0 - this.rootY) * FALL_SMOOTH
-      this.baseHipY += BASE_ALPHA * (hipY - this.baseHipY)
-      if (dispNow > TAKEOFF_DISP && this.vImg > TAKEOFF_VEL) {
-        this.airborne = true                  // takeoff
-      }
+      this.floorBaseY = this.floorBaseY === null ? centerY : this.floorBaseY + BASE_ALPHA * (centerY - this.floorBaseY)
+      // Only a real, ballistic rise with the feet in frame counts as a jump.
+      if (fullBody && vN > VN_TAKEOFF) { this.airborne = true; this.airS = 0; this.grounded = false }
     } else {
-      // Airborne: lift with the hips (clamped), don't move the baseline.
-      const targetRoot = clamp(dispNow * JUMP_GAIN, 0, ROOT_MAX)
-      const k = targetRoot > this.rootY ? RISE_SMOOTH : FALL_SMOOTH
-      this.rootY += (targetRoot - this.rootY) * k
-      if (dispNow < LAND_DISP && this.vImg < TAKEOFF_VEL) {
-        // Back at resting height and no longer rising ⇒ landed.
+      this.airS += dt
+      const disp = this.floorBaseY !== null ? (this.floorBaseY - centerY) / scale : 0   // torso-lengths risen
+      const target = clamp(disp * JUMP_GAIN, 0, ROOT_MAX)
+      const k = target > this.rootY ? RISE_SMOOTH : FALL_SMOOTH
+      this.rootY += (target - this.rootY) * k
+      if ((disp < LAND_DISP && vN < VN_TAKEOFF) || this.airS > MAX_AIR_S) {
         this.airborne = false
-        this.baseHipY = hipY                  // re-lock — kills post-landing drift
+        this.grounded = true
+        this.floorBaseY = centerY        // re-lock — kills any post-landing drift
       }
     }
     if (this.rootY < 0) this.rootY = 0
+  }
+
+  /** Force the planted state and ease any residual jump back to the floor. */
+  private toGround(): void {
+    this.grounded = true
+    this.airborne = false
+    this.rootY += (0 - this.rootY) * FALL_SMOOTH
   }
 }

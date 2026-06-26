@@ -29,7 +29,18 @@ import {
   type SegmentId, type BoneDirs,
 } from '../../lib/movement/poseRig'
 import { type Posture } from '../../lib/movement/exercisePose'
-import { heavinessFactor, DEFAULT_WEIGHT_KG } from '../../lib/movement/bodySegments'
+import { heavinessFactor, DEFAULT_WEIGHT_KG, type SegmentFamily } from '../../lib/movement/bodySegments'
+
+/** Map a rig segment to its De Leva mass family (for inertia/momentum). */
+function familyOf(seg: SegmentId): SegmentFamily | null {
+  if (seg === 'upperArmL' || seg === 'upperArmR') return 'upperArm'
+  if (seg === 'forearmL'  || seg === 'forearmR')  return 'forearm'
+  if (seg === 'thighL'    || seg === 'thighR')    return 'thigh'
+  if (seg === 'shankL'    || seg === 'shankR')    return 'shank'
+  if (seg === 'trunk') return 'trunk'
+  if (seg === 'neck' || seg === 'head') return 'head'
+  return null
+}
 
 const MODEL_PATH = `${import.meta.env.BASE_URL}models/human-muscular-system.glb`
 
@@ -71,9 +82,15 @@ interface Props {
   rootYRef?:      MutableRefObject<number>
   /** Optional body mass (kg) — tunes how weighty the jump/landing feels. */
   bodyMassRef?:   MutableRefObject<number>
+  /** Optional ground-contact flag — when true the jump velocity is zeroed and
+   *  the model is held firmly on the floor (crisp landings, no drift). */
+  groundedRef?:   MutableRefObject<boolean>
+  /** Optional per-family angular agility (De Leva inertia) — heavier limbs move
+   *  with more momentum. */
+  agilityRef?:    MutableRefObject<Partial<Record<SegmentFamily, number>>>
 }
 
-export function MuscleTwinModel({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMassRef }: Props) {
+export function MuscleTwinModel({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMassRef, groundedRef, agilityRef }: Props) {
   return (
     <Canvas
       gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
@@ -87,7 +104,8 @@ export function MuscleTwinModel({ activationsRef, boneDirsRef, postureRef, yawRe
       <Ground />
       <Suspense fallback={null}>
         <Rig activationsRef={activationsRef} boneDirsRef={boneDirsRef} postureRef={postureRef}
-             yawRef={yawRef} rootYRef={rootYRef} bodyMassRef={bodyMassRef} />
+             yawRef={yawRef} rootYRef={rootYRef} bodyMassRef={bodyMassRef}
+             groundedRef={groundedRef} agilityRef={agilityRef} />
       </Suspense>
     </Canvas>
   )
@@ -135,7 +153,7 @@ interface RigData {
   axes:    { right: THREE.Vector3; up: THREE.Vector3; ant: THREE.Vector3 }
 }
 
-function Rig({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMassRef }: Props) {
+function Rig({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMassRef, groundedRef, agilityRef }: Props) {
   const { scene } = useGLTF(MODEL_PATH, true, true) as any
   const rig = useMemo<RigData>(() => buildRig(scene), [scene])
 
@@ -150,6 +168,7 @@ function Rig({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMa
   const box        = useRef(new THREE.Box3())
   const groundReady = useRef(false)
   const jumpVel    = useRef(0)
+  const prevGrounded = useRef(true)
 
   // Lazily init persistent quaternions.
   for (const seg of SEGMENT_ORDER) {
@@ -194,7 +213,10 @@ function Rig({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMa
 
       tmpLocal.current.copy(parentWQ).invert().multiply(desiredW.current[seg])
       clampQuat(tmpLocal.current, MAX_ANGLE[seg] ?? 160, IDENT.current)
-      slewQuat(group.quaternion, tmpLocal.current, MAX_STEP_DEG, SLERP)
+      // Inertia/momentum: heavier limbs (low agility) track a touch slower.
+      const fam = familyOf(seg)
+      const ag = fam ? (agilityRef?.current?.[fam] ?? 1) : 1
+      slewQuat(group.quaternion, tmpLocal.current, MAX_STEP_DEG * ag, Math.min(0.5, SLERP * ag))
       // achieved world = parentWorld ∘ achievedLocal
       worldQuat.current[seg].copy(parentWQ).multiply(group.quaternion)
     }
@@ -206,12 +228,18 @@ function Rig({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMa
       const intrinsicFootY = box.current.min.y - rig.outer.position.y    // foot height sans offset
       const jump = (rootYRef?.current ?? 0) * JUMP_WORLD
       const targetY = (GROUND_Y - intrinsicFootY) + jump
+      const grounded = groundedRef?.current ?? true
+      // The instant the feet make contact, kill the vertical momentum so the
+      // model lands exactly when the user does (no floaty overshoot or drift).
+      if (grounded && !prevGrounded.current) jumpVel.current = 0
+      prevGrounded.current = grounded
       if (!groundReady.current) { rig.outer.position.y = targetY; groundReady.current = true }
       else {
         // Critically-damped spring → weighty, never balloons. Heavier bodies are
-        // a touch stiffer (less float, firmer landing).
+        // stiffer (less float, firmer landing); planted feet stiffen further so
+        // the model sits solidly on the floor.
         const heavy = heavinessFactor(bodyMassRef?.current ?? DEFAULT_WEIGHT_KG)
-        const stiffness = 90 * heavy
+        const stiffness = (grounded ? 150 : 90) * heavy
         const damping = 2 * Math.sqrt(stiffness)        // ζ = 1 (no overshoot)
         const dt = Math.min(0.05, Math.max(1e-3, delta))
         const accel = stiffness * (targetY - rig.outer.position.y) - damping * jumpVel.current
@@ -310,10 +338,8 @@ function buildRig(scene: THREE.Object3D): RigData {
   const shoulderL = bUAl ? topC(bUAl) : V(0.12, 1.35, 0)
   const elbowR = bUAr ? botC(bUAr) : V(-0.2, 0.95, 0)
   const elbowL = bUAl ? botC(bUAl) : V(0.2, 0.95, 0)
-  // Forearm pivots at the elbow (top of its own box, falling back to the upper
-  // arm's distal end) and ends at the wrist.
-  const faTopR = bFAr ? topC(bFAr) : elbowR.clone()
-  const faTopL = bFAl ? topC(bFAl) : elbowL.clone()
+  // Forearm pivots EXACTLY at the elbow (the upper arm's distal point) so it is
+  // welded to the upper arm and can't float off; it ends at the wrist.
   const wristR = bFAr ? botC(bFAr) : V(-0.2, 0.6, 0)
   const wristL = bFAl ? botC(bFAl) : V(0.2, 0.6, 0)
   const hipR = bThR ? topC(bThR) : V(-0.1, 0.9, 0)
@@ -331,7 +357,7 @@ function buildRig(scene: THREE.Object3D): RigData {
   const pivots: Record<SegmentId, THREE.Vector3> = {
     pelvis: pelvisC, trunk: lumbar, neck: neckBase, head: headBase,
     upperArmR: shoulderR, upperArmL: shoulderL,
-    forearmR: faTopR, forearmL: faTopL,
+    forearmR: elbowR, forearmL: elbowL,
     thighR: hipR, shankR: kneeR, thighL: hipL, shankL: kneeL,
   }
   const distal: Record<SegmentId, THREE.Vector3> = {
@@ -373,6 +399,34 @@ function buildRig(scene: THREE.Object3D): RigData {
   }
   cloned.updateMatrixWorld(true)
   for (const seg of SEGMENT_ORDER) for (const m of (bySeg[seg] ?? [])) groups[seg]!.attach(m)
+  cloned.updateMatrixWorld(true)
+
+  // Procedural forearm: the GLB only has the thin brachioradialis sliver, which
+  // read as "detached" at the elbow. We add a tapered muscle body spanning
+  // elbow→wrist INSIDE the forearm group, so the forearm looks solid and stays
+  // welded to the upper arm while bending. It is painted with the forearm
+  // (brachioradialis) activation like any other mesh.
+  const addForearm = (seg: SegmentId, elbowW: THREE.Vector3, wristW: THREE.Vector3, side: 'L' | 'R') => {
+    const g = groups[seg]; if (!g) return
+    const a = g.worldToLocal(elbowW.clone())
+    const b = g.worldToLocal(wristW.clone())
+    const dir = b.clone().sub(a); const len = dir.length()
+    if (len < 1e-4) return
+    const r = Math.max(0.02, len * 0.13)
+    const geo = new THREE.CylinderGeometry(r * 0.7, r, len * 0.94, 14)
+    geo.computeBoundingBox()
+    const mat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color('#6b5b4a'), roughness: 0.6, metalness: 0.0,
+      emissive: new THREE.Color('#000000'), emissiveIntensity: 0.15,
+    })
+    const mesh = new THREE.Mesh(geo, mat)
+    mesh.position.copy(a).add(b).multiplyScalar(0.5)
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize())
+    g.add(mesh)
+    meshes.push({ mat, stem: 'BRACHIORADIALIS', side })
+  }
+  addForearm('forearmR', elbowR, wristR, 'R')
+  addForearm('forearmL', elbowL, wristL, 'L')
   cloned.updateMatrixWorld(true)
 
   const outer = new THREE.Group()

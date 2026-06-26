@@ -1,31 +1,31 @@
 /**
- * bodySegments.ts
+ * bodySegments.ts  (De Leva anthropometrics)
  *
- * Scientific body-mass distribution for the Live Muscle Twin.
+ * Scientific body-segment inertia model for the Live Muscle Twin, so the twin
+ * moves with real mass, centre-of-mass and momentum instead of like a weightless
+ * balloon.
  *
- * The twin used to behave like a weightless balloon — every segment had the
- * same (zero) inertia, so a jump shot the whole model up and it floated back
- * down with no sense of weight. Real bodies don't do that: ~50% of your mass is
- * trunk, a leg is ~16%, an arm ~5%. Giving each segment its true share of the
- * user's body mass lets the physics (jump settle, landing damping) feel weighty
- * and lets us show the user a real per-segment mass breakdown.
+ * Source: P. de Leva (1996), "Adjustments to Zatsiorsky-Seluyanov's segment
+ * inertia parameters", J. Biomechanics 29(9):1223-1230 — the standard
+ * sex-specific table of, per segment:
+ *   • relative mass        (fraction of total body mass)
+ *   • CoM longitudinal pos (fraction of segment length, from the proximal end)
+ *   • radius of gyration   (fraction of segment length, transverse axis — the
+ *                           axis a limb swings about at its joint)
  *
- * Fractions are the classic Winter table (D.A. Winter, *Biomechanics and Motor
- * Control of Human Movement*, 4th ed., 2009, Table 4.1), segment mass as a
- * fraction of TOTAL body mass. Where the twin has no separate hand/foot mesh we
- * fold the hand into the forearm and the foot into the shank, and the neck into
- * the head, so the fractions below still sum to exactly 1.0 over the twin's
- * segments.
+ * Segment lengths come from the classic stature fractions (Drillis & Contini /
+ * Winter). From these we derive each segment's mass (kg), CoM offset, and moment
+ * of inertia about its PROXIMAL JOINT (parallel-axis: I = m·(k·L)² + m·(d·L)²),
+ * which is exactly the inertia that resists the joint rotating — what gives the
+ * limb its momentum on screen.
  *
- *   head(+neck) .081 + trunk .497
- *   + 2·upperArm .028 + 2·forearm(+hand) .022
- *   + 2·thigh .100   + 2·shank(+foot) .061
- *   = .578 + .056 + .044 + .200 + .122 = 1.000
- *
- * Segment LENGTHS as a fraction of standing height come from the same source
- * (Table 4.1) and are used only for the informational read-out — the rendered
- * geometry itself comes from the GLB.
+ * The twin has no separate hand/foot mesh, so the hand is folded into the
+ * forearm and the foot into the shank as rigid composites (masses summed, CoM
+ * and inertia combined about the proximal joint). The folded fractions still sum
+ * to 1.0 over the twin's segments.
  */
+
+export type Sex = 'male' | 'female'
 
 export type BodySegmentId =
   | 'head' | 'trunk'
@@ -34,68 +34,70 @@ export type BodySegmentId =
   | 'thighL' | 'thighR'
   | 'shankL' | 'shankR'
 
-/** Segment mass as a fraction of total body mass (Winter 2009, folded). */
-export const MASS_FRACTION: Record<BodySegmentId, number> = {
-  head:      0.081,   // head + neck
-  trunk:     0.497,   // thorax + abdomen + pelvis
-  upperArmL: 0.028, upperArmR: 0.028,
-  forearmL:  0.022, forearmR:  0.022,  // forearm + hand
-  thighL:    0.100, thighR:    0.100,
-  shankL:    0.061, shankR:    0.061,  // leg + foot
-}
+/** Limb-family key used for the momentum/agility profile (L/R share one). */
+export type SegmentFamily = 'head' | 'trunk' | 'upperArm' | 'forearm' | 'thigh' | 'shank'
 
-/** Segment length as a fraction of standing height (Winter 2009). */
-export const LENGTH_FRACTION: Record<BodySegmentId, number> = {
-  head:      0.130,
-  trunk:     0.288,
-  upperArmL: 0.186, upperArmR: 0.186,
-  forearmL:  0.254, forearmR:  0.254,  // forearm 0.146 + hand 0.108
-  thighL:    0.245, thighR:    0.245,
-  shankL:    0.285, shankR:    0.285,  // shank 0.246 + foot height contribution
+interface DLParam { m: number; com: number; k: number; len: number }
+//  m   = mass / total body mass
+//  com = CoM from proximal end, as fraction of segment length
+//  k   = transverse radius of gyration, as fraction of segment length
+//  len = segment length as fraction of standing height
+const DELEVA: Record<Sex, Record<'head'|'trunk'|'upperarm'|'forearm'|'hand'|'thigh'|'shank'|'foot', DLParam>> = {
+  male: {
+    head:     { m: 0.0694, com: 0.5002, k: 0.303, len: 0.130 },
+    trunk:    { m: 0.4346, com: 0.5138, k: 0.328, len: 0.288 },
+    upperarm: { m: 0.0271, com: 0.5772, k: 0.269, len: 0.186 },
+    forearm:  { m: 0.0162, com: 0.4574, k: 0.265, len: 0.146 },
+    hand:     { m: 0.0061, com: 0.7900, k: 0.513, len: 0.108 },
+    thigh:    { m: 0.1416, com: 0.4095, k: 0.329, len: 0.245 },
+    shank:    { m: 0.0433, com: 0.4459, k: 0.249, len: 0.246 },
+    foot:     { m: 0.0137, com: 0.4415, k: 0.245, len: 0.152 },
+  },
+  female: {
+    head:     { m: 0.0668, com: 0.4841, k: 0.330, len: 0.130 },
+    trunk:    { m: 0.4257, com: 0.4964, k: 0.320, len: 0.288 },
+    upperarm: { m: 0.0255, com: 0.5754, k: 0.260, len: 0.186 },
+    forearm:  { m: 0.0138, com: 0.4559, k: 0.257, len: 0.146 },
+    hand:     { m: 0.0056, com: 0.7474, k: 0.454, len: 0.108 },
+    thigh:    { m: 0.1478, com: 0.3612, k: 0.364, len: 0.245 },
+    shank:    { m: 0.0481, com: 0.4416, k: 0.267, len: 0.246 },
+    foot:     { m: 0.0129, com: 0.4014, k: 0.279, len: 0.152 },
+  },
 }
-
-/** Friendly labels for the read-out. */
-export const SEGMENT_LABEL: Record<BodySegmentId, string> = {
-  head: 'Head + neck', trunk: 'Trunk',
-  upperArmL: 'Upper arm (L)', upperArmR: 'Upper arm (R)',
-  forearmL: 'Forearm + hand (L)', forearmR: 'Forearm + hand (R)',
-  thighL: 'Thigh (L)', thighR: 'Thigh (R)',
-  shankL: 'Shank + foot (L)', shankR: 'Shank + foot (R)',
-}
-
-export const SEGMENT_IDS: BodySegmentId[] = [
-  'head', 'trunk', 'upperArmL', 'upperArmR', 'forearmL', 'forearmR',
-  'thighL', 'thighR', 'shankL', 'shankR',
-]
 
 export interface SegmentMass {
   id:    BodySegmentId
-  label: string
+  family: SegmentFamily
   /** Mass in kg for the given body mass. */
   kg:    number
   /** Fraction of total body mass (0..1). */
   frac:  number
-  /** Segment length in cm for the given height (informational). */
+  /** Segment length in cm for the given height. */
   lengthCm: number
+  /** CoM distance from the proximal joint, cm. */
+  comCm: number
+  /** Moment of inertia about the proximal joint, kg·m². */
+  inertia: number
 }
 
 export interface BodyMassModel {
-  /** Total body mass actually used (kg), after clamping to a sane range. */
   totalKg:  number
-  /** Height actually used (cm), after clamping. */
   heightCm: number
+  sex:      Sex
   segments: SegmentMass[]
+  /** Per-family angular "agility" multiplier (≈0.7 heavy … 1.3 light) used by
+   *  the renderer to give heavier limbs more momentum. Sex-structural. */
+  agility:  Record<SegmentFamily, number>
 }
 
-/** Plausible adult bounds so a typo can't blow up the physics. */
 export const WEIGHT_MIN_KG = 25
 export const WEIGHT_MAX_KG = 250
 export const HEIGHT_MIN_CM = 120
 export const HEIGHT_MAX_CM = 230
 
-/** Default assumptions when the user hasn't entered their numbers yet. */
 export const DEFAULT_WEIGHT_KG = 75
 export const DEFAULT_HEIGHT_CM = 175
+export const DEFAULT_SEX: Sex = 'male'
 
 export function clampWeight(kg: number): number {
   if (!isFinite(kg)) return DEFAULT_WEIGHT_KG
@@ -106,31 +108,99 @@ export function clampHeight(cm: number): number {
   return Math.max(HEIGHT_MIN_CM, Math.min(HEIGHT_MAX_CM, cm))
 }
 
-/**
- * Build the full per-segment mass/length breakdown for a given body mass and
- * height. Inputs are clamped to a plausible adult range first.
- */
-export function buildBodyMassModel(weightKg: number, heightCm: number): BodyMassModel {
-  const totalKg  = clampWeight(weightKg)
-  const h        = clampHeight(heightCm)
-  const segments: SegmentMass[] = SEGMENT_IDS.map((id) => ({
-    id,
-    label:    SEGMENT_LABEL[id],
-    kg:       +(MASS_FRACTION[id] * totalKg).toFixed(2),
-    frac:     MASS_FRACTION[id],
-    lengthCm: +(LENGTH_FRACTION[id] * h).toFixed(1),
-  }))
-  return { totalKg, heightCm: h, segments }
+/** Inertia of a single segment about its proximal joint (kg·m²). */
+function inertiaProximal(m: number, L: number, p: DLParam): number {
+  return m * ((p.k * L) ** 2 + (p.com * L) ** 2)
+}
+
+const FAMILY_LABEL: Record<SegmentFamily, string> = {
+  head: 'Head + neck', trunk: 'Trunk', upperArm: 'Upper arm',
+  forearm: 'Forearm + hand', thigh: 'Thigh', shank: 'Shank + foot',
 }
 
 /**
- * A single 0..1 "heaviness" factor the renderer uses to tune jump/landing
- * dynamics. 1.0 ≈ an average 75 kg adult; a 50 kg person is lighter and springs
- * a touch higher/softer, a 110 kg person is heavier and lands harder with less
- * float. Kept gentle (≈0.8..1.25) so the twin never feels sluggish or twitchy.
+ * Build the full per-segment mass/CoM/inertia model for a body. Inputs are
+ * clamped to a plausible adult range first.
+ */
+export function buildBodyMassModel(weightKg: number, heightCm: number, sex: Sex = DEFAULT_SEX): BodyMassModel {
+  const totalKg = clampWeight(weightKg)
+  const cm      = clampHeight(heightCm)
+  const H       = cm / 100                       // metres
+  const T       = DELEVA[sex]
+
+  // Composite limb segments (about their proximal joint).
+  const mU = totalKg * T.upperarm.m
+  const Lu = T.upperarm.len * H
+  const Iu = inertiaProximal(mU, Lu, T.upperarm)
+
+  // forearm + hand about the elbow
+  const mF = totalKg * T.forearm.m, mHa = totalKg * T.hand.m
+  const Lf = T.forearm.len * H,     Lh  = T.hand.len * H
+  const If = inertiaProximal(mF, Lf, T.forearm)
+  const dHand = Lf + T.hand.com * Lh
+  const Ih = mHa * ((T.hand.k * Lh) ** 2 + dHand ** 2)
+  const mFH = mF + mHa
+  const Ifh = If + Ih
+  const comFH = (mF * T.forearm.com * Lf + mHa * dHand) / mFH
+
+  const mT = totalKg * T.thigh.m
+  const Lt = T.thigh.len * H
+  const It = inertiaProximal(mT, Lt, T.thigh)
+
+  // shank + foot about the knee
+  const mS = totalKg * T.shank.m, mFt = totalKg * T.foot.m
+  const Ls = T.shank.len * H,     Lft = T.foot.len * H
+  const Is = inertiaProximal(mS, Ls, T.shank)
+  const dFoot = Ls + 0.5 * Lft                   // foot CoM roughly below the knee + half foot
+  const Ift = mFt * ((T.foot.k * Lft) ** 2 + dFoot ** 2)
+  const mSF = mS + mFt
+  const Isf = Is + Ift
+  const comSF = (mS * T.shank.com * Ls + mFt * dFoot) / mSF
+
+  const mHead = totalKg * T.head.m
+  const Lhead = T.head.len * H
+  const Ihead = inertiaProximal(mHead, Lhead, T.head)
+  const mTrunk = totalKg * T.trunk.m
+  const Ltrunk = T.trunk.len * H
+  const Itrunk = inertiaProximal(mTrunk, Ltrunk, T.trunk)
+
+  const mk = (id: BodySegmentId, family: SegmentFamily, kg: number, frac: number, Lcm: number, comCmV: number, I: number): SegmentMass =>
+    ({ id, family, kg: +kg.toFixed(2), frac, lengthCm: +Lcm.toFixed(1), comCm: +comCmV.toFixed(1), inertia: +I.toFixed(4) })
+
+  const segments: SegmentMass[] = [
+    mk('head', 'head', mHead, T.head.m, T.head.len * cm, T.head.com * T.head.len * cm, Ihead),
+    mk('trunk', 'trunk', mTrunk, T.trunk.m, T.trunk.len * cm, T.trunk.com * T.trunk.len * cm, Itrunk),
+    mk('upperArmL', 'upperArm', mU, T.upperarm.m, T.upperarm.len * cm, T.upperarm.com * T.upperarm.len * cm, Iu),
+    mk('upperArmR', 'upperArm', mU, T.upperarm.m, T.upperarm.len * cm, T.upperarm.com * T.upperarm.len * cm, Iu),
+    mk('forearmL', 'forearm', mFH, T.forearm.m + T.hand.m, (T.forearm.len + T.hand.len) * cm, comFH * 100, Ifh),
+    mk('forearmR', 'forearm', mFH, T.forearm.m + T.hand.m, (T.forearm.len + T.hand.len) * cm, comFH * 100, Ifh),
+    mk('thighL', 'thigh', mT, T.thigh.m, T.thigh.len * cm, T.thigh.com * T.thigh.len * cm, It),
+    mk('thighR', 'thigh', mT, T.thigh.m, T.thigh.len * cm, T.thigh.com * T.thigh.len * cm, It),
+    mk('shankL', 'shank', mSF, T.shank.m + T.foot.m, (T.shank.len + T.foot.len) * cm, comSF * 100, Isf),
+    mk('shankR', 'shank', mSF, T.shank.m + T.foot.m, (T.shank.len + T.foot.len) * cm, comSF * 100, Isf),
+  ]
+
+  // Agility = how quickly a limb tracks, inversely from its joint inertia
+  // (heavier ⇒ more momentum ⇒ a touch slower). Normalised to the upper arm and
+  // gently bounded so nothing feels sluggish or twitchy.
+  const Iref = Iu
+  const ag = (I: number) => Math.max(0.7, Math.min(1.3, Math.pow(Iref / Math.max(I, 1e-6), 0.25)))
+  const agility: Record<SegmentFamily, number> = {
+    head: ag(Ihead), trunk: ag(Itrunk), upperArm: 1, forearm: ag(Ifh), thigh: ag(It), shank: ag(Isf),
+  }
+
+  return { totalKg, heightCm: cm, sex, segments, agility }
+}
+
+/** Friendly family label (for any compact read-out). */
+export function familyLabel(f: SegmentFamily): string { return FAMILY_LABEL[f] }
+
+/**
+ * A single 0.8..1.25 "heaviness" factor the renderer uses to tune the vertical
+ * jump/landing dynamics (heavier ⇒ stiffer, lands harder, floats less).
  */
 export function heavinessFactor(weightKg: number): number {
   const kg = clampWeight(weightKg)
-  const f  = Math.cbrt(kg / DEFAULT_WEIGHT_KG)   // cube-root → gentle scaling
+  const f  = Math.cbrt(kg / DEFAULT_WEIGHT_KG)
   return Math.max(0.8, Math.min(1.25, f))
 }

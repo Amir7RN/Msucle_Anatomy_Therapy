@@ -80,7 +80,7 @@ export function MuscleActivationRadars({ activations }: { activations: LiveMuscl
     if (a.level > prev) byId.set(a.muscleId, a.level)
   }
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="grid grid-cols-2 gap-1.5">
       {SECTIONS.map((s) => (
         <Spider key={s.title} section={s} byId={byId} />
       ))}
@@ -88,9 +88,9 @@ export function MuscleActivationRadars({ activations }: { activations: LiveMuscl
   )
 }
 
-function Spider({ section, byId, size = 168 }: { section: Section; byId: Map<string, number>; size?: number }) {
-  const cx = size / 2, cy = size / 2 + 5
-  const R = size / 2 - 30
+function Spider({ section, byId, size = 116 }: { section: Section; byId: Map<string, number>; size?: number }) {
+  const cx = size / 2, cy = size / 2 + 4
+  const R = size / 2 - 22
   const n = section.axes.length
   const pt = (i: number, frac: number) => {
     const ang = (Math.PI * 2 * i) / n - Math.PI / 2
@@ -102,8 +102,8 @@ function Spider({ section, byId, size = 168 }: { section: Section; byId: Map<str
   const peak = Math.max(...vals)
 
   return (
-    <div className="rounded-md bg-slate-900/50 p-1">
-      <div className="mb-0.5 text-center text-[11px] font-medium uppercase tracking-wide text-slate-300">{section.title}</div>
+    <div className="rounded-md bg-slate-900/50 p-0.5">
+      <div className="text-center text-[8px] font-medium uppercase tracking-wide text-slate-400">{section.title}</div>
       <svg viewBox={`0 0 ${size} ${size}`} className="w-full">
         {[0.5, 1].map((g) => (
           <polygon key={g}
@@ -112,21 +112,21 @@ function Spider({ section, byId, size = 168 }: { section: Section; byId: Map<str
         ))}
         {section.axes.map((a, i) => {
           const [ex, ey] = pt(i, 1)
-          const [lx, ly] = pt(i, 1.22)
+          const [lx, ly] = pt(i, 1.26)
           return (
             <g key={a.id}>
-              <line x1={cx} y1={cy} x2={ex} y2={ey} stroke="#1e293b" strokeWidth={1} />
-              <text x={lx} y={ly} fontSize="8.5" fill="#94a3b8"
+              <line x1={cx} y1={cy} x2={ex} y2={ey} stroke="#1e293b" strokeWidth={0.8} />
+              <text x={lx} y={ly} fontSize="6" fill="#94a3b8"
                 textAnchor={lx < cx - 3 ? 'end' : lx > cx + 3 ? 'start' : 'middle'} dominantBaseline="middle">
                 {a.label}
               </text>
             </g>
           )
         })}
-        <polygon points={poly} fill={`${heat(peak)}33`} stroke={heat(peak)} strokeWidth={1.4} />
+        <polygon points={poly} fill={`${heat(peak)}33`} stroke={heat(peak)} strokeWidth={1.2} />
         {section.axes.map((_, i) => {
           const [x, y] = pt(i, vals[i])
-          return <circle key={i} cx={x} cy={y} r={2.6} fill={heat(vals[i])} />
+          return <circle key={i} cx={x} cy={y} r={1.8} fill={heat(vals[i])} />
         })}
       </svg>
     </div>
