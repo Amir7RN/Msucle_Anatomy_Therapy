@@ -23,6 +23,9 @@ import { CameraView } from './CameraView'
 import { MuscleTwinModel } from './MuscleTwinModel'
 import { MuscleActivationRadars } from './MuscleActivationRadars'
 import { RomBars } from './RomBars'
+import { MuscleStatusPanel } from './MuscleStatusPanel'
+import { MuscleStatusEngine, type MuscleStatusFrame } from '../../lib/movement/muscleStatus'
+import { saveSession } from '../../lib/movement/muscleSessionLog'
 import type { LandmarkSet } from '../../lib/movement/landmarks'
 import { disposeDetector } from '../../lib/movement/poseDetector'
 import {
@@ -80,6 +83,7 @@ export function MuscleTwinView({ open, onClose }: Props) {
     orientation: BodyOrientation
     energy: number
   }>({ readings: [], activations: [], orientation: 'unknown', energy: 0 })
+  const [status, setStatus] = useState<MuscleStatusFrame | null>(null)
   const [load, setLoad]     = useState<LoadEstimate | null>(null)
   const [hasKey, setHasKey] = useState(false)
   const [keyInput, setKeyInput] = useState('')
@@ -91,6 +95,7 @@ export function MuscleTwinView({ open, onClose }: Props) {
   const bodyModel = useMemo(() => buildBodyMassModel(weightKg, heightCm, sex), [weightKg, heightCm, sex])
 
   const engineRef = useRef<LiveActivationEngine | null>(null)
+  const statusEngineRef = useRef<MuscleStatusEngine | null>(null)
   const poseEngineRef = useRef<PoseRigEngine | null>(null)
   const loadEstRef = useRef<LoadEstimator | null>(null)
   const videoRef   = useRef<HTMLVideoElement | null>(null)
@@ -120,13 +125,22 @@ export function MuscleTwinView({ open, onClose }: Props) {
   useEffect(() => {
     if (open) {
       engineRef.current = new LiveActivationEngine()
+      statusEngineRef.current = new MuscleStatusEngine()
       poseEngineRef.current = new PoseRigEngine()
       loadEstRef.current = new LoadEstimator()
       setHasKey(loadEstRef.current.isEnabled())
+      setStatus(null)
     } else {
       setReady(false); setError(null); setLoad(null); setLoadErr(null)
       activationsRef.current = []; boneDirsRef.current = {}; loadRef.current = {}
       yawRef.current = 0; rootYRef.current = 0
+      // Persist the session's muscle status before tearing the engine down, so
+      // the weekly "volume-load" trend keeps building across workouts.
+      if (statusEngineRef.current?.hasMeaningfulSession()) {
+        try { saveSession(statusEngineRef.current.summary()) } catch { /* ignore */ }
+      }
+      statusEngineRef.current?.reset(); statusEngineRef.current = null
+      setStatus(null)
       engineRef.current?.reset(); engineRef.current = null
       poseEngineRef.current?.reset(); poseEngineRef.current = null
       loadEstRef.current?.reset(); loadEstRef.current = null
@@ -166,6 +180,8 @@ export function MuscleTwinView({ open, onClose }: Props) {
     const now = performance.now()
     const frame = eng.update(lms, now, loadRef.current)
     activationsRef.current = frame.activations
+    // Integrate the camera-only muscle-status layer (fatigue, work, imbalance).
+    const statusFrame = statusEngineRef.current?.update(frame, now, loadRef.current)
     // Stabilised rig: removes L/R + front/back flips, and adds facing yaw +
     // jump/squat vertical offset so the twin turns and reacts to gravity.
     const rig = poseEngineRef.current?.update(lms)
@@ -185,6 +201,7 @@ export function MuscleTwinView({ open, onClose }: Props) {
         orientation: frame.orientation.orientation,
         energy: frame.movementEnergy,
       })
+      if (statusFrame) setStatus(statusFrame)
     }
   }
 
@@ -321,6 +338,9 @@ export function MuscleTwinView({ open, onClose }: Props) {
               </div>
             )}
           </section>
+
+          {/* Camera-only muscle status: fatigue, work/volume-load, imbalance, weekly trend */}
+          <MuscleStatusPanel status={status} />
 
           {/* Activation + ROM side by side */}
           <div className="grid gap-3 md:grid-cols-2">
