@@ -97,6 +97,7 @@ export function MuscleStatusPanel({ status }: Props) {
                 <span className="w-8 shrink-0 text-right text-[9px] tabular-nums text-slate-500" title="Fatigue">{Math.round(r.fatigue * 100)}%</span>
                 <span className="w-10 shrink-0 text-right text-[9px] tabular-nums text-slate-500" title="Work this session">{r.work >= 1 ? Math.round(r.work) : r.work.toFixed(1)}</span>
                 <StatePill r={r} />
+                {r.caution && <span className="text-[9px] font-bold text-amber-400" title="Flagged in your profile — protect this region">⚠</span>}
               </div>
             )
           })}

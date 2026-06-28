@@ -68,6 +68,8 @@ interface AtlasState {
   movementOpen:         boolean
   // Live 3D Muscle-Activation Twin full-screen
   twinOpen:             boolean
+  // Personal profile + camera body-scan full-screen (personalization hub)
+  profileOpen:          boolean
   /** Number of full-screen overlay modals currently open. When > 0,
    *  the 3D canvas chrome (Movement Screen launcher, schematic overlay,
    *  diagnostic toggle, status badges) is hidden so the modal is the
@@ -148,6 +150,8 @@ interface AtlasState {
   setMovementOpen:      (open: boolean) => void
   toggleTwin:           () => void
   setTwinOpen:          (open: boolean) => void
+  toggleProfile:        () => void
+  setProfileOpen:       (open: boolean) => void
   pushModal:            () => void
   popModal:             () => void
   setFeatureModalToOpen: (key: null | 'battery' | 'program' | 'symmetry') => void
@@ -203,6 +207,7 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   triageOpen:            false,
   movementOpen:          false,
   twinOpen:              false,
+  profileOpen:           false,
   modalOpenCount:        0,
   featureModalToOpen:    null,
   // Baked calibration values — tuned so the 52-mesh muscles align with
@@ -358,6 +363,8 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   setMovementOpen:   (open) => set({ movementOpen: open }),
   toggleTwin:        () => set((s) => ({ twinOpen: !s.twinOpen })),
   setTwinOpen:       (open) => set({ twinOpen: open }),
+  toggleProfile:     () => set((s) => ({ profileOpen: !s.profileOpen })),
+  setProfileOpen:    (open) => set({ profileOpen: open }),
   pushModal:         () => set((s) => ({ modalOpenCount: s.modalOpenCount + 1 })),
   popModal:          () => set((s) => ({ modalOpenCount: Math.max(0, s.modalOpenCount - 1) })),
   setFeatureModalToOpen: (key) => set({ featureModalToOpen: key }),

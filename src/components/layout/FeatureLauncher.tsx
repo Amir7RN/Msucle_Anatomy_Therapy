@@ -13,17 +13,24 @@
  */
 
 import React from 'react'
-import { Activity, Sparkles, Scan, Flame } from 'lucide-react'
+import { Activity, Sparkles, Scan, Flame, User } from 'lucide-react'
 import { useAtlasStore } from '../../store/atlasStore'
 
 export function FeatureLauncher() {
   const setFeatureModalToOpen = useAtlasStore((s) => s.setFeatureModalToOpen)
   const setTwinOpen           = useAtlasStore((s) => s.setTwinOpen)
+  const setProfileOpen        = useAtlasStore((s) => s.setProfileOpen)
   const modalOpenCount        = useAtlasStore((s) => s.modalOpenCount)
   // Hide while any modal is up so we don't clutter overlay-on-overlay.
   if (modalOpenCount > 0) return null
   return (
     <div className="hidden md:flex absolute right-4 top-4 z-20 flex-col gap-2">
+      <FeatureButton
+        icon={<User size={14} />}
+        label="My Profile"
+        tone="emerald"
+        onClick={() => setProfileOpen(true)}
+      />
       <FeatureButton
         icon={<Flame size={14} />}
         label="Live Muscle Twin"

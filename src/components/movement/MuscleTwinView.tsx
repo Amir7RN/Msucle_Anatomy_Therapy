@@ -40,6 +40,9 @@ import {
   buildBodyMassModel, clampWeight, clampHeight,
   DEFAULT_WEIGHT_KG, DEFAULT_HEIGHT_CM, DEFAULT_SEX, type Sex, type SegmentFamily,
 } from '../../lib/movement/bodySegments'
+import { buildPersonalization } from '../../lib/profile/personalization'
+import { loadProfile, subscribeProfile } from '../../lib/profile/userProfile'
+import { useAtlasStore } from '../../store/atlasStore'
 
 // Persisted so the twin remembers the user's body between sessions (used for the
 // De Leva segment-inertia distribution that gives the model real weight).
@@ -88,9 +91,12 @@ export function MuscleTwinView({ open, onClose }: Props) {
   const [hasKey, setHasKey] = useState(false)
   const [keyInput, setKeyInput] = useState('')
   const [loadErr, setLoadErr] = useState<string | null>(null)
-  const [weightKg, setWeightKg] = useState(() => loadNum(LS_WEIGHT, DEFAULT_WEIGHT_KG))
-  const [heightCm, setHeightCm] = useState(() => loadNum(LS_HEIGHT, DEFAULT_HEIGHT_CM))
-  const [sex, setSex]           = useState<Sex>(() => loadSex())
+  // Seed body params from the user's profile when they've set one up, else fall
+  // back to the twin's own remembered values — one source of truth for the body.
+  const [weightKg, setWeightKg] = useState(() => { const p = loadProfile(); return p.onboarded ? p.weightKg : loadNum(LS_WEIGHT, DEFAULT_WEIGHT_KG) })
+  const [heightCm, setHeightCm] = useState(() => { const p = loadProfile(); return p.onboarded ? p.heightCm : loadNum(LS_HEIGHT, DEFAULT_HEIGHT_CM) })
+  const [sex, setSex]           = useState<Sex>(() => { const p = loadProfile(); return p.onboarded ? p.sex : loadSex() })
+  const setProfileOpen = useAtlasStore((s) => s.setProfileOpen)
 
   const bodyModel = useMemo(() => buildBodyMassModel(weightKg, heightCm, sex), [weightKg, heightCm, sex])
 
@@ -125,7 +131,7 @@ export function MuscleTwinView({ open, onClose }: Props) {
   useEffect(() => {
     if (open) {
       engineRef.current = new LiveActivationEngine()
-      statusEngineRef.current = new MuscleStatusEngine()
+      statusEngineRef.current = new MuscleStatusEngine(buildPersonalization(loadProfile()))
       poseEngineRef.current = new PoseRigEngine()
       loadEstRef.current = new LoadEstimator()
       setHasKey(loadEstRef.current.isEnabled())
@@ -162,6 +168,16 @@ export function MuscleTwinView({ open, onClose }: Props) {
       setLoadErr(est.lastError())
     }, 1000)
     return () => window.clearInterval(id)
+  }, [open])
+
+  // Keep the fatigue engine's personalization live if the user edits their
+  // profile (or finishes a body scan) while the twin is open.
+  useEffect(() => {
+    if (!open) return
+    const unsub = subscribeProfile(() => {
+      statusEngineRef.current?.setPersonalization(buildPersonalization(loadProfile()))
+    })
+    return () => unsub()
   }, [open])
 
   function saveKey() {
@@ -227,7 +243,16 @@ export function MuscleTwinView({ open, onClose }: Props) {
           </span>
           <MovementPip energy={hud.energy} />
         </div>
-        <button onClick={onClose} className="rounded p-1 hover:bg-slate-800" title="Close"><X size={16} /></button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { onClose(); setProfileOpen(true) }}
+            className="rounded-md px-2 py-1 text-[11px] font-semibold text-cyan-300 ring-1 ring-cyan-500/30 hover:bg-slate-800"
+            title="Edit your profile — personalises your fatigue & effort model"
+          >
+            My profile
+          </button>
+          <button onClick={onClose} className="rounded p-1 hover:bg-slate-800" title="Close"><X size={16} /></button>
+        </div>
       </header>
 
       {/* Mobile = column (model on top, analytics below, scrolls). Desktop = row. */}

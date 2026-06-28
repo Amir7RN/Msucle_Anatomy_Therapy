@@ -27,6 +27,16 @@
  *   • IMBALANCE — left-vs-right work/activation split per joint pair, the single
  *                most useful thing a camera does that a dumbbell can't.
  *
+ * Personalisation (NEW)
+ * ─────────────────────
+ * The fatigue battery is no longer one-size-fits-all. A `PersonalizationModel`
+ * (derived from the user's profile + body scan) makes the drain and recovery a
+ * function of WHO is training: age, fitness level, body composition and
+ * injuries. An athlete's region drains slowly and recovers fast; a senior's or
+ * an injured region drains sooner and recovers slower — the same calibration a
+ * real PT does in their head. With no profile it falls back to the original
+ * constants exactly, so guests are unchanged.
+ *
  * Everything here is a kinesiology *estimate* for biofeedback/coaching, not a
  * clinical measurement. An EMG sleeve or periodic ultrasound would be the
  * ground-truth upgrades and can feed the very same status model.
@@ -34,6 +44,7 @@
 
 import type { SymmetryRegion } from '../insights/symmetry'
 import type { LiveMuscleActivation, JointLiveReading, LiveFrame, LoadInput } from './liveMuscleActivation'
+import type { PersonalizationModel } from '../profile/personalization'
 
 export type MuscleState = 'fresh' | 'warming' | 'working' | 'fatigued' | 'spent'
 
@@ -50,6 +61,9 @@ export interface RegionStatus {
   /** Peak activation seen this session, 0..1. */
   peakActivation: number
   state:      MuscleState
+  /** True when the user flagged this region injured/painful in their profile.
+   *  Surfaced so the UI can show a "protect this" caution badge. */
+  caution:    boolean
 }
 
 export interface ImbalancePair {
@@ -170,9 +184,29 @@ export class MuscleStatusEngine {
   private acc = new Map<SymmetryRegion, RegionAccum>()
   private prevT: number | null = null
   private workingMs = 0
+  /** Personalised fatigue/effort model derived from the user's profile.
+   *  null = behave exactly like the legacy one-size constants (guest mode). */
+  private pers: PersonalizationModel | null = null
 
-  constructor() {
+  constructor(personalization?: PersonalizationModel | null) {
+    this.pers = personalization ?? null
     for (const r of ALL_REGIONS) this.acc.set(r, blankAccum())
+  }
+
+  /** Swap the personalization model live (e.g. after the user edits their
+   *  profile or finishes a body scan) without losing accumulated session work. */
+  setPersonalization(model: PersonalizationModel | null): void {
+    this.pers = model
+  }
+
+  private capacityOf(region: SymmetryRegion): number {
+    return this.pers?.region[region]?.capacity ?? 1
+  }
+  private cautionOf(region: SymmetryRegion): boolean {
+    return this.pers?.region[region]?.caution ?? false
+  }
+  private loadCapOf(region: SymmetryRegion): number {
+    return this.pers?.region[region]?.loadCap ?? 1
   }
 
   /**
@@ -213,16 +247,27 @@ export class MuscleStatusEngine {
       a.activation += (rawAct - a.activation) * ACT_SMOOTH
       if (a.activation > a.peakActivation) a.peakActivation = a.activation
 
-      // External-load multiplier (upper-limb regions only).
+      // Personalisation for this region (neutral when no profile).
+      const capacity    = this.capacityOf(region)
+      const loadCap     = this.loadCapOf(region)
+      const gainMul     = this.pers?.fatigueGainMul ?? 1
+      const recoveryMul = this.pers?.recoveryRateMul ?? 1
+      const effortScale = this.pers?.effortScale ?? 1
+
+      // External-load multiplier (upper-limb regions only), capped for injured
+      // regions so we don't let a flagged side accumulate dangerous load.
       const side = regionSide(region)
       let loadFactor = 1
       if (isUpperLimb(region)) {
         const kg = side === 'L' ? (load.leftKg ?? 0) : (load.rightKg ?? 0)
-        loadFactor = Math.min(LOAD_MAX, 1 + Math.max(0, kg) * LOAD_PER_KG)
+        const raw = Math.min(LOAD_MAX, 1 + Math.max(0, kg) * LOAD_PER_KG)
+        loadFactor = 1 + (raw - 1) * loadCap
       }
 
-      // Effective intensity drives both work and fatigue.
-      const intensity = clamp01(rawAct * (isUpperLimb(region) ? Math.min(loadFactor / LOAD_MAX + 0.4, 1.2) : 1))
+      // Effective intensity drives both work and fatigue. effortScale is the
+      // PT calibration: the same motion reads as harder for a deconditioned
+      // user and easier for a trained one.
+      const intensity = clamp01(rawAct * (isUpperLimb(region) ? Math.min(loadFactor / LOAD_MAX + 0.4, 1.2) : 1) * effortScale)
       const working = rawAct >= WORK_THRESH
 
       // ── Work (volume-load proxy): integrate activation × load × time ──────
@@ -238,9 +283,12 @@ export class MuscleStatusEngine {
       a.curPeakRom = Math.max(rom, a.curPeakRom - 0.15 * dt)
 
       // ── Fatigue battery ───────────────────────────────────────────────────
+      // Drain scales with the user's modeled fatigability (gainMul) and INVERSELY
+      // with this region's work capacity — an athlete's region drains slower for
+      // the same effort, a senior's or an injured region drains faster.
       if (working) {
         // Drain proportional to intensity^1.5 (hard efforts cost more).
-        a.fatigue += Math.pow(intensity, 1.5) * FATIGUE_GAIN * dt
+        a.fatigue += Math.pow(intensity, 1.5) * FATIGUE_GAIN * gainMul / capacity * dt
         // Range-collapse kicker: still pushing but can't reach prior range.
         if (a.freshPeakRom > 0.15 && a.curPeakRom < a.freshPeakRom * RANGE_DROP) {
           const collapse = clamp01((a.freshPeakRom * RANGE_DROP - a.curPeakRom) / (a.freshPeakRom * RANGE_DROP))
@@ -248,7 +296,7 @@ export class MuscleStatusEngine {
         }
         anyWorking = true
       } else if (rawAct < REST_THRESH) {
-        a.fatigue -= RECOVERY_RATE * dt
+        a.fatigue -= RECOVERY_RATE * recoveryMul * dt
       }
       a.fatigue = clamp01(a.fatigue)
     }
@@ -273,6 +321,7 @@ export class MuscleStatusEngine {
         region, label: REGION_LABEL[region], side: regionSide(region),
         activation: a.activation, fatigue: a.fatigue, work: a.work,
         peakActivation: a.peakActivation, state,
+        caution: this.cautionOf(region),
       })
       totalWork += a.work
       if (a.fatigue > maxFatigue) maxFatigue = a.fatigue

@@ -5,6 +5,7 @@ import { RightPanel }   from './components/layout/RightPanel'
 import { ViewerCanvas } from './components/viewer/ViewerCanvas'
 import { MovementScreen } from './components/movement/MovementScreen'
 import { MuscleTwinView } from './components/movement/MuscleTwinView'
+import { ProfileSetup } from './components/profile/ProfileSetup'
 import { useAtlasStore } from './store/atlasStore'
 import type { CameraPresetKey } from './lib/cameraUtils'
 import { Activity, MessageCircle, Box, Info, X, Sparkles, Scan } from 'lucide-react'
@@ -264,6 +265,9 @@ function AtlasApp() {
 
       {/* Live 3-D Muscle-Activation Twin */}
       <MuscleTwinMount />
+
+      {/* Personal profile + body scan (personalization hub) */}
+      <ProfileMount />
     </div>
   )
 }
@@ -331,6 +335,14 @@ function MuscleTwinMount() {
   const twinOpen    = useAtlasStore((s) => s.twinOpen)
   const setTwinOpen = useAtlasStore((s) => s.setTwinOpen)
   return <MuscleTwinView open={twinOpen} onClose={() => setTwinOpen(false)} />
+}
+
+// ── Personal profile + body-scan mount ───────────────────────────────────────
+
+function ProfileMount() {
+  const profileOpen    = useAtlasStore((s) => s.profileOpen)
+  const setProfileOpen = useAtlasStore((s) => s.setProfileOpen)
+  return <ProfileSetup open={profileOpen} onClose={() => setProfileOpen(false)} />
 }
 
 // ── Diagnostic mode toggle (floating button over canvas) ─────────────────────
