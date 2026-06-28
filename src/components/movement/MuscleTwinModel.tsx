@@ -300,6 +300,11 @@ function buildRig(scene: THREE.Object3D): RigData {
     const seg = segmentForMesh(o.name)
     if (seg) (bySeg[seg] ??= []).push(o)
     if (o.geometry && !o.geometry.boundingBox) o.geometry.computeBoundingBox()
+    // Hide the GLB's thin brachioradialis sliver — posed rigidly it reads as a
+    // detached, mis-angled shard at the elbow (the issue in the user's render).
+    // The clean procedural forearm cylinder below replaces it and still carries
+    // the brachioradialis activation colour.
+    if (seg === 'forearmL' || seg === 'forearmR') { o.visible = false; return }
     const mat = new THREE.MeshStandardMaterial({
       color: new THREE.Color('#6b5b4a'), roughness: 0.6, metalness: 0.0,
       emissive: new THREE.Color('#000000'), emissiveIntensity: 0.15,
@@ -325,7 +330,6 @@ function buildRig(scene: THREE.Object3D): RigData {
   const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z)
 
   const bUAr = box(['upperArmR']), bUAl = box(['upperArmL'])
-  const bFAr = box(['forearmR']),  bFAl = box(['forearmL'])
   const bThR = box(['thighR']),    bThL = box(['thighL'])
   const bShR = box(['shankR']),    bShL = box(['shankL'])
   const bTrunk = box(['trunk']),   bPelv = box(['pelvis'])
@@ -339,9 +343,21 @@ function buildRig(scene: THREE.Object3D): RigData {
   const elbowR = bUAr ? botC(bUAr) : V(-0.2, 0.95, 0)
   const elbowL = bUAl ? botC(bUAl) : V(0.2, 0.95, 0)
   // Forearm pivots EXACTLY at the elbow (the upper arm's distal point) so it is
-  // welded to the upper arm and can't float off; it ends at the wrist.
-  const wristR = bFAr ? botC(bFAr) : V(-0.2, 0.6, 0)
-  const wristL = bFAl ? botC(bFAl) : V(0.2, 0.6, 0)
+  // welded to the upper arm. The GLB has no hand/wrist mesh and only a short,
+  // oddly-placed brachioradialis sliver, so deriving the wrist from a mesh box
+  // produced the misaligned, detached-looking forearm in the user's render.
+  // Instead we estimate the wrist as a clean anthropometric continuation of the
+  // upper arm (forearm ≈ 0.85 × upper-arm length), so the rest forearm is
+  // COLLINEAR with the upper arm and bends only at the elbow when the user's
+  // wrist is actually tracked.
+  const forearmTip = (shoulder: THREE.Vector3, elbow: THREE.Vector3): THREE.Vector3 => {
+    const axis = elbow.clone().sub(shoulder)
+    const len = axis.length()
+    if (len < 1e-4) return elbow.clone().add(V(0, -0.28, 0))
+    return elbow.clone().addScaledVector(axis.normalize(), len * 0.85)
+  }
+  const wristR = forearmTip(shoulderR, elbowR)
+  const wristL = forearmTip(shoulderL, elbowL)
   const hipR = bThR ? topC(bThR) : V(-0.1, 0.9, 0)
   const hipL = bThL ? topC(bThL) : V(0.1, 0.9, 0)
   const kneeR = bThR ? botC(bThR) : V(-0.1, 0.5, 0)

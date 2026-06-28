@@ -10,6 +10,8 @@
 import { loadROMHistory, type ROMRecord } from '../movement/romHistory'
 import { JOINT_MOVEMENTS } from '../movement/muscleJointMap'
 import { getStoredApiKey } from '../triage/llm'
+import { loadProfile, FITNESS_LABEL, GOAL_LABEL } from '../profile/userProfile'
+import { buildPersonalization, prescribe, prettyRegion } from '../profile/personalization'
 import { supabase } from '../supabase'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
@@ -89,6 +91,26 @@ function buildSnapshot(records: ROMRecord[]): string {
   return lines.join('\n')
 }
 
+/**
+ * Profile + personalization context so the written plan matches the same model
+ * that drives the user's live fatigue/effort feedback — a beginner and an
+ * athlete should not get the same dosage, and flagged regions stay gentle.
+ */
+function buildProfileContext(): string {
+  const p = loadProfile()
+  if (!p.onboarded) return 'No personal profile on file — use sensible general-population defaults.'
+  const m = buildPersonalization(p)
+  const rx = prescribe(m)
+  const lines: string[] = []
+  lines.push(`- Age: ${p.ageYears ?? 'unknown'}; sex: ${p.sex}; training level: ${FITNESS_LABEL[p.fitnessLevel]}.`)
+  if (p.goals.length) lines.push(`- Goals: ${p.goals.map((g) => GOAL_LABEL[g]).join(', ')}.`)
+  if (p.composition.bodyFatPct != null) lines.push(`- Build: ${p.composition.build ?? 'average'}, ~${p.composition.bodyFatPct}% body fat.`)
+  if (p.injuries.length) lines.push(`- Keep these regions GENTLE / avoid loading them: ${p.injuries.map((i) => prettyRegion(i.region)).join(', ')}.`)
+  lines.push(`- Personalised dosage to honour: ~${rx.reps} reps per set, intensity ~${rx.intensityPct}% of max effort, ~${rx.restSec}s rest between sets.`)
+  lines.push(`- This person ${m.fatigueGainMul > 1.15 ? 'fatigues sooner than average — build volume gradually' : m.fatigueGainMul < 0.9 ? 'has strong fatigue resistance — can handle more volume' : 'has average work capacity'}.`)
+  return lines.join('\n')
+}
+
 const SYSTEM_PROMPT = `You are a movement coach for the Zevahealth app. The user has done several range-of-motion assessments using camera-based pose tracking; their measured peaks are given below. Generate a 4-WEEK PROGRESSIVE MOBILITY PROGRAM tailored to their measured deficits and asymmetries.
 
 Constraints:
@@ -101,6 +123,7 @@ Constraints:
   - rationale: 1 sentence explaining why this exercise for this user, referencing their measured ROM
 - Progress week-over-week: longer holds, harder variations, or added reps.
 - Address the WEAKEST joints first; respect any low-ROM finding (e.g. <70%) by starting gentle.
+- MATCH the user's profile below: use their personalised rep count, intensity and rest; scale difficulty to their training level; pursue their goals; and keep any "gentle" regions low-load (no aggressive loading or end-range stretching there).
 - Reply with ONE JSON object only, no prose. Match this schema:
 
 {
@@ -171,7 +194,8 @@ export async function generatePersonalProgram(): Promise<PersonalProgram> {
   const records = loadROMHistory()
   const snapshot = buildSnapshot(records)
 
-  const userMsg = `My measured ROM snapshot:\n${snapshot}\n\n${EXERCISE_LIBRARY}\n\nPlease generate the 4-week JSON program.`
+  const profileContext = buildProfileContext()
+  const userMsg = `My measured ROM snapshot:\n${snapshot}\n\nAbout me (personalised targets to honour):\n${profileContext}\n\n${EXERCISE_LIBRARY}\n\nPlease generate the 4-week JSON program.`
 
   const res = await fetch(ANTHROPIC_URL, {
     method: 'POST',

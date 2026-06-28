@@ -75,6 +75,28 @@ function dist2D(a: Landmark, b: Landmark): number {
 }
 function vis(p?: Landmark): number { return p?.visibility ?? 0 }
 
+/** Left/right segment-length symmetry for one median pose. */
+function poseSymmetry(pose: LandmarkSet): { sym: number | null; region: SymmetryRegion | null; worst: number } {
+  const segLen = (a?: Landmark, b?: Landmark): number | null =>
+    (a && b && vis(a) > 0.4 && vis(b) > 0.4) ? dist2D(a, b) : null
+  const pairs: Array<{ region: SymmetryRegion; l: number | null; r: number | null }> = [
+    { region: 'left_elbow', l: segLen(pose[LM.L_SHOULDER], pose[LM.L_ELBOW]), r: segLen(pose[LM.R_SHOULDER], pose[LM.R_ELBOW]) },
+    { region: 'left_elbow', l: segLen(pose[LM.L_ELBOW], pose[LM.L_WRIST]),    r: segLen(pose[LM.R_ELBOW], pose[LM.R_WRIST]) },
+    { region: 'left_knee',  l: segLen(pose[LM.L_HIP], pose[LM.L_KNEE]),       r: segLen(pose[LM.R_HIP], pose[LM.R_KNEE]) },
+    { region: 'left_knee',  l: segLen(pose[LM.L_KNEE], pose[LM.L_ANKLE]),     r: segLen(pose[LM.R_KNEE], pose[LM.R_ANKLE]) },
+  ]
+  let sum = 0, count = 0, worst = 0
+  let region: SymmetryRegion | null = null
+  for (const p of pairs) {
+    if (p.l == null || p.r == null) continue
+    const m = Math.max(p.l, p.r, 1e-4)
+    const d = Math.abs(p.l - p.r) / m
+    sum += d; count += 1
+    if (d > worst) { worst = d; region = p.region }
+  }
+  return { sym: count ? Math.max(0, 1 - sum / count) : null, region, worst }
+}
+
 // ── Composition heuristics ───────────────────────────────────────────────────
 
 /** Deurenberg (1991) population body-fat estimate from BMI/age/sex. */
@@ -101,6 +123,7 @@ export function analyzeBodyScan(
   frontFrames: LandmarkSet[],
   sideFrames: LandmarkSet[],
   input: BodyScanInput,
+  backFrames: LandmarkSet[] = [],
 ): BodyScanResult {
   const blankComp: BodyComposition = {
     bodyFatPct: null, bodyFatLow: null, bodyFatHigh: null,
@@ -135,25 +158,18 @@ export function analyzeBodyScan(
   const standSpan = ankleY != null ? Math.max(1e-4, ankleY - midSh.y) : null
   const torsoHeightRatio = standSpan ? shoulderW / standSpan : null
 
-  // ── Left/right segment symmetry ─────────────────────────────────────────
-  const segLen = (a?: Landmark, b?: Landmark): number | null =>
-    (a && b && vis(a) > 0.4 && vis(b) > 0.4) ? dist2D(a, b) : null
-  const pairs: Array<{ region: SymmetryRegion; l: number | null; r: number | null }> = [
-    { region: 'left_elbow',  l: segLen(front[LM.L_SHOULDER], front[LM.L_ELBOW]), r: segLen(front[LM.R_SHOULDER], front[LM.R_ELBOW]) },
-    { region: 'left_elbow',  l: segLen(front[LM.L_ELBOW], front[LM.L_WRIST]),    r: segLen(front[LM.R_ELBOW], front[LM.R_WRIST]) },
-    { region: 'left_knee',   l: segLen(front[LM.L_HIP], front[LM.L_KNEE]),       r: segLen(front[LM.R_HIP], front[LM.R_KNEE]) },
-    { region: 'left_knee',   l: segLen(front[LM.L_KNEE], front[LM.L_ANKLE]),     r: segLen(front[LM.R_KNEE], front[LM.R_ANKLE]) },
-  ]
-  let asymSum = 0, asymCount = 0, worstAsym = 0
-  let asymRegion: SymmetryRegion | null = null
-  for (const p of pairs) {
-    if (p.l == null || p.r == null) continue
-    const m = Math.max(p.l, p.r, 1e-4)
-    const d = Math.abs(p.l - p.r) / m
-    asymSum += d; asymCount += 1
-    if (d > worstAsym) { worstAsym = d; asymRegion = p.region }
+  // ── Left/right segment symmetry (front, refined by the back view) ────────
+  const symFront = poseSymmetry(front)
+  let symmetry = symFront.sym
+  let asymRegion = symFront.region
+  let worstAsym = symFront.worst
+  if (backFrames.length >= 5) {
+    const symBack = poseSymmetry(medianPose(backFrames))
+    if (symBack.sym != null) {
+      symmetry = symmetry != null ? (symmetry + symBack.sym) / 2 : symBack.sym
+      if (symBack.worst > worstAsym) { worstAsym = symBack.worst; asymRegion = symBack.region }
+    }
   }
-  const symmetry = asymCount ? Math.max(0, 1 - asymSum / asymCount) : null
   // Only surface an asymmetric region if it's beyond noise (~6%).
   if (worstAsym < 0.06) asymRegion = null
 

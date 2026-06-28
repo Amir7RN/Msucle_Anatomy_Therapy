@@ -71,7 +71,7 @@ export interface BodyComposition {
   build:       BuildClass | null
   /** 0..1 confidence in the estimate (a single webcam is inherently limited). */
   confidence:  number
-  method:      'camera' | 'camera+tape' | 'manual' | null
+  method:      'camera' | 'camera+ai' | 'camera+tape' | 'manual' | null
 }
 
 /** Geometric metrics the camera CAN see defensibly (joints, not silhouette). */
