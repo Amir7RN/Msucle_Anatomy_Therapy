@@ -300,11 +300,9 @@ function buildRig(scene: THREE.Object3D): RigData {
     const seg = segmentForMesh(o.name)
     if (seg) (bySeg[seg] ??= []).push(o)
     if (o.geometry && !o.geometry.boundingBox) o.geometry.computeBoundingBox()
-    // Hide the GLB's thin brachioradialis sliver — posed rigidly it reads as a
-    // detached, mis-angled shard at the elbow (the issue in the user's render).
-    // The clean procedural forearm cylinder below replaces it and still carries
-    // the brachioradialis activation colour.
-    if (seg === 'forearmL' || seg === 'forearmR') { o.visible = false; return }
+    // Forearm: render the GLB's OWN forearm meshes (restored). They're segmented
+    // to forearmL/R and attached to the forearm group below, so they pivot at the
+    // elbow and bend with the arm — the muscular lower arm, no procedural cylinder.
     const mat = new THREE.MeshStandardMaterial({
       color: new THREE.Color('#6b5b4a'), roughness: 0.6, metalness: 0.0,
       emissive: new THREE.Color('#000000'), emissiveIntensity: 0.15,
@@ -417,32 +415,9 @@ function buildRig(scene: THREE.Object3D): RigData {
   for (const seg of SEGMENT_ORDER) for (const m of (bySeg[seg] ?? [])) groups[seg]!.attach(m)
   cloned.updateMatrixWorld(true)
 
-  // Procedural forearm: the GLB only has the thin brachioradialis sliver, which
-  // read as "detached" at the elbow. We add a tapered muscle body spanning
-  // elbow→wrist INSIDE the forearm group, so the forearm looks solid and stays
-  // welded to the upper arm while bending. It is painted with the forearm
-  // (brachioradialis) activation like any other mesh.
-  const addForearm = (seg: SegmentId, elbowW: THREE.Vector3, wristW: THREE.Vector3, side: 'L' | 'R') => {
-    const g = groups[seg]; if (!g) return
-    const a = g.worldToLocal(elbowW.clone())
-    const b = g.worldToLocal(wristW.clone())
-    const dir = b.clone().sub(a); const len = dir.length()
-    if (len < 1e-4) return
-    const r = Math.max(0.02, len * 0.13)
-    const geo = new THREE.CylinderGeometry(r * 0.7, r, len * 0.94, 14)
-    geo.computeBoundingBox()
-    const mat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#6b5b4a'), roughness: 0.6, metalness: 0.0,
-      emissive: new THREE.Color('#000000'), emissiveIntensity: 0.15,
-    })
-    const mesh = new THREE.Mesh(geo, mat)
-    mesh.position.copy(a).add(b).multiplyScalar(0.5)
-    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize())
-    g.add(mesh)
-    meshes.push({ mat, stem: 'BRACHIORADIALIS', side })
-  }
-  addForearm('forearmR', elbowR, wristR, 'R')
-  addForearm('forearmL', elbowL, wristL, 'L')
+  // (Procedural forearm cylinder removed — the GLB's own forearm meshes are
+  // shown and rigged to the forearm group above, so the muscular lower arm is
+  // back and still bends at the elbow.)
   cloned.updateMatrixWorld(true)
 
   const outer = new THREE.Group()

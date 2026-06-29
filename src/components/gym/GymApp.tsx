@@ -88,16 +88,6 @@ function GymHeader() {
 
 // ── Explore: 3D model + callouts + exercise list ─────────────────────────────
 
-interface CalloutDef { group: MuscleGroupId; side: 'l' | 'r'; style: React.CSSProperties }
-const CALLOUTS: CalloutDef[] = [
-  { group: 'shoulders', side: 'l', style: { top: '12%', left: '3%' } },
-  { group: 'chest',     side: 'l', style: { top: '30%', left: '1%' } },
-  { group: 'arms',      side: 'l', style: { top: '50%', left: '3%' } },
-  { group: 'back',      side: 'r', style: { top: '12%', right: '3%' } },
-  { group: 'core',      side: 'r', style: { top: '39%', right: '1%' } },
-  { group: 'legs',      side: 'r', style: { top: '66%', right: '4%' } },
-]
-
 function Explore() {
   const selectedGroup = useGymStore((s) => s.selectedGroup)
   const setGroup      = useGymStore((s) => s.setGroup)
@@ -109,21 +99,15 @@ function Explore() {
 
   return (
     <div className="flex h-full min-h-0">
-      {/* Left — interactive model (desktop) */}
+      {/* Left — interactive, rotatable model with on-body labels (desktop) */}
       <div className="relative hidden min-h-0 flex-1 lg:block">
-        <div className="absolute left-5 top-4 z-20 max-w-xs">
+        <div className="pointer-events-none absolute left-5 top-4 z-20 max-w-xs">
           <h1 className="text-xl font-extrabold tracking-tight">Train by muscle group</h1>
-          <p className="mt-1 text-xs text-stone-400">Hover the model, tap a group, then pick an exercise for live tracking & coaching.</p>
+          <p className="mt-1 text-xs text-stone-400">Drag to rotate the model. Tap a label on the body, then pick an exercise.</p>
         </div>
         <CanvasErrorBoundary fallback={<div className="flex h-full items-center justify-center p-8"><GroupGrid selected={selectedGroup} onSelect={setGroup} /></div>}>
-          <MuscleModelCanvas highlight={highlight} />
+          <MuscleModelCanvas highlight={highlight} onHover={setHover} onSelect={setGroup} />
         </CanvasErrorBoundary>
-        {CALLOUTS.map((c) => (
-          <Callout key={c.group} def={c}
-            active={highlight === c.group}
-            onHover={setHover}
-            onSelect={() => setGroup(c.group)} />
-        ))}
       </div>
 
       {/* Mobile — group cards + list stacked */}
@@ -141,30 +125,6 @@ function Explore() {
         {group ? <ExerciseList group={group} onPick={openTrainer} onScan={() => openScan(group.id)} /> : <ExploreHint />}
       </aside>
     </div>
-  )
-}
-
-function Callout({ def, active, onHover, onSelect }: { def: CalloutDef; active: boolean; onHover: (g: MuscleGroupId | null) => void; onSelect: () => void }) {
-  const g = muscleGroupById(def.group)
-  const n = exercisesForGroup(def.group).length
-  return (
-    <button
-      style={def.style}
-      onMouseEnter={() => onHover(def.group)}
-      onMouseLeave={() => onHover(null)}
-      onClick={onSelect}
-      className={[
-        'absolute z-20 flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold backdrop-blur transition',
-        active
-          ? 'border-amber-300 bg-amber-400/20 text-amber-100 shadow-[0_0_24px_rgba(251,146,60,0.4)]'
-          : 'border-stone-600/60 bg-stone-900/70 text-stone-200 hover:border-amber-400/60 hover:text-amber-100',
-      ].join(' ')}
-    >
-      {def.side === 'r' && <ArrowLeft size={13} className="text-amber-300" />}
-      <span>{g.name}</span>
-      <span className="rounded-full bg-black/30 px-1.5 text-[10px] text-stone-400">{n}</span>
-      {def.side === 'l' && <ArrowRight size={13} className="text-amber-300" />}
-    </button>
   )
 }
 
