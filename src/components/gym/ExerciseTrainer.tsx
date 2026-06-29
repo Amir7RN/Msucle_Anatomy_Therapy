@@ -1,5 +1,5 @@
 /**
- * ExerciseTrainer.tsx — the MoveMate Train workout screen.
+ * ExerciseTrainer.tsx — the ZevaMMT workout screen.
  *
  * Focus (per the gym-platform brief): motion tracking, muscle activation, and
  * required reps — with an optional AI coach. Deliberately NO muscle-structure

@@ -94,7 +94,7 @@ export function LandingPage({ atlasUrl, diagnosticUrl, gymUrl }: LandingPageProp
             className="group inline-flex items-center gap-3 rounded-2xl border border-amber-400/30 bg-gradient-to-r from-amber-500/15 to-orange-500/10 px-6 py-3.5 text-left backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-amber-300/60 hover:shadow-[0_0_50px_rgba(251,146,60,0.32)]">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-600 text-white shadow-lg shadow-amber-500/30">💪</span>
             <span>
-              <span className="block text-sm font-bold text-amber-100">New — MoveMate Train (Gym)</span>
+              <span className="block text-sm font-bold text-amber-100">New — ZevaMMT · Gym Training</span>
               <span className="block text-xs text-amber-200/70">Train by muscle group · live reps, muscle activation & Apple Watch</span>
             </span>
             <ArrowRight className="ml-1 h-4 w-4 text-amber-200 transition group-hover:translate-x-1" />

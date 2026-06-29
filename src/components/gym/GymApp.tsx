@@ -1,5 +1,5 @@
 /**
- * GymApp.tsx — root of MoveMate Train, the gym-training platform.
+ * GymApp.tsx — root of ZevaMMT, the gym-training platform.
  *
  * A separate, visually distinct surface (warm amber/energetic, card-grid driven)
  * so users immediately read "this is gym training", not the clinical pain map.
@@ -70,7 +70,7 @@ function GymHeader() {
         <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-600 text-white shadow-lg shadow-amber-500/30">
           <Flame size={18} />
         </span>
-        <span className="text-sm font-extrabold tracking-tight">MoveMate <span className="text-amber-400">Train</span></span>
+        <span className="text-sm font-extrabold tracking-tight">Zeva<span className="text-amber-400">MMT</span></span>
       </button>
       <div className="flex items-center gap-2">
         <HeartRateWidget compact />

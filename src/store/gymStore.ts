@@ -1,7 +1,7 @@
 /**
  * gymStore.ts
  *
- * Dedicated state for MoveMate Train (the gym-training platform). Kept separate
+ * Dedicated state for ZevaMMT (the gym-training platform). Kept separate
  * from atlasStore so the two platforms stay independent in look and behaviour.
  */
 
