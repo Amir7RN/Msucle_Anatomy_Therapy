@@ -40,11 +40,18 @@ useGLTF.preload(MODEL_PATH, true, true)
 
 // ── Shared scene bits (identical to the Live Muscle Twin) ────────────────────
 function SceneLights() {
+  // Lit from all sides (front / sides / back / under) so the model stays the
+  // SAME bright tan as the Live Muscle Twin at every rotation angle — the twin
+  // only needs front light because it never turns; this one orbits, so a
+  // front-only rig made the far side go black ("ghost"). Higher ambient floor
+  // guarantees it is never dark.
   return (
     <>
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[3, 5, 4]} intensity={0.8} />
-      <directionalLight position={[-3, 2, 3]} intensity={0.4} color="#a5f3fc" />
+      <ambientLight intensity={0.85} />
+      <directionalLight position={[3, 5, 4]}   intensity={0.8} />
+      <directionalLight position={[-3, 2, 3]}  intensity={0.55} color="#a5f3fc" />
+      <directionalLight position={[0, 3, -6]}  intensity={0.65} />
+      <directionalLight position={[0, -4, 2]}  intensity={0.3} />
     </>
   )
 }
@@ -93,13 +100,22 @@ function Model({ highlight, levelRef, onHover, onSelect }: ModelProps) {
 
   const anchors = useMemo(() => {
     const out: Partial<Record<MuscleGroupId, [number, number, number]>> = {}
-    for (const g of GROUP_LIST) {
-      const stems = GROUP_MESH_STEMS[g]
+    const collect = (stems: string[], rightOnly: boolean): THREE.Vector3 | null => {
       const box = new THREE.Box3(); let any = false
       cloned.traverse((o: THREE.Object3D) => {
-        if (o instanceof THREE.Mesh && stems.some((s) => (o.name || '').toUpperCase().includes(s))) { box.expandByObject(o); any = true }
+        if (!(o instanceof THREE.Mesh)) return
+        const n = (o.name || '').toUpperCase()
+        if (!stems.some((s) => n.includes(s))) return
+        if (rightOnly && !n.endsWith('_R')) return
+        box.expandByObject(o); any = true
       })
-      if (any) { const c = box.getCenter(new THREE.Vector3()); out[g] = [c.x, c.y, c.z] }
+      return any ? box.getCenter(new THREE.Vector3()) : null
+    }
+    for (const g of GROUP_LIST) {
+      // Anchor on ONE side's muscle belly (right) so the dot sits on the actual
+      // muscle, not the body midline; fall back to all meshes (e.g. core/abs).
+      const c = collect(GROUP_MESH_STEMS[g], true) ?? collect(GROUP_MESH_STEMS[g], false)
+      if (c) out[g] = [c.x, c.y, c.z]
     }
     return out
   }, [cloned])
