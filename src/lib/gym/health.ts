@@ -79,7 +79,7 @@ export async function connectHeartRate(
     disconnect: () => {
       try { characteristic.removeEventListener('characteristicvaluechanged', handler) } catch { /* ignore */ }
       try { device.removeEventListener('gattserverdisconnected', onGattDisconnect) } catch { /* ignore */ }
-      try { device.gatt?.disconnect() } catch { /* ignore */ }
+      try { device.gatt?.disconnect?.() } catch { /* ignore */ }
     },
   }
 }

@@ -217,7 +217,7 @@ function ExerciseCard({ exercise, accentText, onClick }: { exercise: Exercise; a
       className="group overflow-hidden rounded-2xl bg-stone-900/70 text-left ring-1 ring-stone-800 transition hover:ring-amber-500/40">
       <div className="relative aspect-video w-full overflow-hidden bg-gradient-to-br from-stone-800 to-stone-900">
         {exercise.media.video ? (
-          <video src={exercise.media.video} muted loop playsInline
+          <video src={`${import.meta.env.BASE_URL}videos/${exercise.media.video}`} muted loop playsInline
             ref={(v) => { if (v) { if (playing) v.play().catch(() => {}); else { v.pause() } } }}
             className="h-full w-full object-cover opacity-90" />
         ) : (

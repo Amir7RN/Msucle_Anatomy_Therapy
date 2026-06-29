@@ -38,7 +38,7 @@ export interface TrackConfig {
 }
 
 export interface ExerciseMedia {
-  /** Path under /public served at runtime, or null to use the SVG fallback. */
+  /** Filename in /public/videos (resolved with import.meta.env.BASE_URL at render), or null for the SVG fallback. */
   video:  string | null
   /** Accent-tinted illustration glyph used for the fallback thumbnail. */
   glyph:  'press' | 'row' | 'raise' | 'curl' | 'squat' | 'hinge' | 'core' | 'pull'
@@ -122,7 +122,7 @@ export const EXERCISES: Exercise[] = [
     cues: ['Hands under shoulders', 'Lower with a tight body line', 'Elbows ~45° from torso', 'Press the floor away'],
     repGoal: 12, sets: 3,
     track: { joint: 'elbow', side: 'both', contractAt: 'low', range: [85, 165] },
-    media: { video: '/videos/Crab_Press.mp4', glyph: 'press' },
+    media: { video: 'Crab_Press.mp4', glyph: 'press' },
   },
   {
     id: 'db_bench_press', name: 'Dumbbell Bench Press', group: 'chest', focus: 'Mid-chest mass',
@@ -149,7 +149,7 @@ export const EXERCISES: Exercise[] = [
     cues: ['Soft elbows, hold the angle', 'Open wide to a stretch', 'Hug the weights together', 'Squeeze at the top'],
     repGoal: 12, sets: 3,
     track: { joint: 'shoulder', side: 'both', contractAt: 'low', range: [20, 95] },
-    media: { video: '/videos/Standing_Chest_Stretch.mp4', glyph: 'press' },
+    media: { video: 'Standing_Chest_Stretch.mp4', glyph: 'press' },
   },
   {
     id: 'dips', name: 'Chest Dips', group: 'chest', focus: 'Lower chest & triceps',
@@ -169,7 +169,7 @@ export const EXERCISES: Exercise[] = [
     cues: ['Hinge to ~45°', 'Flat back, braced core', 'Drive elbows past ribs', 'Squeeze shoulder blades'],
     repGoal: 10, sets: 4,
     track: { joint: 'elbow', side: 'both', contractAt: 'low', range: [70, 165] },
-    media: { video: '/videos/High_To_Low_Rows.mp4', glyph: 'row' },
+    media: { video: 'High_To_Low_Rows.mp4', glyph: 'row' },
   },
   {
     id: 'lat_pulldown', name: 'Lat Pulldown', group: 'back', focus: 'Lat width',
@@ -196,7 +196,7 @@ export const EXERCISES: Exercise[] = [
     cues: ['Pull to the eyes', 'Elbows high', 'Externally rotate', 'Pause and squeeze'],
     repGoal: 15, sets: 3,
     track: { joint: 'elbow', side: 'both', contractAt: 'low', range: [70, 160] },
-    media: { video: '/videos/Pendulum_Swing.mp4', glyph: 'pull' },
+    media: { video: 'Pendulum_Swing.mp4', glyph: 'pull' },
   },
   {
     id: 'superman', name: 'Superman', group: 'back', focus: 'Lower-back endurance',
@@ -225,7 +225,7 @@ export const EXERCISES: Exercise[] = [
     cues: ['Soft elbows', 'Lead with the elbows', 'Up to shoulder height', 'Lower slowly'],
     repGoal: 15, sets: 3,
     track: { joint: 'shoulder', side: 'both', contractAt: 'high', range: [15, 95] },
-    media: { video: '/videos/Wall_Climb_To_The_Side.mp4', glyph: 'raise' },
+    media: { video: 'Wall_Climb_To_The_Side.mp4', glyph: 'raise' },
   },
   {
     id: 'front_raise', name: 'Front Raise', group: 'shoulders', focus: 'Front-delt',
@@ -234,7 +234,7 @@ export const EXERCISES: Exercise[] = [
     cues: ['Raise to eye level', 'No swinging', 'Control the lower', 'Brace the core'],
     repGoal: 12, sets: 3,
     track: { joint: 'shoulder', side: 'both', contractAt: 'high', range: [15, 95] },
-    media: { video: '/videos/Scapular_Arm_Reach_Lying_Down.mp4', glyph: 'raise' },
+    media: { video: 'Scapular_Arm_Reach_Lying_Down.mp4', glyph: 'raise' },
   },
   {
     id: 'rear_delt_fly', name: 'Rear-delt Fly', group: 'shoulders', focus: 'Rear-delt & posture',
@@ -243,7 +243,7 @@ export const EXERCISES: Exercise[] = [
     cues: ['Hinge forward', 'Open arms wide', 'Squeeze the rear delts', 'Lower with control'],
     repGoal: 15, sets: 3,
     track: { joint: 'shoulder', side: 'both', contractAt: 'high', range: [15, 90] },
-    media: { video: '/videos/Side_Lying_External_Rotation.mp4', glyph: 'raise' },
+    media: { video: 'Side_Lying_External_Rotation.mp4', glyph: 'raise' },
   },
   {
     id: 'ext_rotation', name: 'External Rotation', group: 'shoulders', focus: 'Rotator-cuff health',
@@ -252,7 +252,7 @@ export const EXERCISES: Exercise[] = [
     cues: ['Elbow pinned to the side', 'Rotate the forearm out', 'Slow and controlled', 'Keep the wrist neutral'],
     repGoal: 15, sets: 3,
     track: { joint: 'shoulder', side: 'both', contractAt: 'high', range: [10, 70] },
-    media: { video: '/videos/Wand_Rotation.mp4', glyph: 'raise' },
+    media: { video: 'Wand_Rotation.mp4', glyph: 'raise' },
   },
 
   // ── ARMS ─────────────────────────────────────────────────────────────────────
@@ -281,7 +281,7 @@ export const EXERCISES: Exercise[] = [
     cues: ['Elbows by the ears', 'Lower behind the head', 'Extend to lockout', 'Keep elbows still'],
     repGoal: 12, sets: 3,
     track: { joint: 'elbow', side: 'both', contractAt: 'high', range: [55, 170] },
-    media: { video: '/videos/Supported_Extensor_Stretch.mp4', glyph: 'press' },
+    media: { video: 'Supported_Extensor_Stretch.mp4', glyph: 'press' },
   },
   {
     id: 'triceps_kickback', name: 'Triceps Kickback', group: 'arms', focus: 'Triceps lockout',
@@ -337,7 +337,7 @@ export const EXERCISES: Exercise[] = [
     cues: ['Soft knees', 'Push hips back', 'Flat back, weights close', 'Squeeze glutes to stand'],
     repGoal: 12, sets: 3,
     track: { joint: 'hip', side: 'both', contractAt: 'low', range: [95, 175] },
-    media: { video: '/videos/Hip_Hinge_Exercise.mp4', glyph: 'hinge' },
+    media: { video: 'Hip_Hinge_Exercise.mp4', glyph: 'hinge' },
   },
   {
     id: 'glute_bridge', name: 'Glute Bridge', group: 'legs', focus: 'Glute activation',
@@ -346,7 +346,7 @@ export const EXERCISES: Exercise[] = [
     cues: ['Heels close to hips', 'Ribs down', 'Drive hips to the ceiling', 'Squeeze hard at the top'],
     repGoal: 15, sets: 3,
     track: { joint: 'hip', side: 'both', contractAt: 'high', range: [120, 178] },
-    media: { video: '/videos/Glute_Bridge_Exercise.mp4', glyph: 'hinge' },
+    media: { video: 'Glute_Bridge_Exercise.mp4', glyph: 'hinge' },
   },
   {
     id: 'calf_raise', name: 'Standing Calf Raise', group: 'legs', focus: 'Calves',

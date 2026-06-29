@@ -89,15 +89,17 @@ export function LandingPage({ atlasUrl, diagnosticUrl, gymUrl }: LandingPageProp
         </motion.div>
 
         {/* Second platform — Gym Training (deliberately amber/energetic, distinct from the clinical pain map) */}
-        <motion.a {...reveal} transition={{ duration: 0.7, delay: 0.3 }} href={gymUrl}
-          className="group mt-6 inline-flex items-center gap-3 rounded-2xl border border-amber-400/30 bg-gradient-to-r from-amber-500/15 to-orange-500/10 px-6 py-3.5 text-left backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-amber-300/60 hover:shadow-[0_0_50px_rgba(251,146,60,0.32)]">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-600 text-white shadow-lg shadow-amber-500/30">💪</span>
-          <span>
-            <span className="block text-sm font-bold text-amber-100">New — MoveMate Train (Gym)</span>
-            <span className="block text-xs text-amber-200/70">Train by muscle group · live reps, muscle activation & Apple Watch</span>
-          </span>
-          <ArrowRight className="ml-1 h-4 w-4 text-amber-200 transition group-hover:translate-x-1" />
-        </motion.a>
+        <motion.div {...reveal} transition={{ duration: 0.7, delay: 0.3 }} className="mt-6">
+          <a href={gymUrl}
+            className="group inline-flex items-center gap-3 rounded-2xl border border-amber-400/30 bg-gradient-to-r from-amber-500/15 to-orange-500/10 px-6 py-3.5 text-left backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-amber-300/60 hover:shadow-[0_0_50px_rgba(251,146,60,0.32)]">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-600 text-white shadow-lg shadow-amber-500/30">💪</span>
+            <span>
+              <span className="block text-sm font-bold text-amber-100">New — MoveMate Train (Gym)</span>
+              <span className="block text-xs text-amber-200/70">Train by muscle group · live reps, muscle activation & Apple Watch</span>
+            </span>
+            <ArrowRight className="ml-1 h-4 w-4 text-amber-200 transition group-hover:translate-x-1" />
+          </a>
+        </motion.div>
 
         <motion.div {...reveal} transition={{ duration: 0.8, delay: 0.32 }} className="relative mt-16 w-full max-w-5xl rounded-[2rem] border border-white/10 bg-white/[0.045] p-4 shadow-[0_30px_140px_rgba(0,0,0,0.55)] backdrop-blur-3xl sm:p-6">
           <div className="absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/70 to-transparent" />
