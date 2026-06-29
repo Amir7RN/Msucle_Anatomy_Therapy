@@ -180,16 +180,17 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
             )}
             <a
               href={gymUrl}
-              title="ZevaMMT — gym training platform"
+              title="MoveMate Train — gym training platform"
               className="hidden items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_30px_-10px_rgba(251,146,60,0.7)] transition hover:-translate-y-px hover:shadow-[0_14px_36px_-8px_rgba(251,146,60,0.85)] sm:inline-flex"
             >
-              💪 ZevaMMT
+              💪 MoveMate Train
             </a>
             <a
               href={diagnosticUrl}
+              title="MoveMate Relief — pain & recovery platform"
               className="rounded-full bg-gradient-to-r from-orange-500 to-rose-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_30px_-10px_rgba(244,63,94,0.7)] transition hover:shadow-[0_14px_36px_-8px_rgba(244,63,94,0.85)]"
             >
-              Open App
+              MoveMate Relief
             </a>
           </div>
         </div>
@@ -240,14 +241,14 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
                 </a>
               </div>
               <p className="mt-6 text-sm text-slate-500">No signup. No download. Works in your browser.</p>
-              {/* Second platform — ZevaMMT gym training (distinct amber accent) */}
+              {/* Second platform — MoveMate Train gym training (distinct amber accent) */}
               <a
                 href={gymUrl}
                 className="group mt-5 inline-flex items-center gap-3 rounded-2xl border border-amber-300/70 bg-gradient-to-r from-amber-50 to-orange-50 px-5 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-amber-400 hover:shadow-md"
               >
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow">💪</span>
                 <span>
-                  <span className="block text-sm font-bold text-slate-900">New — ZevaMMT · Gym Training</span>
+                  <span className="block text-sm font-bold text-slate-900">New — MoveMate Train · Gym</span>
                   <span className="block text-xs text-slate-500">Train by muscle group — live reps, muscle activation &amp; Apple Watch</span>
                 </span>
                 <ArrowRight className="ml-1 h-4 w-4 text-amber-500 transition group-hover:translate-x-1" />

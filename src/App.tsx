@@ -29,7 +29,7 @@ export default function App() {
   const diagnosticUrl = `${import.meta.env.BASE_URL}?atlas=1&diagnostic=1`
   const gymUrl = `${import.meta.env.BASE_URL}?gym=1`
 
-  // ZevaMMT — the separate gym-training platform.
+  // MoveMate Train — the separate gym-training platform.
   if (showGym) return <GymApp />
 
   if (!showAtlas) {

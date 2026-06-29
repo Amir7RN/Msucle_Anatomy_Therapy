@@ -1,7 +1,7 @@
 /**
  * gymStore.ts
  *
- * Dedicated state for ZevaMMT (the gym-training platform). Kept separate
+ * Dedicated state for MoveMate Train (the gym-training platform). Kept separate
  * from atlasStore so the two platforms stay independent in look and behaviour.
  */
 
@@ -49,6 +49,7 @@ interface GymState {
 
   // actions
   openGroup:    (g: MuscleGroupId) => void
+  setGroup:     (g: MuscleGroupId | null) => void
   openTrainer:  (exerciseId: string) => void
   openScan:     (g: MuscleGroupId) => void
   goHome:       () => void
@@ -74,15 +75,14 @@ export const useGymStore = create<GymState>((set, get) => ({
   setLogs: [],
   partScans: [],
 
-  openGroup:   (g) => set({ view: 'group', selectedGroup: g }),
+  // The home IS the explorer (3D model + exercise list), so selecting a group
+  // just updates selectedGroup and stays on 'home'.
+  openGroup:   (g) => set({ view: 'home', selectedGroup: g }),
+  setGroup:    (g) => set({ selectedGroup: g }),
   openTrainer: (exerciseId) => set({ view: 'trainer', selectedExercise: exerciseId }),
   openScan:    (g) => set({ view: 'scan', selectedGroup: g }),
-  goHome:      () => set({ view: 'home', selectedExercise: null }),
-  back: () => {
-    const { view, selectedGroup } = get()
-    if (view === 'trainer' || view === 'scan') set({ view: selectedGroup ? 'group' : 'home', selectedExercise: null })
-    else set({ view: 'home', selectedGroup: null })
-  },
+  goHome:      () => set({ view: 'home', selectedExercise: null, selectedGroup: null }),
+  back:        () => set({ view: 'home', selectedExercise: null }),
 
   setLiveBpm:  (bpm) => set({ liveBpm: bpm }),
   setHrDevice: (name) => set({ hrDeviceName: name }),

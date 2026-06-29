@@ -1,7 +1,7 @@
 /**
  * gym/coach.ts
  *
- * The ZevaMMT AI form-coach. Deliberately TOKEN-FRUGAL:
+ * The MoveMate Train AI form-coach. Deliberately TOKEN-FRUGAL:
  *   • Default cues come from the exercise's own `cues` list (spoken locally —
  *     ZERO API cost).
  *   • The optional Claude coach is THROTTLED hard: it only fires on meaningful

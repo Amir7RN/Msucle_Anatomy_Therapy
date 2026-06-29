@@ -1,5 +1,5 @@
 /**
- * HeartRateWidget.tsx — live BLE heart rate for ZevaMMT.
+ * HeartRateWidget.tsx — live BLE heart rate for MoveMate Train.
  *
  * Connects to any standard Bluetooth heart-rate sensor and streams BPM into the
  * gym store. (See lib/gym/health.ts for why a website can't read an Apple Watch

@@ -1,23 +1,28 @@
 /**
- * ExerciseTrainer.tsx — the ZevaMMT workout screen.
+ * ExerciseTrainer.tsx — the MoveMate Train workout screen.
  *
- * Focus (per the gym-platform brief): motion tracking, muscle activation, and
- * required reps — with an optional AI coach. Deliberately NO muscle-structure
- * browser and NO chat box. Reps + activation come from the generic tracker
- * reading MediaPipe landmarks; coaching is local-first (free) with an optional,
- * throttled Claude layer.
+ * The MAIN panel is the user's digital muscle twin (the target muscles glow on
+ * the shared 3D model as you work), with the live camera + skeleton overlay as a
+ * corner picture-in-picture. Focus (per the brief): motion tracking, muscle
+ * activation, and required reps — with an optional AI coach. Deliberately NO
+ * muscle-structure browser and NO chat box. Reps + activation come from the
+ * generic tracker reading MediaPipe landmarks; coaching is local-first (free)
+ * with an optional, throttled Claude layer.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Activity, Check, RotateCcw, Volume2, VolumeX, Dumbbell, Sparkles, Target } from 'lucide-react'
 import { CameraView } from '../movement/CameraView'
+import { MuscleActivationViewer } from '../movement/MuscleActivationViewer'
 import { disposeDetector } from '../../lib/movement/poseDetector'
 import { useVoiceOutput } from '../../hooks/useVoice'
 import { useGymStore } from '../../store/gymStore'
 import { exerciseById, muscleGroupById } from '../../lib/gym/exercises'
 import { createExerciseTracker, type TrackFrame } from '../../lib/gym/tracker'
 import { createGymCoach, gymCoachEnabled } from '../../lib/gym/coach'
+import { groupActivations } from '../../lib/gym/muscleModel'
 import { HeartRateWidget } from './HeartRateWidget'
+import { CanvasErrorBoundary } from './MuscleMap3D'
 
 const EMPTY: TrackFrame = { valid: false, angle: 0, activation: 0, formGood: false, reps: 0, justRepped: false, peakActivation: 0, romDeg: 0 }
 
@@ -154,6 +159,9 @@ export function ExerciseTrainer() {
 
   const repPct = Math.min(1, ui.reps / exercise.repGoal)
   const aiOn = gymCoachEnabled()
+  // Muscles to glow on the digital twin: brighter at peak contraction. Memoised
+  // on [group, formGood] so the viewer only re-skins on a meaningful change.
+  const twinActs = useMemo(() => groupActivations(exercise.group, ui.formGood ? 1.0 : 0.72), [exercise.group, ui.formGood])
 
   return (
     <div className="flex h-full flex-col bg-gradient-to-b from-stone-950 to-black text-stone-100">
@@ -176,17 +184,28 @@ export function ExerciseTrainer() {
       </header>
 
       <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
-        {/* Camera */}
-        <div className="relative h-[44vh] shrink-0 bg-black lg:h-auto lg:flex-1">
+        {/* Main — digital twin with camera PiP */}
+        <div className="relative h-[46vh] shrink-0 bg-gradient-to-b from-stone-900 to-black lg:h-auto lg:flex-1">
           {active ? (
             <>
-              <CameraView active onLandmarks={onLandmarks} onReady={() => setReady(true)}
-                onError={(m) => { setErr(m); setActive(false) }} />
+              {/* Digital muscle twin (main view) */}
+              <div className="absolute inset-0">
+                <CanvasErrorBoundary fallback={<div className="flex h-full w-full items-center justify-center text-sm text-stone-600">3D twin unavailable on this device</div>}>
+                  <MuscleActivationViewer activations={twinActs} />
+                </CanvasErrorBoundary>
+              </div>
+              {/* Status badge */}
               <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-3">
                 <div className={['rounded-full px-3 py-1 text-xs font-semibold backdrop-blur',
                   ui.formGood ? 'bg-emerald-600/80 text-white' : 'bg-stone-800/80 text-amber-200'].join(' ')}>
                   {!ready ? 'Starting camera…' : ui.formGood ? 'Peak contraction — squeeze!' : 'Move through the full range'}
                 </div>
+              </div>
+              {/* Live camera + skeleton overlay — corner picture-in-picture */}
+              <div className="absolute bottom-3 left-3 h-44 w-32 overflow-hidden rounded-xl bg-black shadow-xl ring-2 ring-amber-400/40 sm:h-52 sm:w-40">
+                <CameraView active onLandmarks={onLandmarks} onReady={() => setReady(true)}
+                  onError={(m) => { setErr(m); setActive(false) }} />
+                <span className="pointer-events-none absolute left-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold text-amber-200">You</span>
               </div>
               {/* Rep ring */}
               <div className="pointer-events-none absolute bottom-3 right-3">
