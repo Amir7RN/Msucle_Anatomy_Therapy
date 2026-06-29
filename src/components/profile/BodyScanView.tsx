@@ -34,9 +34,12 @@ const POSES = ['front', 'side', 'back'] as const
 type Pose = typeof POSES[number]
 type Phase = 'intro' | Pose | 'analyzing' | 'result' | 'error'
 
-const HOLD_MS      = 2400     // hold still this long (ms) to auto-capture a pose
-const STILL_MOTION = 0.014    // mean normalised joint motion below this = "still"
-const HINT_EVERY   = 4500     // ms between spoken "get in frame" nudges
+const HOLD_MS         = 2000   // hold still this long (ms) to auto-capture a pose
+const STILL_MOTION    = 0.022  // mean normalised joint motion below this = "still" (was 0.014 — too strict; natural sway never settled)
+const ALMOST_MOTION   = 0.05   // between STILL_MOTION and this = "almost steady": nudge, don't hard-reset the hold
+const VIS_MIN         = 0.5    // per-landmark visibility floor to count as "in frame" (was 0.55)
+const AUTO_CAPTURE_MS = 7000   // in frame this long but never perfectly still → capture anyway so the scan ALWAYS finishes
+const HINT_EVERY      = 4000   // ms between spoken nudges
 
 const POSE_COPY: Record<Pose, { title: string; enter: string; hint: string; body: string }> = {
   front: {
@@ -63,10 +66,38 @@ interface Props {
   onResult: (r: BodyScanResult) => void
 }
 
-/** Whole body in frame: torso anchors + both knees clearly visible. */
-function fullBody(lms: LandmarkSet): boolean {
-  const ids = [LM.L_SHOULDER, LM.R_SHOULDER, LM.L_HIP, LM.R_HIP, LM.L_KNEE, LM.R_KNEE]
-  return ids.every((i) => (lms[i]?.visibility ?? 0) >= 0.55)
+type FrameMiss = 'none' | 'legs' | 'head' | 'side' | 'center'
+interface FrameCheck { ok: boolean; miss: FrameMiss }
+
+/**
+ * Is the whole body usefully in frame? Forgiving by design: we need the torso
+ * (both shoulders + both hips) plus the lower body via knees OR ankles — so a
+ * borderline knee reading no longer dead-ends the scan. When something is
+ * missing we report WHAT, so the coach gives a cue the user can act on
+ * ("step back, I need your legs") instead of a vague, unactionable "step back".
+ */
+function frameCheck(lms: LandmarkSet): FrameCheck {
+  const vis = (i: number) => (lms[i]?.visibility ?? 0) >= VIS_MIN
+  const torso = vis(LM.L_SHOULDER) && vis(LM.R_SHOULDER) && vis(LM.L_HIP) && vis(LM.R_HIP)
+  if (!torso) {
+    // One side clipped vs. just not far enough back / off-centre?
+    const left  = (lms[LM.L_SHOULDER]?.visibility ?? 0) + (lms[LM.L_HIP]?.visibility ?? 0)
+    const right = (lms[LM.R_SHOULDER]?.visibility ?? 0) + (lms[LM.R_HIP]?.visibility ?? 0)
+    return { ok: false, miss: Math.abs(left - right) > 0.6 ? 'side' : 'center' }
+  }
+  const lowerBody = (vis(LM.L_KNEE) && vis(LM.R_KNEE)) || (vis(LM.L_ANKLE) && vis(LM.R_ANKLE))
+  if (!lowerBody) return { ok: false, miss: 'legs' }
+  if (!vis(LM.NOSE)) return { ok: false, miss: 'head' }
+  return { ok: true, miss: 'none' }
+}
+
+/** Specific, actionable spoken/on-screen cue per missing region. */
+const MISS_CUE: Record<FrameMiss, string> = {
+  none:   'Hold still…',
+  legs:   'Step back so I can see your legs.',
+  head:   "I can't see your head — step into view.",
+  side:   'Part of you is cut off — center yourself in the frame.',
+  center: 'Step back into the middle of the frame.',
 }
 
 /** Mean normalised image motion of key joints between two frames. */
@@ -99,12 +130,14 @@ export function BodyScanView({ open, input, onClose, onResult }: Props) {
   const stills = useRef<Record<Pose, string | null>>({ front: null, side: null, back: null })
   const videoRef = useRef<HTMLVideoElement | null>(null)
 
-  const prevLms   = useRef<LandmarkSet | null>(null)
-  const holdStart = useRef<number | null>(null)
-  const spokeHold = useRef(false)
-  const lastHint  = useRef(0)
-  const phaseRef  = useRef<Phase>('intro')
-  const busy      = useRef(false)   // guards the async analyze
+  const prevLms      = useRef<LandmarkSet | null>(null)
+  const holdStart    = useRef<number | null>(null)
+  const visibleStart = useRef<number | null>(null)   // when the body first became fully in-frame (for the safety-net auto-capture)
+  const progressRef  = useRef(0)                      // mirror of `progress` readable inside the frame callback
+  const spokeHold    = useRef(false)
+  const lastHint     = useRef(0)
+  const phaseRef     = useRef<Phase>('intro')
+  const busy         = useRef(false)   // guards the async analyze
   useEffect(() => { phaseRef.current = phase }, [phase])
 
   const say = useCallback((text: string) => {
@@ -119,7 +152,8 @@ export function BodyScanView({ open, input, onClose, onResult }: Props) {
       setResult(null); setErrMsg(null); setHint('')
       frames.current = { front: [], side: [], back: [] }
       stills.current = { front: null, side: null, back: null }
-      prevLms.current = null; holdStart.current = null; spokeHold.current = false
+      prevLms.current = null; holdStart.current = null; visibleStart.current = null
+      progressRef.current = 0; spokeHold.current = false
       busy.current = false
     } else {
       try { window.speechSynthesis?.cancel() } catch { /* ignore */ }
@@ -131,7 +165,9 @@ export function BodyScanView({ open, input, onClose, onResult }: Props) {
   useEffect(() => {
     if (!open) return
     if (phase === 'front' || phase === 'side' || phase === 'back') {
-      holdStart.current = null; spokeHold.current = false; setProgress(0)
+      holdStart.current = null; visibleStart.current = null; spokeHold.current = false
+      progressRef.current = 0; setProgress(0)
+      frames.current[phase] = []
       say(POSE_COPY[phase].enter)
     } else if (phase === 'analyzing') {
       say('All done. Analyzing your scan.')
@@ -139,47 +175,75 @@ export function BodyScanView({ open, input, onClose, onResult }: Props) {
   }, [phase, open, say])
 
   const finalize = useCallback((pose: Pose) => {
-    holdStart.current = null
-    setProgress(1)
+    // Guard: the frame callback can fire again before React flushes the phase
+    // change, which would capture the same pose twice. Advancing phaseRef
+    // synchronously makes the next callback no-op for this pose.
+    if (phaseRef.current !== pose) return
+    holdStart.current = null; visibleStart.current = null
+    progressRef.current = 1; setProgress(1)
     // Grab a still for the AI vision pass (best-effort).
     if (videoRef.current) stills.current[pose] = grabStillBase64(videoRef.current)
     say('Got it.')
-    const idx = POSES.indexOf(pose)
-    setPhase(idx < POSES.length - 1 ? POSES[idx + 1] : 'analyzing')
+    const idx  = POSES.indexOf(pose)
+    const next = idx < POSES.length - 1 ? POSES[idx + 1] : 'analyzing'
+    phaseRef.current = next
+    setPhase(next)
   }, [say])
 
   const handleLandmarks = useCallback((lms: LandmarkSet) => {
     const ph = phaseRef.current
+    if (ph !== 'front' && ph !== 'side' && ph !== 'back') return
     const motion = motionOf(prevLms.current, lms)
     prevLms.current = lms
-    if (ph !== 'front' && ph !== 'side' && ph !== 'back') return
+    const now = performance.now()
 
-    const visible = fullBody(lms)
-    setInFrame(visible)
-    const still = motion < STILL_MOTION
+    const fc = frameCheck(lms)
+    setInFrame(fc.ok)
 
-    if (visible && still) {
-      const now = performance.now()
+    // ── Not (yet) fully in frame → reset the hold and give a SPECIFIC cue ────
+    if (!fc.ok) {
+      holdStart.current = null
+      visibleStart.current = null
+      if (progressRef.current !== 0) { progressRef.current = 0; setProgress(0) }
+      spokeHold.current = false
+      const cue = MISS_CUE[fc.miss]
+      setHint(cue)
+      if (now - lastHint.current > HINT_EVERY) { lastHint.current = now; say(cue) }
+      return
+    }
+
+    // ── Fully in frame ──────────────────────────────────────────────────────
+    // Always collect frames while visible so analysis and any forced capture
+    // have good data (the old code only kept frames during a perfect hold).
+    if (visibleStart.current === null) visibleStart.current = now
+    frames.current[ph].push(lms)
+    if (frames.current[ph].length > 90) frames.current[ph].shift()   // keep ~last 3s
+
+    if (motion < STILL_MOTION) {
+      // Steady → accrue hold progress toward auto-capture.
       if (holdStart.current === null) {
         holdStart.current = now
-        frames.current[ph] = []
         if (!spokeHold.current) { spokeHold.current = true; say('Perfect — hold still.') }
       }
-      frames.current[ph].push(lms)
       const p = Math.min(1, (now - holdStart.current) / HOLD_MS)
-      setProgress(p)
-      if (p >= 1) finalize(ph)
+      progressRef.current = p; setProgress(p)
+      setHint('Hold still…')
+      if (p >= 1) { finalize(ph); return }
     } else {
-      // Moved or stepped out → reset the hold.
-      if (holdStart.current !== null) { holdStart.current = null; setProgress(0) }
-      spokeHold.current = false
-      if (!visible) {
-        const now = performance.now()
-        setHint(POSE_COPY[ph].hint)
-        if (now - lastHint.current > HINT_EVERY) { lastHint.current = now; say(POSE_COPY[ph].hint) }
-      } else {
-        setHint('Hold still…')
+      // Visible but moving. Small motion → keep the hold (forgive a wobble);
+      // big motion → reset and encourage. Either way the user sees they're close.
+      if (motion > ALMOST_MOTION && holdStart.current !== null) {
+        holdStart.current = null
+        if (progressRef.current !== 0) { progressRef.current = 0; setProgress(0) }
       }
+      setHint(motion > ALMOST_MOTION ? 'Almost — hold steady.' : 'Steady…')
+    }
+
+    // ── Safety net ──────────────────────────────────────────────────────────
+    // In frame for a long time but never perfectly still → capture anyway, so
+    // the scan can NEVER dead-end with no feedback and no way to finish.
+    if (visibleStart.current !== null && now - visibleStart.current > AUTO_CAPTURE_MS) {
+      finalize(ph)
     }
   }, [finalize, say])
 
@@ -275,16 +339,27 @@ export function BodyScanView({ open, input, onClose, onResult }: Props) {
               {/* Auto-capture overlay */}
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-between p-4">
                 <div className={['rounded-full px-3 py-1 text-xs font-semibold backdrop-blur',
-                  inFrame ? 'bg-emerald-600/70 text-white' : 'bg-orange-700/75 text-orange-100'].join(' ')}>
-                  {!cameraReady ? 'Starting camera…' : inFrame ? 'Hold still…' : (hint || POSE_COPY[phase as Pose].hint)}
+                  inFrame ? 'bg-emerald-600/80 text-white' : 'bg-orange-700/85 text-orange-100'].join(' ')}>
+                  {!cameraReady ? 'Starting camera…' : (hint || 'Center your whole body in the frame.')}
                 </div>
-                {/* Hold ring */}
-                {progress > 0 && (
+                {/* Hold ring (centre) */}
+                {progress > 0 ? (
                   <div className="flex flex-col items-center gap-1">
                     <HoldRing progress={progress} />
                     <span className="text-xs text-cyan-200">Capturing {POSE_COPY[phase as Pose].title.toLowerCase()}…</span>
                   </div>
-                )}
+                ) : <span aria-hidden />}
+                {/* Manual capture — always available so the scan can never get stuck. */}
+                <button
+                  onClick={() => finalize(phase as Pose)}
+                  className={['pointer-events-auto rounded-full px-4 py-2 text-xs font-semibold shadow-lg ring-1 backdrop-blur transition',
+                    inFrame
+                      ? 'bg-cyan-600 text-white ring-cyan-300/40 hover:bg-cyan-500'
+                      : 'bg-slate-800/80 text-slate-200 ring-slate-500/40 hover:bg-slate-700'].join(' ')}
+                  title="Capture this pose now"
+                >
+                  {inFrame ? 'Capture now' : 'Capture anyway'}
+                </button>
               </div>
             </>
           ) : (
@@ -307,7 +382,7 @@ export function BodyScanView({ open, input, onClose, onResult }: Props) {
               </div>
               <p className="text-sm text-slate-300">{POSE_COPY[phase as Pose].body}</p>
               <div className="rounded-lg bg-slate-900/70 p-2.5 text-[11px] text-slate-400">
-                No buttons — I capture automatically when your whole body is in frame and you hold still for a moment.
+                I capture automatically once your whole body is in frame and you hold still — or tap <span className="text-cyan-300 font-medium">Capture now</span> any time.
               </div>
               <div className="mt-auto flex gap-1.5">
                 {POSES.map((p, i) => (

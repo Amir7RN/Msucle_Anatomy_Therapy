@@ -10,6 +10,7 @@ import { useAtlasStore } from './store/atlasStore'
 import type { CameraPresetKey } from './lib/cameraUtils'
 import { Activity, MessageCircle, Box, Info, X, Sparkles, Scan } from 'lucide-react'
 import { LandingPage } from './components/landing/LandingPage'
+import { GymApp } from './components/gym/GymApp'
 import { FullBodyAssessmentView } from './components/assessment/FullBodyAssessmentView'
 import { RemoteAssessmentCall } from './components/assessment/RemoteAssessmentCall'
 import { PersonalProgramView } from './components/insights/PersonalProgramView'
@@ -21,12 +22,18 @@ import { FeatureLauncher } from './components/layout/FeatureLauncher'
  * Layout: header (full-width) + three-column body (sidebar | canvas | panel).
  */
 export default function App() {
-  const [showAtlas] = useState(() => new URLSearchParams(window.location.search).has('atlas'))
+  const params = new URLSearchParams(window.location.search)
+  const [showAtlas] = useState(() => params.has('atlas'))
+  const [showGym]   = useState(() => params.has('gym'))
   const appUrl = `${import.meta.env.BASE_URL}?atlas=1`
   const diagnosticUrl = `${import.meta.env.BASE_URL}?atlas=1&diagnostic=1`
+  const gymUrl = `${import.meta.env.BASE_URL}?gym=1`
+
+  // MoveMate Train — the separate gym-training platform.
+  if (showGym) return <GymApp />
 
   if (!showAtlas) {
-    return <LandingPage atlasUrl={appUrl} diagnosticUrl={diagnosticUrl} />
+    return <LandingPage atlasUrl={appUrl} diagnosticUrl={diagnosticUrl} gymUrl={gymUrl} />
   }
 
   return <AtlasApp />
