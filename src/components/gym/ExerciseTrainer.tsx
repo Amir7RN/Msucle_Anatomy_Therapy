@@ -187,77 +187,84 @@ export function ExerciseTrainer() {
           <p className="max-w-xs text-[11px] text-stone-500">Stand back so your whole working side is in view. Everything is tracked on-device.</p>
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          <div className="flex flex-col gap-3 lg:flex-row">
-            {/* LEFT — tall, vivid twin + fatigue */}
-            <div className="flex flex-col gap-3 lg:w-[360px] lg:shrink-0">
-              <Panel title="Your muscle twin" icon={<Flame size={12} />}
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
+          {/* HERO — twin | mimic this | live overlay. These three fill the
+              screen height on desktop (flex-1); stacked & scrollable on mobile. */}
+          <div className="flex flex-col gap-3 lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-12">
+            {/* Your muscle twin (+ fatigue beneath) */}
+            <div className="flex min-h-0 flex-col gap-3 lg:col-span-4">
+              <Panel title="Your muscle twin" icon={<Flame size={12} />} className="lg:min-h-0 lg:flex-1"
                 right={<span className={['rounded-full px-2 py-0.5 text-[10px] font-semibold', ui.formGood ? 'bg-emerald-600/80 text-white' : 'bg-stone-800 text-amber-200'].join(' ')}>{!ready ? 'Starting…' : ui.formGood ? 'Squeeze!' : 'Full range'}</span>}>
-                <div className="h-[48vh] overflow-hidden rounded-lg lg:h-[58vh]">
+                <div className="h-[46vh] min-h-0 overflow-hidden rounded-lg lg:h-full">
                   <CanvasErrorBoundary fallback={<div className="flex h-full items-center justify-center text-sm text-stone-600">3D twin unavailable</div>}>
                     <TwinCanvas highlight={exercise.group} levelRef={levelRef} />
                   </CanvasErrorBoundary>
                 </div>
               </Panel>
-              <Panel title="Muscle fatigue" icon={<Flame size={12} />}>
+              <Panel title="Muscle fatigue" icon={<Flame size={12} />} className="shrink-0">
                 <FatigueBars muscles={muscles} fatigue={fatigue} />
               </Panel>
             </div>
 
-            {/* RIGHT — demo + camera, then metrics, then coach */}
-            <div className="flex min-w-0 flex-1 flex-col gap-3">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Panel title="Mimic this" icon={<Video size={12} />}>
-                  <div className="h-[26vh] overflow-hidden rounded-lg bg-black/40">
-                    <DemoPanel video={exercise.media.video} glyph={exercise.media.glyph} accent={group.accent.text} />
-                  </div>
-                  <ul className="mt-2 space-y-0.5">{exercise.cues.slice(0, 3).map((c) => <li key={c} className="text-[11px] text-stone-400">• {c}</li>)}</ul>
-                </Panel>
-                <Panel title="You · live overlay" icon={<Activity size={12} />}>
-                  <div className="relative h-[26vh] overflow-hidden rounded-lg bg-black ring-1 ring-amber-400/30">
-                    <CameraView active onLandmarks={onLandmarks} onReady={() => setReady(true)} onError={(m) => { setErr(m); setActive(false) }} />
-                    <span className="pointer-events-none absolute left-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold text-amber-200">posture tracked</span>
-                    {!ready && <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 text-center text-[11px] text-stone-300">Allow camera access to track your reps…</div>}
-                  </div>
-                </Panel>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                <Panel title="Reps" icon={<RotateCcw size={12} />}>
-                  <div className="flex flex-col items-center justify-center gap-1 py-2">
-                    <RepRing pct={repPct} reps={ui.reps} goal={exercise.repGoal} accent={group.accent.text} />
-                    <div className="text-xs text-stone-400">Set {currentSet} of {exercise.sets}</div>
-                  </div>
-                </Panel>
-                <Panel title="Range of motion" icon={<Gauge size={12} />} right={<span className="text-[10px] text-stone-400">{ui.rom | 0}°</span>}>
-                  {repHist.length > 0 ? (<><RoMRadar values={repHist} /><div className="mt-1 text-center text-[10px] text-stone-500">depth per rep (last {repHist.length})</div></>)
-                    : (<div className="flex h-full min-h-[140px] items-center justify-center px-2 text-center text-[11px] text-stone-500">Your range per rep will plot here.</div>)}
-                </Panel>
-                <Panel title="Muscle activation" icon={<Flame size={12} />} right={<span className="text-[10px] text-stone-400">peak {Math.round(ui.peak * 100)}%</span>}>
-                  <ActivationBar value={ui.activation} />
-                  <div className="mt-2 space-y-1.5">
-                    {exercise.primary.map((m) => <MuscleRow key={m} name={m} value={ui.activation} primary />)}
-                    {exercise.secondary.map((m) => <MuscleRow key={m} name={m} value={ui.activation * 0.55} primary={false} />)}
-                  </div>
-                </Panel>
-              </div>
-
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <div className="flex-1 rounded-2xl bg-stone-900/60 p-3 ring-1 ring-stone-700/50">
-                  <div className="mb-1.5 flex items-center gap-1.5">
-                    <Sparkles size={13} className="text-amber-300" />
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-300">Coach</span>
-                    {!aiOn && <span className="ml-auto text-[9px] text-stone-500">AI off · add key in Triage</span>}
-                  </div>
-                  <p className="text-sm text-stone-200">{coachMsg ?? exercise.cues[0]}</p>
+            {/* Mimic this */}
+            <div className="flex min-h-0 flex-col lg:col-span-4">
+              <Panel title="Mimic this" icon={<Video size={12} />} className="lg:min-h-0 lg:flex-1">
+                <div className="h-[34vh] min-h-0 overflow-hidden rounded-lg bg-black/40 lg:h-auto lg:flex-1">
+                  <DemoPanel video={exercise.media.video} glyph={exercise.media.glyph} accent={group.accent.text} />
                 </div>
-                <div className="flex items-stretch gap-2">
-                  <button onClick={back} className="rounded-xl bg-stone-800 px-4 py-2.5 text-sm font-semibold text-stone-200 hover:bg-stone-700">Exit</button>
-                  <button onClick={finishSet} className={['flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r px-5 py-2.5 text-sm font-bold text-white shadow-lg transition hover:brightness-110', group.accent.from, group.accent.to].join(' ')}>
-                    <Check size={16} /> {done ? 'Log set' : currentSet < exercise.sets ? 'Finish set' : 'Finish'}
-                  </button>
+                <ul className="mt-2 shrink-0 space-y-0.5">{exercise.cues.slice(0, 3).map((c) => <li key={c} className="text-[11px] text-stone-400">• {c}</li>)}</ul>
+              </Panel>
+            </div>
+
+            {/* You · live overlay */}
+            <div className="flex min-h-0 flex-col lg:col-span-4">
+              <Panel title="You · live overlay" icon={<Activity size={12} />} className="lg:min-h-0 lg:flex-1">
+                <div className="relative h-[34vh] min-h-0 overflow-hidden rounded-lg bg-black ring-1 ring-amber-400/30 lg:h-auto lg:flex-1">
+                  {/* Keep the dashboard up on a camera error so CameraView can
+                      show its own "Enable camera" retry instead of bouncing back. */}
+                  <CameraView active onLandmarks={onLandmarks} onReady={() => setReady(true)} onError={(m) => setErr(m)} />
+                  <span className="pointer-events-none absolute left-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold text-amber-200">{ready ? 'posture tracked' : 'loading pose model…'}</span>
                 </div>
+              </Panel>
+            </div>
+          </div>
+
+          {/* METRICS — reps | range of motion | muscle activation */}
+          <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-3">
+            <Panel title="Reps" icon={<RotateCcw size={12} />}>
+              <div className="flex flex-1 flex-col items-center justify-center gap-1 py-1">
+                <RepRing pct={repPct} reps={ui.reps} goal={exercise.repGoal} accent={group.accent.text} />
+                <div className="text-xs text-stone-400">Set {currentSet} of {exercise.sets}</div>
               </div>
+            </Panel>
+            <Panel title="Range of motion" icon={<Gauge size={12} />} right={<span className="text-[10px] text-stone-400">{ui.rom | 0}°</span>}>
+              {repHist.length > 0 ? (<><RoMRadar values={repHist} /><div className="mt-1 text-center text-[10px] text-stone-500">depth per rep (last {repHist.length})</div></>)
+                : (<div className="flex flex-1 min-h-[120px] items-center justify-center px-2 text-center text-[11px] text-stone-500">Your range per rep will plot here.</div>)}
+            </Panel>
+            <Panel title="Muscle activation" icon={<Flame size={12} />} right={<span className="text-[10px] text-stone-400">peak {Math.round(ui.peak * 100)}%</span>}>
+              <ActivationBar value={ui.activation} />
+              <div className="mt-2 space-y-1.5">
+                {exercise.primary.map((m) => <MuscleRow key={m} name={m} value={ui.activation} primary />)}
+                {exercise.secondary.map((m) => <MuscleRow key={m} name={m} value={ui.activation * 0.55} primary={false} />)}
+              </div>
+            </Panel>
+          </div>
+
+          {/* COACH + set controls */}
+          <div className="flex shrink-0 flex-col gap-3 sm:flex-row">
+            <div className="flex-1 rounded-2xl bg-stone-900/60 p-3 ring-1 ring-stone-700/50">
+              <div className="mb-1.5 flex items-center gap-1.5">
+                <Sparkles size={13} className="text-amber-300" />
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-300">Coach</span>
+                {!aiOn && <span className="ml-auto text-[9px] text-stone-500">AI off · add key in Triage</span>}
+              </div>
+              <p className="text-sm text-stone-200">{coachMsg ?? exercise.cues[0]}</p>
+            </div>
+            <div className="flex items-stretch gap-2">
+              <button onClick={back} className="rounded-xl bg-stone-800 px-4 py-2.5 text-sm font-semibold text-stone-200 hover:bg-stone-700">Exit</button>
+              <button onClick={finishSet} className={['flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r px-5 py-2.5 text-sm font-bold text-white shadow-lg transition hover:brightness-110', group.accent.from, group.accent.to].join(' ')}>
+                <Check size={16} /> {done ? 'Log set' : currentSet < exercise.sets ? 'Finish set' : 'Finish'}
+              </button>
             </div>
           </div>
         </div>
@@ -268,14 +275,14 @@ export function ExerciseTrainer() {
 
 // ── Panels & plots ───────────────────────────────────────────────────────────
 
-function Panel({ title, icon, right, children }: { title: string; icon: React.ReactNode; right?: React.ReactNode; children: React.ReactNode }) {
+function Panel({ title, icon, right, children, className }: { title: string; icon: React.ReactNode; right?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
-    <section className="flex flex-col rounded-2xl bg-stone-900/60 ring-1 ring-stone-700/50">
+    <section className={['flex flex-col rounded-2xl bg-stone-900/60 ring-1 ring-stone-700/50', className ?? ''].join(' ')}>
       <div className="flex items-center justify-between px-3 py-2">
         <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-amber-300">{icon}{title}</div>
         {right}
       </div>
-      <div className="min-h-0 flex-1 px-3 pb-3">{children}</div>
+      <div className="flex min-h-0 flex-1 flex-col px-3 pb-3">{children}</div>
     </section>
   )
 }
@@ -283,8 +290,9 @@ function Panel({ title, icon, right, children }: { title: string; icon: React.Re
 function DemoPanel({ video, glyph, accent }: { video: string | null; glyph: import('../../lib/gym/exercises').ExerciseMedia['glyph']; accent: string }) {
   if (video) {
     return (
+      /* object-contain (not cover) so the whole demo is visible — never cropped/zoomed in. */
       <video src={`${import.meta.env.BASE_URL}videos/${video}`} autoPlay muted loop playsInline preload="auto"
-        ref={(v) => { if (v) v.play().catch(() => {}) }} className="h-full w-full object-cover" />
+        ref={(v) => { if (v) v.play().catch(() => {}) }} className="h-full w-full object-contain" />
     )
   }
   return (

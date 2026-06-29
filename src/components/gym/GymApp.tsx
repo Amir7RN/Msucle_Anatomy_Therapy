@@ -99,12 +99,9 @@ function Explore() {
 
   return (
     <div className="flex h-full min-h-0">
-      {/* Left — interactive, rotatable model with on-body labels (desktop) */}
+      {/* Left — interactive, drag-to-rotate model with side callout cards
+          (desktop). The title + group cards live in MuscleModelCanvas's overlay. */}
       <div className="relative hidden min-h-0 flex-1 lg:block">
-        <div className="pointer-events-none absolute left-5 top-4 z-20 max-w-xs">
-          <h1 className="text-xl font-extrabold tracking-tight">Train by muscle group</h1>
-          <p className="mt-1 text-xs text-stone-400">Drag to rotate the model. Tap a label on the body, then pick an exercise.</p>
-        </div>
         <CanvasErrorBoundary fallback={<div className="flex h-full items-center justify-center p-8"><GroupGrid selected={selectedGroup} onSelect={setGroup} /></div>}>
           <MuscleModelCanvas highlight={highlight} onHover={setHover} onSelect={setGroup} />
         </CanvasErrorBoundary>

@@ -22,7 +22,8 @@
  * horizontal flip, so the measured degrees are identical either way.
  */
 
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { Camera as CameraIcon, RefreshCw } from 'lucide-react'
 import { ensureDetector, detectVideoFrame } from '../../lib/movement/poseDetector'
 import type { LandmarkSet } from '../../lib/movement/landmarks'
 import { LM } from '../../lib/movement/landmarks'
@@ -105,9 +106,16 @@ export function CameraView({ active, onLandmarks, onReady, onError, maxFov, onVi
   const streamRef   = useRef<MediaStream | null>(null)
   const filterRef   = useRef<LandmarkFilter | null>(null)   // One-Euro filter state
 
+  // Self-contained permission UX so EVERY panel that embeds the camera gets a
+  // clear error + a one-tap "Enable camera" retry, instead of a silent black box.
+  const [camError, setCamError] = useState<string | null>(null)
+  const [granted,  setGranted]  = useState(false)
+  const [attempt,  setAttempt]  = useState(0)
+
   useEffect(() => {
     if (!active) return
     let cancelled = false
+    setCamError(null)
 
     async function setup() {
       // ── Step 1: camera permission + stream ────────────────────────────
@@ -117,8 +125,14 @@ export function CameraView({ active, onLandmarks, onReady, onError, maxFov, onVi
       // the <video> below so we never crop the sensor data.
       let stream: MediaStream
       try {
+        // getUserMedia only exists in a SECURE context (https or localhost). On
+        // a plain-http LAN address the API is missing entirely, which is the
+        // most common reason "the camera won't turn on".
+        if (typeof window !== 'undefined' && !window.isSecureContext) {
+          throw Object.assign(new Error('insecure'), { name: 'InsecureContextError' })
+        }
         if (!navigator.mediaDevices?.getUserMedia) {
-          throw new Error('Camera API unavailable in this browser. Try Chrome / Safari.')
+          throw new Error('Camera API unavailable in this browser. Try Chrome / Safari, and make sure the page is served over https.')
         }
         const videoConstraints: MediaTrackConstraints = {
           facingMode:  { ideal: 'user' },
@@ -136,18 +150,25 @@ export function CameraView({ active, onLandmarks, onReady, onError, maxFov, onVi
         })
       } catch (e) {
         const err = e as Error
+        const inIframe = typeof window !== 'undefined' && window.self !== window.top
         const friendly =
-          err.name === 'NotAllowedError'    ? 'Camera permission denied. Allow camera access in your browser settings and reload.'
+          err.name === 'InsecureContextError' ? 'Camera needs a secure connection. Open this app over https:// (or http://localhost) and try again.'
+          : err.name === 'NotAllowedError'    ? (inIframe
+              ? 'Camera blocked. If this is embedded in another page, that page must allow camera access — or open the app in its own browser tab, then allow the camera.'
+              : 'Camera permission denied. Click the camera icon in your browser’s address bar, allow access, then press Enable camera.')
           : err.name === 'NotFoundError'    ? 'No camera found on this device.'
-          : err.name === 'NotReadableError' ? 'Camera is in use by another app — close other tabs/apps using the camera.'
+          : err.name === 'NotReadableError' ? 'Camera is in use by another app — close other tabs/apps using the camera, then retry.'
           : `Camera error: ${err.message || err.name}`
         console.error('[camera] getUserMedia failed:', err)
+        if (!cancelled) setCamError(friendly)
         onError?.(friendly)
         return
       }
 
       if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return }
       streamRef.current = stream
+      setGranted(true)
+      setCamError(null)
       const video = videoRef.current
       if (!video) return
       video.srcObject = stream
@@ -234,11 +255,12 @@ export function CameraView({ active, onLandmarks, onReady, onError, maxFov, onVi
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       streamRef.current?.getTracks().forEach((t) => t.stop())
       streamRef.current = null
+      setGranted(false)
       filterRef.current?.reset()   // reset smoother so next session starts fresh
       filterRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active])
+  }, [active, attempt])
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-black">
@@ -254,6 +276,30 @@ export function CameraView({ active, onLandmarks, onReady, onError, maxFov, onVi
         className="pointer-events-none absolute inset-0 h-full w-full object-contain"
         style={{ transform: 'scaleX(-1)' }}
       />
+
+      {/* Permission / error overlay — gives the user a clear reason + a one-tap
+          retry on EVERY panel that embeds the camera. */}
+      {active && camError && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/80 px-4 text-center">
+          <CameraIcon size={26} className="text-amber-300" />
+          <p className="max-w-xs text-[11px] leading-relaxed text-slate-200">{camError}</p>
+          <button
+            onClick={() => { setCamError(null); setAttempt((a) => a + 1) }}
+            className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-amber-400"
+          >
+            <RefreshCw size={13} /> Enable camera
+          </button>
+        </div>
+      )}
+
+      {/* Quiet "starting" affordance before the stream is granted (no error yet). */}
+      {active && !granted && !camError && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-black/40">
+          <span className="flex items-center gap-1.5 text-[11px] text-slate-300">
+            <CameraIcon size={14} className="text-amber-300" /> Starting camera…
+          </span>
+        </div>
+      )}
     </div>
   )
 }

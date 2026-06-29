@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Activity, LogOut, LogIn, Sparkles, Scan, Crosshair } from 'lucide-react'
+import { Activity, LogOut, LogIn, Sparkles, Scan, Crosshair, Home } from 'lucide-react'
 import { ActionButtons } from '../controls/ActionButtons'
 import { CameraPresetBar } from '../controls/CameraPresetBar'
 import { useAtlasStore } from '../../store/atlasStore'
@@ -40,6 +40,13 @@ export function AppHeader() {
     <header className="flex flex-col border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-shrink-0 z-20">
       <div className="flex items-center justify-between px-4 h-14">
         <div className="flex items-center gap-2.5 min-w-[180px]">
+          <a
+            href={import.meta.env.BASE_URL}
+            title="Back to home"
+            className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
+          >
+            <Home size={16} />
+          </a>
           <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary-500">
             <Activity size={16} className="text-white" />
           </div>
