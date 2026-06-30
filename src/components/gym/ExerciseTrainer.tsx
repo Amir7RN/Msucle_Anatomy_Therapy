@@ -16,6 +16,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Activity, Check, RotateCcw, Volume2, VolumeX, Dumbbell, Sparkles, Flame, Gauge, Video } from 'lucide-react'
 import { CameraView } from '../movement/CameraView'
 import { disposeDetector } from '../../lib/movement/poseDetector'
+import { LiveActivationEngine, type LiveMuscleActivation } from '../../lib/movement/liveMuscleActivation'
+import { PoseRigEngine, type BoneDirs } from '../../lib/movement/poseRig'
 import { useVoiceOutput } from '../../hooks/useVoice'
 import { useGymStore } from '../../store/gymStore'
 import { exerciseById, muscleGroupById } from '../../lib/gym/exercises'
@@ -23,7 +25,7 @@ import { createExerciseTracker, type TrackFrame } from '../../lib/gym/tracker'
 import { createGymCoach, gymCoachEnabled } from '../../lib/gym/coach'
 import { ExerciseGlyph } from './ExerciseGlyph'
 import { HeartRateWidget } from './HeartRateWidget'
-import { TwinCanvas, CanvasErrorBoundary } from './MuscleMap3D'
+import { CanvasErrorBoundary, LiveTwinCanvas } from './MuscleMap3D'
 
 const EMPTY: TrackFrame = { valid: false, angle: 0, activation: 0, formGood: false, reps: 0, justRepped: false, peakActivation: 0, romDeg: 0 }
 
@@ -60,6 +62,15 @@ export function ExerciseTrainer() {
   const fatigueRef  = useRef<Record<string, number>>({})
   const repPeakRef  = useRef(0)
   const levelRef    = useRef(0)   // live glow level for the twin (0..1)
+  // MuscleTwinModel refs — same pattern as MuscleTwinView
+  const engineRef      = useRef<LiveActivationEngine | null>(null)
+  const poseEngineRef  = useRef<PoseRigEngine | null>(null)
+  const activationsRef = useRef<LiveMuscleActivation[]>([])
+  const boneDirsRef    = useRef<BoneDirs>({})
+  const postureRef     = useRef<null>(null)   // standing throughout exercise
+  const yawRef         = useRef(0)
+  const rootYRef       = useRef(0)
+  const groundedRef    = useRef(true)
   useEffect(() => { bpmRef.current = liveBpm }, [liveBpm])
   useEffect(() => { exerciseRef.current = exercise }, [exercise])
 
@@ -74,11 +85,21 @@ export function ExerciseTrainer() {
     frameRef.current = EMPTY
     halfway.current = false; poorStart.current = null; cueIdx.current = 0; doneRef.current = false
     fatigueRef.current = {}; repPeakRef.current = 0; levelRef.current = 0
+    // Reset the twin engines
+    engineRef.current?.reset();     engineRef.current    = new LiveActivationEngine()
+    poseEngineRef.current?.reset(); poseEngineRef.current = new PoseRigEngine()
+    activationsRef.current = []; boneDirsRef.current = {}
+    yawRef.current = 0; rootYRef.current = 0; groundedRef.current = true
     setUi({ reps: 0, activation: 0, formGood: false, peak: 0, rom: 0 })
     setSet(1); setDone(false); setCoach(null); setFatigue({}); setRepHist([])
   }, [exercise])
 
-  useEffect(() => () => { disposeDetector(); try { window.speechSynthesis?.cancel() } catch { /* ignore */ } }, [])
+  useEffect(() => () => {
+    disposeDetector()
+    engineRef.current?.reset();     engineRef.current    = null
+    poseEngineRef.current?.reset(); poseEngineRef.current = null
+    try { window.speechSynthesis?.cancel() } catch { /* ignore */ }
+  }, [])
 
   const runCoach = useCallback(async (reason: 'start' | 'halfway' | 'form' | 'done') => {
     const ex = exerciseRef.current
@@ -90,6 +111,20 @@ export function ExerciseTrainer() {
   }, [])
 
   const onLandmarks = useCallback((lms: import('../../lib/movement/landmarks').LandmarkSet) => {
+    // Feed the twin — identical to MuscleTwinView.handleLandmarks
+    const eng = engineRef.current
+    if (eng) {
+      const now = performance.now()
+      const frame = eng.update(lms, now, {})
+      activationsRef.current = frame.activations
+      const rig = poseEngineRef.current?.update(lms)
+      if (rig) {
+        boneDirsRef.current  = rig.dirs
+        yawRef.current       = rig.yaw
+        rootYRef.current     = rig.rootY
+        groundedRef.current  = rig.grounded
+      }
+    }
     const t = tracker.current
     const ex = exerciseRef.current
     if (!t || !ex || doneRef.current) return
@@ -197,7 +232,7 @@ export function ExerciseTrainer() {
                 right={<span className={['rounded-full px-2 py-0.5 text-[10px] font-semibold', ui.formGood ? 'bg-emerald-600/80 text-white' : 'bg-stone-800 text-amber-200'].join(' ')}>{!ready ? 'Starting…' : ui.formGood ? 'Squeeze!' : 'Full range'}</span>}>
                 <div className="h-[46vh] min-h-0 overflow-hidden rounded-lg lg:h-full">
                   <CanvasErrorBoundary fallback={<div className="flex h-full items-center justify-center text-sm text-stone-600">3D twin unavailable</div>}>
-                    <TwinCanvas highlight={exercise.group} levelRef={levelRef} />
+                    <LiveTwinCanvas activationsRef={activationsRef} />
                   </CanvasErrorBoundary>
                 </div>
               </Panel>

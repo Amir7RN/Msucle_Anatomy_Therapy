@@ -95,12 +95,16 @@ export function MuscleTwinModel({ activationsRef, boneDirsRef, postureRef, yawRe
     <Canvas
       gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
       dpr={[1, 2]}
-      style={{ background: 'transparent' }}
+      style={{ background: 'radial-gradient(circle at 50% 30%, #131a2e 0%, #0a0f1e 55%, #05070d 100%)' }}
       camera={{ position: [0, 0.15, 3.7], fov: 42, near: 0.1, far: 100 }}
     >
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[3, 5, 4]}  intensity={0.8} />
-      <directionalLight position={[-3, 2, 3]} intensity={0.4} color="#a5f3fc" />
+      {/* Rich omnidirectional lighting — same as MuscleMap3D so muscles are vivid from every angle */}
+      <hemisphereLight args={['#ffe9cf', '#241a12', 0.95]} />
+      <ambientLight intensity={0.4} />
+      <directionalLight position={[3, 5, 4]}  intensity={0.85} color="#fff3e3" />
+      <directionalLight position={[-4, 2.5, 2]} intensity={0.5} color="#bfe9ff" />
+      <directionalLight position={[0, 3, -6]} intensity={0.5} />
+      <directionalLight position={[0, -4, 1]} intensity={0.25} />
       <Ground />
       <Suspense fallback={null}>
         <Rig activationsRef={activationsRef} boneDirsRef={boneDirsRef} postureRef={postureRef}
@@ -305,7 +309,8 @@ function buildRig(scene: THREE.Object3D): RigData {
     // elbow and bend with the arm — the muscular lower arm, no procedural cylinder.
     const mat = new THREE.MeshStandardMaterial({
       color: new THREE.Color('#6b5b4a'), roughness: 0.6, metalness: 0.0,
-      emissive: new THREE.Color('#000000'), emissiveIntensity: 0.15,
+      emissive: new THREE.Color('#6b5b4a'), emissiveIntensity: 0.65,
+      side: THREE.DoubleSide,   // renders correctly even if normals are inverted
     })
     o.material = mat
     meshes.push({ mat, stem: meshStem(o.name), side: meshSide(o.name) })
@@ -443,7 +448,8 @@ function paint(mat: THREE.MeshStandardMaterial, level: number, time: number) {
   else         mat.color.copy(C_MID).lerp(C_HOT, (t - 0.5) / 0.5)
   mat.emissive.copy(mat.color)
   const pulse = 1 + 0.12 * t * Math.sin(time * 4)
-  mat.emissiveIntensity = (0.12 + t * 1.25) * pulse
+  // Floor of 0.65 so the model is always visibly tan regardless of scene lighting
+  mat.emissiveIntensity = (0.65 + t * 1.1) * pulse
 }
 
 // ── Name → activation key helpers ──────────────────────────────────────────────

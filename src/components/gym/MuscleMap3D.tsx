@@ -26,6 +26,7 @@ import { useGLTF, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import { GROUP_MESH_STEMS } from '../../lib/gym/muscleModel'
 import { muscleGroupById, exercisesForGroup, type MuscleGroupId } from '../../lib/gym/exercises'
+import type { LiveMuscleActivation } from '../../lib/movement/liveMuscleActivation'
 
 const MODEL_PATH = `${import.meta.env.BASE_URL}models/human-muscular-system.glb`
 const GROUP_LIST: MuscleGroupId[] = ['shoulders', 'chest', 'arms', 'back', 'core', 'legs']
@@ -141,9 +142,10 @@ function Model({ highlight, levelRef, projRef }: ModelProps) {
       const hit = stems.some((s) => (o.name || '').toUpperCase().includes(s))
       const mat = new THREE.MeshStandardMaterial({
         color: new THREE.Color(hit ? '#9a3412' : '#6b5b4a'),
-        emissive: new THREE.Color(hit ? '#f97316' : '#000000'),
-        emissiveIntensity: hit ? 1.0 : 0.14,
+        emissive: new THREE.Color(hit ? '#f97316' : '#6b5b4a'),
+        emissiveIntensity: hit ? 1.2 : 0.55,
         roughness: 0.6, metalness: 0,
+        side: THREE.DoubleSide,
       })
       o.material = mat
       if (hit) glow.push(mat)
@@ -405,7 +407,93 @@ function RegionCard({
   )
 }
 
-// ── Error boundary ────────────────────────────────────────────────────────────
+// ── Live-activation twin (used in ExerciseTrainer) ─────────────────────────
+// Same proven Model approach (no mesh reparenting) so lighting always works.
+// Each frame it reads activationsRef and colours every mesh by the strongest
+// matching activation: tan at rest → amber → red at peak.
+
+const C_BASE_LT = new THREE.Color('#6b5b4a')
+const C_MID_LT  = new THREE.Color('#f59e0b')
+const C_HOT_LT  = new THREE.Color('#b91c1c')
+const BASELINE_LT = 0.12
+
+function meshStemLT(name: string): string {
+  let s = name.toUpperCase()
+  if (s.endsWith('_L') || s.endsWith('_R')) s = s.slice(0, -2)
+  return s
+}
+function actStemLT(muscleId: string): string {
+  let s = muscleId.toUpperCase()
+  for (const suf of ['_ANTERIOR', '_LATERAL', '_POSTERIOR', '_UPPER', '_MIDDLE', '_LOWER']) {
+    if (s.endsWith(suf)) { s = s.slice(0, -suf.length); break }
+  }
+  return s
+}
+
+interface LiveModelDesc { mat: THREE.MeshStandardMaterial; stem: string }
+
+function LiveModel({ activationsRef }: { activationsRef: import('react').MutableRefObject<LiveMuscleActivation[]> }) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { scene } = useGLTF(MODEL_PATH, true, true) as any
+  const { cloned, meshes } = useMemo(() => {
+    const c = scene.clone(true) as THREE.Object3D
+    const b0 = new THREE.Box3().setFromObject(c)
+    const size = b0.getSize(new THREE.Vector3())
+    c.scale.setScalar(2.4 / Math.max(size.y, 1e-3))
+    const b1 = new THREE.Box3().setFromObject(c)
+    const ctr = b1.getCenter(new THREE.Vector3())
+    c.position.x -= ctr.x; c.position.z -= ctr.z
+    c.position.y += GROUND_Y - b1.min.y
+    c.updateMatrixWorld(true)
+    const descs: LiveModelDesc[] = []
+    c.traverse((o: THREE.Object3D) => {
+      if (!(o instanceof THREE.Mesh)) return
+      const mat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color('#6b5b4a'), roughness: 0.6, metalness: 0,
+        emissive: new THREE.Color('#6b5b4a'), emissiveIntensity: 0.55,
+        side: THREE.DoubleSide,
+      })
+      o.material = mat
+      descs.push({ mat, stem: meshStemLT(o.name || '') })
+    })
+    return { cloned: c, meshes: descs }
+  }, [scene])
+
+  useFrame((state) => {
+    const t = state.clock.elapsedTime
+    const acts = activationsRef.current || []
+    for (const { mat, stem } of meshes) {
+      let level = BASELINE_LT
+      for (const a of acts) {
+        if (actStemLT(a.muscleId) === stem && a.level > level) level = a.level
+      }
+      const v = Math.max(0, Math.min(1, (level - BASELINE_LT) / (1 - BASELINE_LT)))
+      if (v < 0.5) mat.color.copy(C_BASE_LT).lerp(C_MID_LT, v / 0.5)
+      else         mat.color.copy(C_MID_LT).lerp(C_HOT_LT, (v - 0.5) / 0.5)
+      mat.emissive.copy(mat.color)
+      mat.emissiveIntensity = (0.55 + v * 0.9) * (1 + 0.12 * v * Math.sin(t * 4))
+    }
+  })
+
+  return <primitive object={cloned} />
+}
+
+export function LiveTwinCanvas({ activationsRef }: { activationsRef: import('react').MutableRefObject<LiveMuscleActivation[]> }) {
+  return (
+    <div className="h-full w-full" style={{ background: NAVY_BG }}>
+      <Canvas gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }} dpr={[1, 2]}
+        camera={{ position: [0, 0.15, 3.7], fov: 42, near: 0.1, far: 100 }}>
+        <SceneLights />
+        <Ground />
+        <Suspense fallback={null}>
+          <LiveModel activationsRef={activationsRef} />
+        </Suspense>
+      </Canvas>
+    </div>
+  )
+}
+
+// ── Error boundary ────────────────────────────────────────────────────────────────────────────────────
 interface EBProps { fallback: ReactNode; children: ReactNode }
 export class CanvasErrorBoundary extends Component<EBProps, { failed: boolean }> {
   constructor(props: EBProps) { super(props); this.state = { failed: false } }
