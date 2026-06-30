@@ -99,6 +99,14 @@ function Model({ highlight, levelRef, projRef }: ModelProps) {
 
   const cloned = useMemo(() => {
     const c = scene.clone(true) as THREE.Object3D
+    // Recompute normals from winding order — the GLB has inverted vertex normals
+    // which makes every face dark under directional lighting. computeVertexNormals()
+    // derives normals from the geometry faces (winding correct) so lighting works.
+    c.traverse((o: THREE.Object3D) => {
+      if (!(o instanceof THREE.Mesh)) return
+      o.geometry = o.geometry.clone()
+      o.geometry.computeVertexNormals()
+    })
     const b0 = new THREE.Box3().setFromObject(c)
     const size = b0.getSize(new THREE.Vector3())
     c.scale.setScalar(2.4 / Math.max(size.y, 1e-3))   // same height as the twin
@@ -142,10 +150,9 @@ function Model({ highlight, levelRef, projRef }: ModelProps) {
       const hit = stems.some((s) => (o.name || '').toUpperCase().includes(s))
       const mat = new THREE.MeshStandardMaterial({
         color: new THREE.Color(hit ? '#9a3412' : '#6b5b4a'),
-        emissive: new THREE.Color(hit ? '#f97316' : '#6b5b4a'),
-        emissiveIntensity: hit ? 1.2 : 0.55,
-        roughness: 0.6, metalness: 0,
-        side: THREE.DoubleSide,
+        emissive: new THREE.Color(hit ? '#f97316' : '#2a1f15'),
+        emissiveIntensity: hit ? 1.2 : 0.3,
+        roughness: 0.55, metalness: 0.05,
       })
       o.material = mat
       if (hit) glow.push(mat)
@@ -437,6 +444,12 @@ function LiveModel({ activationsRef }: { activationsRef: import('react').Mutable
   const { scene } = useGLTF(MODEL_PATH, true, true) as any
   const { cloned, meshes } = useMemo(() => {
     const c = scene.clone(true) as THREE.Object3D
+    // Recompute normals from winding order to fix inverted-normal black model
+    c.traverse((o: THREE.Object3D) => {
+      if (!(o instanceof THREE.Mesh)) return
+      o.geometry = o.geometry.clone()
+      o.geometry.computeVertexNormals()
+    })
     const b0 = new THREE.Box3().setFromObject(c)
     const size = b0.getSize(new THREE.Vector3())
     c.scale.setScalar(2.4 / Math.max(size.y, 1e-3))
@@ -449,9 +462,8 @@ function LiveModel({ activationsRef }: { activationsRef: import('react').Mutable
     c.traverse((o: THREE.Object3D) => {
       if (!(o instanceof THREE.Mesh)) return
       const mat = new THREE.MeshStandardMaterial({
-        color: new THREE.Color('#6b5b4a'), roughness: 0.6, metalness: 0,
-        emissive: new THREE.Color('#6b5b4a'), emissiveIntensity: 0.55,
-        side: THREE.DoubleSide,
+        color: new THREE.Color('#6b5b4a'), roughness: 0.55, metalness: 0.05,
+        emissive: new THREE.Color('#2a1f15'), emissiveIntensity: 0.3,
       })
       o.material = mat
       descs.push({ mat, stem: meshStemLT(o.name || '') })
@@ -471,7 +483,7 @@ function LiveModel({ activationsRef }: { activationsRef: import('react').Mutable
       if (v < 0.5) mat.color.copy(C_BASE_LT).lerp(C_MID_LT, v / 0.5)
       else         mat.color.copy(C_MID_LT).lerp(C_HOT_LT, (v - 0.5) / 0.5)
       mat.emissive.copy(mat.color)
-      mat.emissiveIntensity = (0.55 + v * 0.9) * (1 + 0.12 * v * Math.sin(t * 4))
+      mat.emissiveIntensity = (0.3 + v * 1.2) * (1 + 0.12 * v * Math.sin(t * 4))
     }
   })
 
