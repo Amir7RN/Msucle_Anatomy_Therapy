@@ -352,7 +352,7 @@ function CalloutOverlay({
       })}
 
       {/* Left column cards */}
-      <div className="absolute inset-y-0 left-0 flex flex-col justify-center gap-4 pl-4 sm:pl-6">
+      <div className="absolute inset-y-0 left-[13%] flex flex-col justify-center gap-4">
         {LEFT_GROUPS.map((g) => (
           <RegionCard key={g} group={g} side="L" active={highlight === g}
             onHover={onHover} onSelect={() => onSelect(g)}
@@ -361,7 +361,7 @@ function CalloutOverlay({
       </div>
 
       {/* Right column cards */}
-      <div className="absolute inset-y-0 right-0 flex flex-col justify-center gap-4 pr-4 sm:pr-6">
+      <div className="absolute inset-y-0 right-[13%] flex flex-col justify-center gap-4">
         {RIGHT_GROUPS.map((g) => (
           <RegionCard key={g} group={g} side="R" active={highlight === g}
             onHover={onHover} onSelect={() => onSelect(g)}

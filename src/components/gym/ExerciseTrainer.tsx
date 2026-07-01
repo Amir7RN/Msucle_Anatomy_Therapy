@@ -48,6 +48,8 @@ export function ExerciseTrainer() {
   const [done, setDone]       = useState(false)
   const [fatigue, setFatigue] = useState<Record<string, number>>({})
   const [repHist, setRepHist] = useState<number[]>([])
+  const [weightKg, setWeightKg] = useState(20)
+  const weightRef = useRef(20)
 
   const tracker     = useRef(exercise ? createExerciseTracker(exercise) : null)
   const aiCoach     = useRef(exercise ? createGymCoach(exercise) : null)
@@ -73,6 +75,7 @@ export function ExerciseTrainer() {
   const groundedRef    = useRef(true)
   useEffect(() => { bpmRef.current = liveBpm }, [liveBpm])
   useEffect(() => { exerciseRef.current = exercise }, [exercise])
+  useEffect(() => { weightRef.current = weightKg }, [weightKg])
 
   const say = useCallback((t: string) => { if (voiceOn) { try { voice.speak(t) } catch { /* ignore */ } } }, [voice, voiceOn])
   const sayRef = useRef(say)
@@ -116,7 +119,13 @@ export function ExerciseTrainer() {
     if (eng) {
       const now = performance.now()
       const frame = eng.update(lms, now, {})
-      activationsRef.current = frame.activations
+      // Scale activation level by weight: heavier load = more intense muscle glow.
+      // 20 kg is the neutral baseline (scale = 1.0).
+      const wScale = Math.max(0.2, weightRef.current / 20)
+      activationsRef.current = frame.activations.map((a) => ({
+        ...a,
+        level: Math.min(1, a.level * wScale),
+      }))
       const rig = poseEngineRef.current?.update(lms)
       if (rig) {
         boneDirsRef.current  = rig.dirs
@@ -229,7 +238,16 @@ export function ExerciseTrainer() {
             {/* Your muscle twin (+ fatigue beneath) */}
             <div className="flex min-h-0 flex-col gap-3 lg:col-span-4">
               <Panel title="Your muscle twin" icon={<Flame size={12} />} className="lg:min-h-0 lg:flex-1"
-                right={<span className={['rounded-full px-2 py-0.5 text-[10px] font-semibold', ui.formGood ? 'bg-emerald-600/80 text-white' : 'bg-stone-800 text-amber-200'].join(' ')}>{!ready ? 'Starting…' : ui.formGood ? 'Squeeze!' : 'Full range'}</span>}>
+                right={
+                  <div className="flex items-center gap-1.5">
+                    <span className={['rounded-full px-2 py-0.5 text-[10px] font-semibold', ui.formGood ? 'bg-emerald-600/80 text-white' : 'bg-stone-800 text-amber-200'].join(' ')}>{!ready ? 'Starting…' : ui.formGood ? 'Squeeze!' : 'Full range'}</span>
+                    <div className="flex items-center gap-0.5 rounded-full bg-stone-800/80 px-1.5 py-0.5">
+                      <button onClick={() => setWeightKg((w) => Math.max(5, w - 5))} className="flex h-4 w-4 items-center justify-center rounded-full text-stone-400 hover:text-amber-300 transition">−</button>
+                      <span className="min-w-[2.8rem] text-center text-[10px] font-semibold text-amber-200">{weightKg} kg</span>
+                      <button onClick={() => setWeightKg((w) => Math.min(100, w + 5))} className="flex h-4 w-4 items-center justify-center rounded-full text-stone-400 hover:text-amber-300 transition">+</button>
+                    </div>
+                  </div>
+                }>
                 <div className="h-[46vh] min-h-0 overflow-hidden rounded-lg lg:h-full">
                   <CanvasErrorBoundary fallback={<div className="flex h-full items-center justify-center text-sm text-stone-600">3D twin unavailable</div>}>
                     <LiveTwinCanvas activationsRef={activationsRef} />
