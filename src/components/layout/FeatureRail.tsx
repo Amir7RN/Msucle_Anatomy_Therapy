@@ -12,7 +12,7 @@
  */
 
 import React from 'react'
-import { Activity, Sparkles, Scan, Flame, User, Video, ChevronRight } from 'lucide-react'
+import { Activity, Sparkles, Scan, Flame, User, Video, HeartPulse, ChevronRight } from 'lucide-react'
 import { useAtlasStore } from '../../store/atlasStore'
 
 interface FeatureDef {
@@ -68,6 +68,16 @@ const FEATURES: FeatureDef[] = [
     glow: 'hover:border-rose-400/50 hover:shadow-[0_0_24px_rgba(251,113,133,0.20)]',
     text: 'group-hover:text-rose-300',
     action: (s) => s.setFeatureModalToOpen('remote'),
+  },
+  {
+    key: 'health',
+    label: 'Import Health Data',
+    tagline: 'Apple Health workouts · training balance',
+    icon: <HeartPulse size={15} />,
+    tile: 'from-red-400 to-rose-600',
+    glow: 'hover:border-red-400/50 hover:shadow-[0_0_24px_rgba(248,113,113,0.20)]',
+    text: 'group-hover:text-red-300',
+    action: (s) => s.setFeatureModalToOpen('health'),
   },
   {
     key: 'program',

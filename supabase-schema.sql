@@ -127,3 +127,71 @@ create policy "user_programs_upsert_own"
   on public.user_programs for all
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- muscle_load_health — per-user training-workload summary computed from an
+-- Apple Health export (Import Health Data feature). One row per muscle group
+-- per import. Same RLS pattern as rom_history: scoped by auth.uid(), explicit
+-- user_id on insert, no cross-user access.
+-- ════════════════════════════════════════════════════════════════════════════
+
+create table if not exists public.muscle_load_health (
+  id             uuid primary key default gen_random_uuid(),
+  user_id        uuid not null references auth.users(id) on delete cascade,
+  muscle_group   text not null,
+  load_7day      numeric,
+  load_28day     numeric,
+  acwr           numeric,
+  classification text,
+  computed_at    timestamptz not null default now()
+);
+
+-- Typical read pattern: per-user, most recent import first.
+create index if not exists muscle_load_health_user_computed_idx
+  on public.muscle_load_health (user_id, computed_at desc);
+
+alter table public.muscle_load_health enable row level security;
+
+drop policy if exists "muscle_load_health_select_own" on public.muscle_load_health;
+drop policy if exists "muscle_load_health_insert_own" on public.muscle_load_health;
+drop policy if exists "muscle_load_health_update_own" on public.muscle_load_health;
+drop policy if exists "muscle_load_health_delete_own" on public.muscle_load_health;
+
+create policy "muscle_load_health_select_own"
+  on public.muscle_load_health for select
+  using (auth.uid() = user_id);
+
+create policy "muscle_load_health_insert_own"
+  on public.muscle_load_health for insert
+  with check (auth.uid() = user_id);
+
+create policy "muscle_load_health_update_own"
+  on public.muscle_load_health for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create policy "muscle_load_health_delete_own"
+  on public.muscle_load_health for delete
+  using (auth.uid() = user_id);
+
+-- Default user_id from the JWT on insert (mirrors rom_history's trigger), so the
+-- client doesn't strictly have to send it. RLS enforces ownership either way.
+create or replace function public.set_muscle_load_health_user_id()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.user_id is null then
+    new.user_id := auth.uid();
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists muscle_load_health_set_user_id on public.muscle_load_health;
+create trigger muscle_load_health_set_user_id
+  before insert on public.muscle_load_health
+  for each row execute function public.set_muscle_load_health_user_id();
