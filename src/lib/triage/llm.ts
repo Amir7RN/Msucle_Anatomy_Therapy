@@ -19,6 +19,7 @@
  */
 
 import { buildSystemPrompt, PRESENT_DIFFERENTIAL_TOOL } from './prompt'
+import { completeSentences } from '../speechText'
 import type { DiagnosticMuscle } from '../diagnostic'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -148,7 +149,10 @@ export async function chatTriage(
     },
     body: JSON.stringify({
       model:      MODEL_ID,
-      max_tokens: 220,   // Enough for short replies + the structured tool call payload
+      // Short replies + the structured tool payload (zones/reasoning/red_flags
+      // arrays). 220 was tight enough that a verbose differential could get
+      // budget-cut mid-JSON, losing the whole tool call for that turn.
+      max_tokens: 400,
       system,
       tools:      [PRESENT_DIFFERENTIAL_TOOL],
       messages,
@@ -182,6 +186,10 @@ export async function chatTriage(
       }
     }
   }
+
+  // A budget-cut reply (stop_reason max_tokens) can end mid-sentence — bad in
+  // a chat bubble, worse read aloud. Trim to the last clean sentence boundary.
+  if (data.stop_reason === 'max_tokens') textReply = completeSentences(textReply)
 
   // Fallback: if the model went straight to the tool with no narration, give
   // the chat bubble a short stock string so the timeline isn't empty.

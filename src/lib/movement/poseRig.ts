@@ -123,6 +123,17 @@ export type BoneDirs = Partial<Record<SegmentId, Vec3>>
  *   • `quality`— 0..1 trust in this frame (torso-anchor visibility).
  *   • `dirs`   — the per-segment anatomical directions.
  */
+/**
+ * Explicit vertical-tracking state, exposed so the model and HUD can react to
+ * transitions crisply instead of inferring them from rootY:
+ *   'calibrating' — planted; waiting for a still, fully-framed user
+ *   'grounded'    — feet on the floor plane (standing/seated), rootY → 0
+ *   'airborne'    — ballistic jump in progress, rootY tracks the rise
+ *   'floor'       — body horizontal (lying/prone/side); hard-anchored to the
+ *                   floor plane, jump detection suppressed entirely
+ */
+export type VerticalState = 'calibrating' | 'grounded' | 'airborne' | 'floor'
+
 export interface PoseRigFrame {
   dirs:    BoneDirs
   yaw:     number
@@ -131,6 +142,8 @@ export interface PoseRigFrame {
   /** True when the feet are on (or assumed on) the floor — the model snaps to
    *  the ground and zeroes any jump velocity. */
   grounded: boolean
+  /** Which branch of the vertical state machine produced this frame. */
+  verticalState: VerticalState
 }
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
@@ -142,6 +155,12 @@ function vis(lms: LandmarkSet, i: number, min = 0.4): boolean {
 /** World coord of a landmark, but only if visible enough. */
 function wpt(lms: LandmarkSet, i: number, min = 0.4): Vec3 | null {
   return vis(lms, i, min) ? worldVec(lms[i]) : null
+}
+
+/** World midpoint of two landmarks, or null if either is missing/occluded. */
+function midWorld(lms: LandmarkSet, a: number, b: number): Vec3 | null {
+  const va = wpt(lms, a, 0.3), vb = wpt(lms, b, 0.3)
+  return va && vb ? midpoint(va, vb) : null
 }
 
 // Largest tilt of the trunk from vertical we will ever show (degrees). Stops
@@ -282,6 +301,18 @@ const LAND_DISP      = 0.04   // back within this (torso-lengths) of rest ⇒ la
 const BASE_ALPHA     = 0.05   // grounded baseline tracking (absorbs slow drift)
 const RISE_SMOOTH    = 0.55   // follow the rise quickly
 const FALL_SMOOTH    = 0.4    // ease down, then snap on contact
+// Horizontal (floor-level) detection: |vertical component| of the world spine
+// direction below ENTER ⇒ the body is lying; above EXIT ⇒ upright again. The
+// hysteresis gap stops the state chattering when the user is mid-transition
+// (getting down to / up from the floor), which is exactly when hip-y jumps
+// used to fake "takeoffs" and make the twin hop while lying down.
+const HORIZ_ENTER = 0.45
+const HORIZ_EXIT  = 0.62
+// Predictive landing: at takeoff we know the launch velocity; ballistics says
+// air time ≈ 2·v/g. We cap airborne time at that prediction (+ slack) so a
+// missed landing frame can never leave the twin floating past physics.
+const GRAVITY_TL = 22     // g expressed in torso-lengths/s² (≈9.81 m/s² ÷ ~0.45 m torso)
+const AIR_SLACK  = 1.35   // allow 35% over the ballistic prediction
 
 function nlerp(a: Vec3, b: Vec3, t: number): Vec3 {
   return normalize({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t })
@@ -291,7 +322,8 @@ export class PoseRigEngine {
   private right: Vec3 | null = null          // smoothed lateral axis (continuity)
   private smoothed: BoneDirs = {}            // smoothed per-segment dirs
 
-  // Vertical state: neutral-pose calibration + ballistic jump with ground contact.
+  // Vertical state machine: calibrating → grounded ⇄ airborne, with a `floor`
+  // branch that hard-anchors a horizontal body to the ground plane.
   private calibrated = false
   private stableS = 0
   private floorBaseY: number | null = null   // resting body-center image-y
@@ -299,6 +331,8 @@ export class PoseRigEngine {
   private prevT = 0
   private airborne = false
   private airS = 0
+  private maxAirS = MAX_AIR_S                // ballistic prediction per jump
+  private horizontal = false                 // hysteresis-latched lying state
   private grounded = true
   private rootY = 0
 
@@ -312,13 +346,27 @@ export class PoseRigEngine {
     this.prevT = 0
     this.airborne = false
     this.airS = 0
+    this.maxAirS = MAX_AIR_S
+    this.horizontal = false
     this.grounded = true
     this.rootY = 0
   }
 
+  /** Current vertical-state-machine branch (for the frame + HUD). */
+  private verticalState(): VerticalState {
+    if (this.horizontal) return 'floor'
+    if (!this.calibrated) return 'calibrating'
+    return this.airborne ? 'airborne' : 'grounded'
+  }
+
   update(lms: LandmarkSet, tMs = performance.now()): PoseRigFrame {
     const f = computeBodyFrame(lms, this.right)
-    if (!f) return { dirs: this.smoothed, yaw: 0, rootY: this.rootY, quality: 0, grounded: this.grounded }
+    if (!f) {
+      return {
+        dirs: this.smoothed, yaw: 0, rootY: this.rootY, quality: 0,
+        grounded: this.grounded, verticalState: this.verticalState(),
+      }
+    }
     // Lightly track the lateral axis so genuine slow turns follow but noise can't.
     this.right = this.right ? normalize({
       x: this.right.x + (f.right.x - this.right.x) * 0.4,
@@ -338,7 +386,10 @@ export class PoseRigEngine {
 
     this.updateGround(lms, tMs)
 
-    return { dirs: this.smoothed, yaw: 0, rootY: this.rootY, quality: f.quality, grounded: this.grounded }
+    return {
+      dirs: this.smoothed, yaw: 0, rootY: this.rootY, quality: f.quality,
+      grounded: this.grounded, verticalState: this.verticalState(),
+    }
   }
 
   /**
@@ -373,6 +424,28 @@ export class PoseRigEngine {
     const anklesVisible = !!la && !!ra && (la.visibility ?? 0) > 0.5 && (ra.visibility ?? 0) > 0.5
     const fullBody = anklesVisible && (lms[LM.NOSE]?.visibility ?? 0) > 0.4
 
+    // ── FLOOR branch: horizontal body ⇒ hard-anchor to the ground plane ──
+    // World spine verticality with hysteresis. While lying, the hip-centre
+    // image-y is meaningless as a jump signal (rolling over spikes it), so the
+    // whole ballistic model is suppressed and the root is pinned to the floor.
+    const wSh = midWorld(lms, LM.L_SHOULDER, LM.R_SHOULDER)
+    const wHip = midWorld(lms, LM.L_HIP, LM.R_HIP)
+    if (wSh && wHip) {
+      const spine = normalize(sub(wSh, wHip))
+      const vert = Math.abs(spine.y)
+      if (!this.horizontal && vert < HORIZ_ENTER) this.horizontal = true
+      else if (this.horizontal && vert > HORIZ_EXIT) this.horizontal = false
+    }
+    if (this.horizontal) {
+      this.toGround()
+      // Re-arm calibration for when the user stands back up: the floor
+      // baseline captured while lying would be garbage for a standing jump.
+      this.calibrated = false
+      this.stableS = 0
+      this.prevCenterY = centerY
+      return
+    }
+
     // Normalised vertical velocity (torso-lengths/s, + = rising).
     let vN = 0
     if (this.prevCenterY !== null) vN = (this.prevCenterY - centerY) / (dt * scale)
@@ -394,14 +467,22 @@ export class PoseRigEngine {
       this.rootY += (0 - this.rootY) * FALL_SMOOTH
       this.floorBaseY = this.floorBaseY === null ? centerY : this.floorBaseY + BASE_ALPHA * (centerY - this.floorBaseY)
       // Only a real, ballistic rise with the feet in frame counts as a jump.
-      if (fullBody && vN > VN_TAKEOFF) { this.airborne = true; this.airS = 0; this.grounded = false }
+      if (fullBody && vN > VN_TAKEOFF) {
+        this.airborne = true
+        this.airS = 0
+        this.grounded = false
+        // Predictive air time from launch velocity (t = 2·v/g), with slack.
+        // Bounds the airborne state to real physics — the twin can never keep
+        // "flying" longer than the jump it actually saw could last.
+        this.maxAirS = Math.min(MAX_AIR_S, ((2 * vN) / GRAVITY_TL) * AIR_SLACK)
+      }
     } else {
       this.airS += dt
       const disp = this.floorBaseY !== null ? (this.floorBaseY - centerY) / scale : 0   // torso-lengths risen
       const target = clamp(disp * JUMP_GAIN, 0, ROOT_MAX)
       const k = target > this.rootY ? RISE_SMOOTH : FALL_SMOOTH
       this.rootY += (target - this.rootY) * k
-      if ((disp < LAND_DISP && vN < VN_TAKEOFF) || this.airS > MAX_AIR_S) {
+      if ((disp < LAND_DISP && vN < VN_TAKEOFF) || this.airS > this.maxAirS) {
         this.airborne = false
         this.grounded = true
         this.floorBaseY = centerY        // re-lock — kills any post-landing drift

@@ -32,7 +32,7 @@ import {
   LiveActivationEngine,
   type LiveMuscleActivation, type JointLiveReading, type LoadInput,
 } from '../../lib/movement/liveMuscleActivation'
-import { PoseRigEngine, type BoneDirs } from '../../lib/movement/poseRig'
+import { PoseRigEngine, type BoneDirs, type VerticalState } from '../../lib/movement/poseRig'
 import { LoadEstimator, type LoadEstimate } from '../../lib/movement/loadEstimator'
 import type { BodyOrientation } from '../../lib/movement/bodyOrientation'
 import type { Posture } from '../../lib/movement/exercisePose'
@@ -77,6 +77,20 @@ const ORIENTATION_LABEL: Record<BodyOrientation, string> = {
   prone: 'Lying (front)', side_lying: 'Side-lying', unknown: 'Detecting…',
 }
 
+const VSTATE_LABEL: Record<VerticalState, string> = {
+  calibrating: '⏳ Calibrating', grounded: '⬇ Grounded',
+  airborne: '↑ Airborne', floor: '▬ Floor-anchored',
+}
+
+function vStateChip(s: VerticalState): string {
+  switch (s) {
+    case 'airborne':    return 'bg-orange-500/15 text-orange-300 ring-orange-500/40'
+    case 'floor':       return 'bg-violet-500/15 text-violet-300 ring-violet-500/40'
+    case 'calibrating': return 'bg-slate-600/20 text-slate-300 ring-slate-500/40'
+    default:            return 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/40'
+  }
+}
+
 export function MuscleTwinView({ open, onClose }: Props) {
   const [ready, setReady]   = useState(false)
   const [error, setError]   = useState<string | null>(null)
@@ -88,6 +102,7 @@ export function MuscleTwinView({ open, onClose }: Props) {
   }>({ readings: [], activations: [], orientation: 'unknown', energy: 0 })
   const [status, setStatus] = useState<MuscleStatusFrame | null>(null)
   const [load, setLoad]     = useState<LoadEstimate | null>(null)
+  const [vState, setVState] = useState<VerticalState>('calibrating')
   const [hasKey, setHasKey] = useState(false)
   const [keyInput, setKeyInput] = useState('')
   const [loadErr, setLoadErr] = useState<string | null>(null)
@@ -217,6 +232,7 @@ export function MuscleTwinView({ open, onClose }: Props) {
         orientation: frame.orientation.orientation,
         energy: frame.movementEnergy,
       })
+      if (rig) setVState(rig.verticalState)
       if (statusFrame) setStatus(statusFrame)
     }
   }
@@ -232,26 +248,37 @@ export function MuscleTwinView({ open, onClose }: Props) {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-slate-950 to-black text-white">
-      {/* Top bar */}
-      <header className="flex items-center justify-between border-b border-slate-800 bg-black/70 px-4 py-2 backdrop-blur">
+    <div className="fixed inset-0 z-50 flex flex-col bg-[#040609] text-white">
+      {/* Ambient glow field behind the whole control center */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute left-1/3 top-[-10rem] h-[28rem] w-[28rem] -translate-x-1/2 rounded-full bg-cyan-500/10 blur-[110px]" />
+        <div className="absolute bottom-[-8rem] right-[-6rem] h-[24rem] w-[24rem] rounded-full bg-orange-500/8 blur-[100px]" />
+      </div>
+
+      {/* Top bar — live telemetry strip */}
+      <header className="relative flex items-center justify-between border-b border-white/10 bg-black/60 px-4 py-2 backdrop-blur-xl">
         <div className="flex items-center gap-2">
-          <Sparkles size={16} className="text-cyan-400" />
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-400/10 ring-1 ring-cyan-400/30">
+            <Sparkles size={14} className="text-cyan-300" />
+          </span>
           <span className="text-sm font-semibold tracking-wide">Live Muscle Twin</span>
-          <span className="ml-2 rounded-full bg-cyan-500/15 px-2 py-0.5 text-[10px] font-medium text-cyan-300 ring-1 ring-cyan-500/30">
+          <span className="ml-2 rounded-full bg-cyan-500/15 px-2 py-0.5 text-[10px] font-medium text-cyan-300 ring-1 ring-cyan-500/30 transition-colors duration-300">
             {ORIENTATION_LABEL[hud.orientation]}
+          </span>
+          <span className={`hidden rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 transition-colors duration-300 sm:inline ${vStateChip(vState)}`}>
+            {VSTATE_LABEL[vState]}
           </span>
           <MovementPip energy={hud.energy} />
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => { onClose(); setProfileOpen(true) }}
-            className="rounded-md px-2 py-1 text-[11px] font-semibold text-cyan-300 ring-1 ring-cyan-500/30 hover:bg-slate-800"
+            className="rounded-md px-2 py-1 text-[11px] font-semibold text-cyan-300 ring-1 ring-cyan-500/30 transition-colors hover:bg-cyan-500/10"
             title="Edit your profile — personalises your fatigue & effort model"
           >
             My profile
           </button>
-          <button onClick={onClose} className="rounded p-1 hover:bg-slate-800" title="Close"><X size={16} /></button>
+          <button onClick={onClose} className="rounded p-1 transition-colors hover:bg-slate-800" title="Close"><X size={16} /></button>
         </div>
       </header>
 
@@ -294,7 +321,7 @@ export function MuscleTwinView({ open, onClose }: Props) {
 
         {/* Analytics — below the model on mobile, a right column on desktop.
             Load spans the top; activation + range-of-motion sit side by side. */}
-        <aside className="flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-t border-slate-800 bg-black/50 p-3 lg:w-[44rem] lg:border-l lg:border-t-0">
+        <aside className="relative flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-t border-white/10 bg-slate-950/40 p-3 backdrop-blur-xl lg:w-[44rem] lg:border-l lg:border-t-0">
           {/* Body model — De Leva mass/inertia from weight, height, sex */}
           <BodyMassPanel
             weightKg={weightKg} heightCm={heightCm} sex={sex} totalKg={bodyModel.totalKg}
@@ -304,7 +331,7 @@ export function MuscleTwinView({ open, onClose }: Props) {
           />
 
           {/* AI load */}
-          <section className="rounded-lg bg-slate-900/60 p-3">
+          <section className="rounded-xl border border-white/5 bg-gradient-to-b from-slate-900/80 to-slate-950/60 p-3 shadow-[0_8px_32px_rgba(0,0,0,0.35)] transition-all duration-300 hover:border-cyan-400/20">
             <div className="mb-1.5 flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-cyan-300">
                 <Dumbbell size={12} /> External load (AI)
@@ -369,14 +396,14 @@ export function MuscleTwinView({ open, onClose }: Props) {
 
           {/* Activation + ROM side by side */}
           <div className="grid gap-3 md:grid-cols-2">
-            <section className="rounded-lg bg-slate-900/60 p-3">
+            <section className="rounded-xl border border-white/5 bg-gradient-to-b from-slate-900/80 to-slate-950/60 p-3 shadow-[0_8px_32px_rgba(0,0,0,0.35)] transition-all duration-300 hover:border-cyan-400/20">
               <div className="mb-1.5 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-cyan-300">
                 <Flame size={12} /> Muscle activation
               </div>
               <MuscleActivationRadars activations={hud.activations} />
             </section>
 
-            <section className="rounded-lg bg-slate-900/60 p-3">
+            <section className="rounded-xl border border-white/5 bg-gradient-to-b from-slate-900/80 to-slate-950/60 p-3 shadow-[0_8px_32px_rgba(0,0,0,0.35)] transition-all duration-300 hover:border-cyan-400/20">
               <div className="mb-1.5 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-cyan-300">
                 <Activity size={12} /> Range of motion
               </div>
@@ -415,7 +442,7 @@ function BodyMassPanel({
   useEffect(() => { setH(String(Math.round(heightCm))) }, [heightCm])
 
   return (
-    <section className="rounded-lg bg-slate-900/60 px-2.5 py-2">
+    <section className="rounded-xl border border-white/5 bg-gradient-to-b from-slate-900/80 to-slate-950/60 px-2.5 py-2 shadow-[0_8px_32px_rgba(0,0,0,0.35)] transition-all duration-300 hover:border-cyan-400/20">
       <div className="flex flex-wrap items-end gap-2.5">
         <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-cyan-300">
           <Scale size={11} /> Body

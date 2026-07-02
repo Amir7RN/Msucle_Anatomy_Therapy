@@ -16,7 +16,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Activity, Check, RotateCcw, Volume2, VolumeX, Dumbbell, Sparkles, Flame, Gauge, Video } from 'lucide-react'
 import { CameraView } from '../movement/CameraView'
 import { disposeDetector } from '../../lib/movement/poseDetector'
-import { LiveActivationEngine, type LiveMuscleActivation } from '../../lib/movement/liveMuscleActivation'
+import { LiveActivationEngine, type LiveMuscleActivation, type LoadInput } from '../../lib/movement/liveMuscleActivation'
+import { LoadEstimator, type LoadEstimate } from '../../lib/movement/loadEstimator'
 import { PoseRigEngine, type BoneDirs } from '../../lib/movement/poseRig'
 import { useVoiceOutput } from '../../hooks/useVoice'
 import { useGymStore } from '../../store/gymStore'
@@ -50,6 +51,7 @@ export function ExerciseTrainer() {
   const [repHist, setRepHist] = useState<number[]>([])
   const [weightKg, setWeightKg] = useState(20)
   const weightRef = useRef(20)
+  const [aiLoad, setAiLoad]   = useState<LoadEstimate | null>(null)
 
   const tracker     = useRef(exercise ? createExerciseTracker(exercise) : null)
   const aiCoach     = useRef(exercise ? createGymCoach(exercise) : null)
@@ -64,6 +66,15 @@ export function ExerciseTrainer() {
   const fatigueRef  = useRef<Record<string, number>>({})
   const repPeakRef  = useRef(0)
   const levelRef    = useRef(0)   // live glow level for the twin (0..1)
+  // Live external-load pipeline — the SAME estimator the Muscle Twin uses.
+  // AI vision (when a key is present) auto-detects what the user is holding;
+  // the manual weight stepper is the fallback, split across both hands. The
+  // resulting LoadInput feeds the activation engine's torque model, so the
+  // heatmap scales with the actual moment arm instead of a flat multiplier.
+  const loadEstRef   = useRef<LoadEstimator | null>(null)
+  const camVideoRef  = useRef<HTMLVideoElement | null>(null)
+  const loadRef      = useRef<LoadInput>({ leftKg: 10, rightKg: 10 })
+  const repHistRef   = useRef<number[]>([])
   // MuscleTwinModel refs — same pattern as MuscleTwinView
   const engineRef      = useRef<LiveActivationEngine | null>(null)
   const poseEngineRef  = useRef<PoseRigEngine | null>(null)
@@ -91,10 +102,11 @@ export function ExerciseTrainer() {
     // Reset the twin engines
     engineRef.current?.reset();     engineRef.current    = new LiveActivationEngine()
     poseEngineRef.current?.reset(); poseEngineRef.current = new PoseRigEngine()
-    activationsRef.current = []; boneDirsRef.current = {}
+    loadEstRef.current?.reset();    loadEstRef.current   = new LoadEstimator()
+    activationsRef.current = []; boneDirsRef.current = {}; repHistRef.current = []
     yawRef.current = 0; rootYRef.current = 0; groundedRef.current = true
     setUi({ reps: 0, activation: 0, formGood: false, peak: 0, rom: 0 })
-    setSet(1); setDone(false); setCoach(null); setFatigue({}); setRepHist([])
+    setSet(1); setDone(false); setCoach(null); setFatigue({}); setRepHist([]); setAiLoad(null)
   }, [exercise])
 
   useEffect(() => () => {
@@ -108,8 +120,19 @@ export function ExerciseTrainer() {
     const ex = exerciseRef.current
     if (!aiCoach.current || !ex) return
     const f = frameRef.current
+    // Rep-depth trend across the recent history — lets the coach react to what
+    // the set has been DOING ("depth is shrinking, slow the last three down").
+    const h = repHistRef.current
+    let depthTrend: 'deepening' | 'shrinking' | 'consistent' | undefined
+    if (h.length >= 4) {
+      const early = (h[0] + h[1]) / 2
+      const late  = (h[h.length - 2] + h[h.length - 1]) / 2
+      depthTrend = late > early + 0.08 ? 'deepening' : late < early - 0.08 ? 'shrinking' : 'consistent'
+    }
+    const heldKg = Math.max(0, (loadRef.current.leftKg ?? 0)) + Math.max(0, (loadRef.current.rightKg ?? 0))
     const msg = await aiCoach.current.maybeCue(
-      { reps: f.reps, repGoal: ex.repGoal, peakActivation: f.peakActivation, romDeg: f.romDeg, bpm: bpmRef.current }, reason)
+      { reps: f.reps, repGoal: ex.repGoal, peakActivation: f.peakActivation, romDeg: f.romDeg,
+        bpm: bpmRef.current, depthTrend, heldKg }, reason)
     if (msg) { setCoach(msg); sayRef.current(msg) }
   }, [])
 
@@ -118,14 +141,10 @@ export function ExerciseTrainer() {
     const eng = engineRef.current
     if (eng) {
       const now = performance.now()
-      const frame = eng.update(lms, now, {})
-      // Scale activation level by weight: heavier load = more intense muscle glow.
-      // 20 kg is the neutral baseline (scale = 1.0).
-      const wScale = Math.max(0.2, weightRef.current / 20)
-      activationsRef.current = frame.activations.map((a) => ({
-        ...a,
-        level: Math.min(1, a.level * wScale),
-      }))
+      // Load rides through the engine's lever-arm torque model, so the heatmap
+      // localises to the joints actually fighting the mass — no flat glow scale.
+      const frame = eng.update(lms, now, loadRef.current)
+      activationsRef.current = frame.activations
       const rig = poseEngineRef.current?.update(lms)
       if (rig) {
         boneDirsRef.current  = rig.dirs
@@ -145,6 +164,7 @@ export function ExerciseTrainer() {
 
     if (f.justRepped) {
       const depth = repPeakRef.current; repPeakRef.current = 0
+      repHistRef.current = [...repHistRef.current, depth].slice(-8)
       setRepHist((h) => [...h, depth].slice(-8))
       const fat = fatigueRef.current
       for (const m of ex.primary)   fat[m] = Math.min(1, (fat[m] ?? 0) + 0.06 + depth * 0.07)
@@ -176,6 +196,26 @@ export function ExerciseTrainer() {
       for (const k in fat) { const v = Math.max(0, fat[k] - 0.0015); if (v !== fat[k]) { fat[k] = v; changed = true } }
       if (changed) setFatigue({ ...fat })
     }, 100)
+    return () => window.clearInterval(id)
+  }, [active])
+
+  // ── Live load resolution: AI vision first, manual stepper as fallback ────
+  useEffect(() => {
+    if (!active) return
+    const id = window.setInterval(async () => {
+      const est = loadEstRef.current
+      if (est && camVideoRef.current && est.isEnabled()) {
+        const r = await est.maybeRefresh(camVideoRef.current)
+        if (r.at > 0 && r.confidence >= 0.3) {
+          loadRef.current = { leftKg: r.leftKg, rightKg: r.rightKg }
+          setAiLoad(r)
+          return
+        }
+      }
+      // Manual fallback: the stepper weight, split across both hands.
+      loadRef.current = { leftKg: weightRef.current / 2, rightKg: weightRef.current / 2 }
+      setAiLoad(null)
+    }, 1000)
     return () => window.clearInterval(id)
   }, [active])
 
@@ -241,11 +281,20 @@ export function ExerciseTrainer() {
                 right={
                   <div className="flex items-center gap-1.5">
                     <span className={['rounded-full px-2 py-0.5 text-[10px] font-semibold', ui.formGood ? 'bg-emerald-600/80 text-white' : 'bg-stone-800 text-amber-200'].join(' ')}>{!ready ? 'Starting…' : ui.formGood ? 'Squeeze!' : 'Full range'}</span>
-                    <div className="flex items-center gap-0.5 rounded-full bg-stone-800/80 px-1.5 py-0.5">
-                      <button onClick={() => setWeightKg((w) => Math.max(5, w - 5))} className="flex h-4 w-4 items-center justify-center rounded-full text-stone-400 hover:text-amber-300 transition">−</button>
-                      <span className="min-w-[2.8rem] text-center text-[10px] font-semibold text-amber-200">{weightKg} kg</span>
-                      <button onClick={() => setWeightKg((w) => Math.min(100, w + 5))} className="flex h-4 w-4 items-center justify-center rounded-full text-stone-400 hover:text-amber-300 transition">+</button>
-                    </div>
+                    {aiLoad ? (
+                      <span
+                        className="max-w-[9rem] truncate rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-300 ring-1 ring-emerald-500/30"
+                        title={`AI-detected load — L ${aiLoad.leftKg} kg · R ${aiLoad.rightKg} kg (${Math.round(aiLoad.confidence * 100)}% conf)`}
+                      >
+                        AI · {aiLoad.item}
+                      </span>
+                    ) : (
+                      <div className="flex items-center gap-0.5 rounded-full bg-stone-800/80 px-1.5 py-0.5" title="Manual load — the camera AI takes over when a key is set">
+                        <button onClick={() => setWeightKg((w) => Math.max(5, w - 5))} className="flex h-4 w-4 items-center justify-center rounded-full text-stone-400 hover:text-amber-300 transition">−</button>
+                        <span className="min-w-[2.8rem] text-center text-[10px] font-semibold text-amber-200">{weightKg} kg</span>
+                        <button onClick={() => setWeightKg((w) => Math.min(100, w + 5))} className="flex h-4 w-4 items-center justify-center rounded-full text-stone-400 hover:text-amber-300 transition">+</button>
+                      </div>
+                    )}
                   </div>
                 }>
                 <div className="h-[46vh] min-h-0 overflow-hidden rounded-lg lg:h-full">
@@ -275,7 +324,7 @@ export function ExerciseTrainer() {
                 <div className="relative h-[34vh] min-h-0 overflow-hidden rounded-lg bg-black ring-1 ring-amber-400/30 lg:h-auto lg:flex-1">
                   {/* Keep the dashboard up on a camera error so CameraView can
                       show its own "Enable camera" retry instead of bouncing back. */}
-                  <CameraView active onLandmarks={onLandmarks} onReady={() => setReady(true)} onError={(m) => setErr(m)} />
+                  <CameraView active onLandmarks={onLandmarks} onReady={() => setReady(true)} onError={(m) => setErr(m)} onVideoReady={(v) => { camVideoRef.current = v }} />
                   <span className="pointer-events-none absolute left-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold text-amber-200">{ready ? 'posture tracked' : 'loading pose model…'}</span>
                 </div>
               </Panel>

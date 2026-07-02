@@ -39,11 +39,14 @@ import { useAtlasStore } from '../../store/atlasStore'
 interface Props {
   open:    boolean
   onClose: () => void
+  /** Open straight into the Remote Assessment call (host side), skipping the
+   *  segment chooser — used by the sidebar's dedicated Remote card. */
+  startInCall?: boolean
 }
 
 type Phase = 'choose' | 'running' | 'summary' | 'gait' | 'call'
 
-export function FullBodyAssessmentView({ open, onClose }: Props) {
+export function FullBodyAssessmentView({ open, onClose, startInCall }: Props) {
   const [phase, setPhase]       = useState<Phase>('choose')
   const [selected, setSelected] = useState<Set<SegmentId>>(new Set(['shoulders', 'hips']))
   const [items, setItems]       = useState<BatteryItem[]>([])
@@ -68,6 +71,14 @@ export function FullBodyAssessmentView({ open, onClose }: Props) {
       setProgOpen(false)
     }
   }, [open])
+
+  // Direct remote-call launch (sidebar Remote card) — skip the chooser.
+  useEffect(() => {
+    if (open && startInCall) {
+      setCallRoom(randomId(6))
+      setPhase('call')
+    }
+  }, [open, startInCall])
 
   function toggleSegment(id: SegmentId) {
     setSelected((prev) => {
@@ -121,7 +132,9 @@ export function FullBodyAssessmentView({ open, onClose }: Props) {
           open={true}
           role="host"
           roomId={callRoom}
-          onClose={() => setPhase('choose')}
+          // When launched directly from the Remote card, closing the call
+          // closes the whole modal instead of dropping into the chooser.
+          onClose={() => { if (startInCall) onClose(); else setPhase('choose') }}
         />
       )}
 

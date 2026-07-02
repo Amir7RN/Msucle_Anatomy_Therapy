@@ -27,6 +27,8 @@
  */
 
 import type { LandmarkSet } from './landmarks'
+import { LM } from './landmarks'
+import { worldVec } from './anatomicalFrame'
 import { readJointMovement } from './muscleJointMap'
 import { OrientationTracker, type OrientationEstimate } from './bodyOrientation'
 import { romFraction } from './constraints'
@@ -202,6 +204,17 @@ const ATTACK          = 0.45    // envelope rise (fast — muscle lights quickly
 const DECAY           = 0.08    // envelope fall (slow — fades like a real glow)
 const LOAD_PER_KG     = 0.05    // each kg adds 5% agonist effort (per hand)
 const LOAD_MAX        = 2.2     // cap the load multiplier
+// Torque model: gravity torque at a joint = m·g·(horizontal moment arm). The
+// moment-arm fraction (0..1, horizontal wrist offset ÷ limb length) scales how
+// much of the held mass the joint actually fights: an arm hanging straight
+// down feels almost none of a dumbbell's torque at the shoulder; the same arm
+// horizontal feels all of it. LEVER_FLOOR keeps a small grip/stabilisation
+// cost even at zero moment arm, so holding a weight never reads as free.
+const LEVER_FLOOR     = 0.25
+// Load held in the hands still loads the lower body / trunk axially (carrying,
+// squatting with dumbbells) — at a reduced factor since it's shared bilaterally
+// and the moment arms are short.
+const AXIAL_LOAD_SCALE = 0.45
 
 function regionFor(base: MovementRule['regionBase'], side: 'L' | 'R'): SymmetryRegion {
   if (base === 'trunk') return 'trunk'
@@ -239,9 +252,48 @@ export class LiveActivationEngine {
     let energyAccum = 0
     let energyCount = 0
 
-    const loadFactor = (side: 'L' | 'R'): number => {
-      const kg = side === 'L' ? (load.leftKg ?? 0) : (load.rightKg ?? 0)
-      return Math.min(LOAD_MAX, 1 + Math.max(0, kg) * LOAD_PER_KG)
+    /**
+     * Horizontal moment-arm fraction of the held mass about a pivot landmark,
+     * from WORLD coords (gravity-aligned): |wrist − pivot| projected onto the
+     * horizontal plane, normalised by the full 3-D pivot→wrist distance.
+     * 0 = wrist directly below the pivot (no gravity torque), 1 = fully
+     * horizontal (max torque). Falls back to 1 (conservative) without world
+     * coords so load never silently disappears.
+     */
+    const momentArmFrac = (side: 'L' | 'R', pivotIdx: number): number => {
+      const wristIdx = side === 'L' ? LM.L_WRIST : LM.R_WRIST
+      const p = worldVec(lms[pivotIdx]), w = worldVec(lms[wristIdx])
+      if (!p || !w) return 1
+      const dx = w.x - p.x, dy = w.y - p.y, dz = w.z - p.z
+      const len = Math.hypot(dx, dy, dz)
+      if (len < 1e-4) return LEVER_FLOOR
+      const horiz = Math.hypot(dx, dz) / len
+      return Math.max(LEVER_FLOOR, Math.min(1, horiz))
+    }
+
+    /**
+     * Localized load multiplier for one movement: the held kg scaled by the
+     * joint's actual gravity moment arm, so the same dumbbell lights the
+     * shoulder heatmap hard with the arm horizontal and barely at all hanging
+     * at the side — matching what the muscle genuinely fights.
+     */
+    const loadFactor = (side: 'L' | 'R', base: MovementRule['regionBase']): number => {
+      const ownKg   = Math.max(0, side === 'L' ? (load.leftKg ?? 0) : (load.rightKg ?? 0))
+      const totalKg = Math.max(0, (load.leftKg ?? 0)) + Math.max(0, (load.rightKg ?? 0))
+      let effectiveKg: number
+      switch (base) {
+        case 'shoulder':
+          effectiveKg = ownKg * momentArmFrac(side, side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER)
+          break
+        case 'elbow':
+          effectiveKg = ownKg * momentArmFrac(side, side === 'L' ? LM.L_ELBOW : LM.R_ELBOW)
+          break
+        default:
+          // Lower body / trunk / neck: hand-held mass loads the chain axially.
+          effectiveKg = totalKg * AXIAL_LOAD_SCALE
+          break
+      }
+      return Math.min(LOAD_MAX, 1 + effectiveKg * LOAD_PER_KG)
     }
 
     const evalMovement = (rule: MovementRule, side: 'L' | 'R') => {
@@ -270,7 +322,7 @@ export class LiveActivationEngine {
 
       if (r.confidence > 0.3) { energyAccum += movEnergy; energyCount += 1 }
 
-      const lf = loadFactor(side)
+      const lf = loadFactor(side, rule.regionBase)
 
       for (const m of rule.muscles) {
         const region = m.region ?? regionFor(m.crossBase ?? rule.regionBase, side)

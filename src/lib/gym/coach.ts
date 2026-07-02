@@ -11,6 +11,7 @@
  */
 
 import { getStoredApiKey } from '../triage/llm'
+import { completeSentences } from '../speechText'
 import type { Exercise } from './exercises'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
@@ -25,6 +26,10 @@ export interface CoachSnapshot {
   bpm?:        number | null
   /** seconds the user has been in poor form recently (drives a correction cue). */
   poorFormSec?: number
+  /** Rep-depth trend across the recent history — coach the trajectory, not the frame. */
+  depthTrend?: 'deepening' | 'shrinking' | 'consistent'
+  /** Total external load held (kg), from AI vision or the manual stepper. */
+  heldKg?:     number
 }
 
 export function gymCoachEnabled(): boolean {
@@ -55,8 +60,11 @@ export function createGymCoach(exercise: Exercise) {
       `Live: rep ${snap.reps}/${snap.repGoal}, peak contraction ${(snap.peakActivation * 100) | 0}%, ` +
       `range of motion ${snap.romDeg | 0}°` +
       (snap.bpm ? `, heart rate ${snap.bpm} bpm` : '') +
-      (snap.poorFormSec ? `, partial range for ${snap.poorFormSec | 0}s` : '') + `. ` +
-      `Context: ${reason}. Give ONE short spoken cue (max 14 words), motivating and specific. No preamble.`
+      (snap.poorFormSec ? `, partial range for ${snap.poorFormSec | 0}s` : '') +
+      (snap.heldKg ? `, holding ${Math.round(snap.heldKg)} kg` : '') +
+      (snap.depthTrend ? `, rep depth ${snap.depthTrend} across the set` : '') + `. ` +
+      `Context: ${reason}. Give ONE short spoken cue (max 14 words), motivating and specific — ` +
+      `prefer the trend over the number ("depth is shrinking, own these last reps"). No preamble.`
 
     try {
       const res = await fetch(ANTHROPIC_URL, {
@@ -69,13 +77,17 @@ export function createGymCoach(exercise: Exercise) {
         },
         body: JSON.stringify({
           model: MODEL_ID,
-          max_tokens: 40,
+          // Headroom above the ~14-word cue we ask for, so the budget never
+          // cuts a sentence in half; completeSentences below is the backstop.
+          max_tokens: 80,
           messages: [{ role: 'user', content: prompt }],
         }),
       })
       if (!res.ok) return null
       const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> }
-      const text = (data.content ?? []).filter((b) => b.type === 'text').map((b) => b.text ?? '').join(' ').trim()
+      const text = completeSentences(
+        (data.content ?? []).filter((b) => b.type === 'text').map((b) => b.text ?? '').join(' '),
+      )
       return text || null
     } catch {
       return null

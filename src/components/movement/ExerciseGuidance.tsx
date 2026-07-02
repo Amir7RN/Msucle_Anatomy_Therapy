@@ -42,6 +42,8 @@ import {
 import { useVoiceInput, useVoiceOutput } from '../../hooks/useVoice'
 import { createRepCounter } from '../../lib/movement/repCounter'
 import { getStoredApiKey, setStoredApiKey } from '../../lib/triage/llm'
+import { completeSentences } from '../../lib/speechText'
+import { FormTrendTracker } from '../../lib/movement/coachContext'
 import {
   createCueStream,
   pickCueFromJoint,
@@ -728,6 +730,21 @@ function AiCoach({
   useEffect(() => { messagesRef.current = messages },  [messages])
   useEffect(() => { snapshotRef.current = snapshot },  [snapshot])
 
+  // ── Rolling coach context (trends / streaks / moments) ──────────────────
+  // Fed every smoothed snapshot; its promptBlock() rides on each Claude call
+  // and its suggestedIntervalMs() drives the proactive cadence, so the coach
+  // reacts to what the body has been DOING, at a human pace.
+  const trendRef = useRef(new FormTrendTracker())
+  useEffect(() => {
+    if (!snapshot) return
+    trendRef.current.push(snapshot, performance.now(), (label) => {
+      const check = def.checks.find((c) => c.label === label)
+      return check ? check.ideal : null
+    })
+  }, [snapshot, def.checks])
+  // Fresh exercise = fresh context.
+  useEffect(() => { trendRef.current.reset() }, [def.exerciseId])
+
   const handleSilence = useCallback((text: string) => {
     if (text.trim() && !sendingRef.current) void sendToCoach(text)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -1018,12 +1035,16 @@ ${buildStepContext()}
 LIVE JOINT ANGLES (this very moment):
 ${buildFormContext()}
 
+WHAT THE BODY HAS BEEN DOING (rolling 20s window — coach the TREND, not the frame):
+${trendRef.current.promptBlock()}
+
 ${buildAssessmentContext()}
 
 How to coach:
 • You speak ALONGSIDE a fast local cue engine that already calls out micro-corrections like "bend 10 more degrees" every few seconds. Do NOT duplicate those mechanical cues — your role is the higher-level voice.
 • Use the user's measured peak as the safe ceiling. If their peak is below the healthy target, coach them to THEIR peak, never push past it (+5° at most).
 • Be encouraging, specific, and motion-aware. Reference what their body is actually doing right now ("you've been holding well", "I see you're easing back, good").
+• PREFER the trend over the snapshot: "you've gained 8 degrees in the last stretch — keep that direction" lands far better than restating the current angle. React to MOMENTS (a new session best, form just clicking in) the turn they appear; specific praise earned by the data, never generic.
 • Keep every reply to 1–2 short sentences. It's read aloud while they're moving.
 • You may answer questions about the exercise, the muscles working, or sensations they describe.
 • Never list multiple things at once and never repeat a generic "good job" — earn the praise with a specific observation.`
@@ -1046,13 +1067,16 @@ How to coach:
         },
         body: JSON.stringify({
           model:      COACH_MODEL,
-          max_tokens: 100,
+          // Headroom over the 1–2 sentences the system prompt asks for;
+          // completeSentences trims any budget-cut reply to a clean boundary
+          // so the spoken cue never ends mid-sentence.
+          max_tokens: 160,
           system:     systemPrompt,
           messages:   [...baseHistory, { role: 'user', content: userMsg }],
         }),
       })
       const data  = await res.json()
-      const reply: string = data.content?.[0]?.text ?? ''
+      const reply: string = completeSentences(data.content?.[0]?.text ?? '')
       if (reply) {
         const assistantMsg: CoachMessage = { role: 'assistant', content: reply }
         setMessages((m) => [...(isProactive ? m : baseHistory), assistantMsg])
@@ -1068,11 +1092,13 @@ How to coach:
   }
 
   // ── Proactive higher-level coaching ────────────────────────────────────
-  // The local directional-cue engine now handles fast mechanical corrections
+  // The local directional-cue engine handles fast mechanical corrections
   // ("bend 10 more degrees"). Claude's job here is the deeper coaching beats
   // — explaining what muscle is engaging, reinforcing good streaks, motivating
-  // through fatigue — at a slower 25 s cadence so it never collides with the
-  // local cue stream.
+  // through fatigue. The cadence is ADAPTIVE (FormTrendTracker): a fresh
+  // moment or degrading form pulls the next message forward to ~18 s; a long
+  // good-form groove pushes it out toward 60 s — the coach speaks when a
+  // human coach would, not on a metronome.
   const lastProactiveRef = useRef(0)
   useEffect(() => {
     const id = setInterval(() => {
@@ -1081,7 +1107,7 @@ How to coach:
       const stepDone = allDoneRef.current
       if (!snap || stepDone) return
       const now = Date.now()
-      if (now - lastProactiveRef.current < 45_000) return
+      if (now - lastProactiveRef.current < trendRef.current.suggestedIntervalMs()) return
       lastProactiveRef.current = now
       void sendToCoach('', true)
     }, 5_000)

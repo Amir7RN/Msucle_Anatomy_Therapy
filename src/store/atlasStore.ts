@@ -80,7 +80,7 @@ interface AtlasState {
    *  (e.g. on-canvas FeatureLauncher) trigger header-owned modals
    *  without prop drilling. Consumers clear it back to null after
    *  handling. */
-  featureModalToOpen:   null | 'battery' | 'program' | 'symmetry'
+  featureModalToOpen:   null | 'battery' | 'program' | 'symmetry' | 'remote'
 
   // Muscle-overlay calibration onto the Meshy body — non-uniform scale
   muscleOverlayScaleX:  number
@@ -154,7 +154,7 @@ interface AtlasState {
   setProfileOpen:       (open: boolean) => void
   pushModal:            () => void
   popModal:             () => void
-  setFeatureModalToOpen: (key: null | 'battery' | 'program' | 'symmetry') => void
+  setFeatureModalToOpen: (key: null | 'battery' | 'program' | 'symmetry' | 'remote') => void
 
   setMuscleOverlayScaleX:  (v: number) => void
   setMuscleOverlayScaleY:  (v: number) => void

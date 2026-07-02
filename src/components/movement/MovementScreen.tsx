@@ -21,6 +21,9 @@ import {
   scoreMovement, summariseAssessment, type AssessmentSummary, type MovementResult,
 } from '../../lib/movement/scoring'
 import { generateProtocol, type DailyProtocol } from '../../lib/movement/protocol'
+import {
+  enqueueFromAssessment, type KinematicDeviation, type TargetSequenceItem,
+} from '../../lib/movement/deviationEngine'
 import { loadHistory, saveAssessment } from '../../lib/movement/history'
 import { useDiagnosticCatalogue } from '../../hooks/useDiagnosticClick'
 import { useVoiceOutput } from '../../hooks/useVoice'
@@ -56,6 +59,8 @@ export function MovementScreen({ open, onClose }: Props) {
   const [holdProgress, setHoldProgress] = useState(0)   // 0..1
   const [results,      setResults]      = useState<MovementResult[]>([])
   const [summary,      setSummary]      = useState<AssessmentSummary | null>(null)
+  const [deviations,   setDeviations]   = useState<KinematicDeviation[]>([])
+  const [injected,     setInjected]     = useState<TargetSequenceItem[]>([])
 
   // Mutable accumulator for the current movement's peak metrics.
   const peakRef       = useRef<Record<string, number>>({})
@@ -93,6 +98,8 @@ export function MovementScreen({ open, onClose }: Props) {
       setMoveIdx(0)
       setResults([])
       setSummary(null)
+      setDeviations([])
+      setInjected([])
       peakRef.current = {}
       compsRef.current = new Set()
       tts.cancel()
@@ -219,6 +226,11 @@ export function MovementScreen({ open, onClose }: Props) {
     const sum = summariseAssessment(MOVEMENTS, results)
     setSummary(sum)
     saveAssessment(sum)
+    // Kinematic deviation analysis + automatic target-sequence injection into
+    // the persisted workflow queue (deviationEngine).
+    const { deviations, injected } = enqueueFromAssessment(sum)
+    setDeviations(deviations)
+    setInjected(injected)
     setPhase('results')
     setActive(false)
     tts.speak(`Assessment complete. Your Movement Score is ${sum.movementScore}.`)
@@ -239,6 +251,8 @@ export function MovementScreen({ open, onClose }: Props) {
   function restartAssessment() {
     setSummary(null)
     setResults([])
+    setDeviations([])
+    setInjected([])
     startAssessment()
   }
 
@@ -302,6 +316,8 @@ export function MovementScreen({ open, onClose }: Props) {
         {phase === 'results' && summary && (
           <ResultsView
             summary={summary}
+            deviations={deviations}
+            injected={injected}
             onRestart={restartAssessment}
             onClose={onClose}
           />
@@ -482,11 +498,13 @@ function MovementHUD({
 // ── Results view ─────────────────────────────────────────────────────────────
 
 function ResultsView({
-  summary, onRestart, onClose,
+  summary, deviations, injected, onRestart, onClose,
 }: {
-  summary:   AssessmentSummary
-  onRestart: () => void
-  onClose:   () => void
+  summary:    AssessmentSummary
+  deviations: KinematicDeviation[]
+  injected:   TargetSequenceItem[]
+  onRestart:  () => void
+  onClose:    () => void
 }) {
   const catalogue = useDiagnosticCatalogue()
   const protocol = useMemo<DailyProtocol>(() => generateProtocol(summary.findings), [summary.findings])
@@ -545,6 +563,80 @@ function ResultsView({
                   <ul className="mt-1 space-y-0.5 text-[11px] text-slate-300">
                     {f.reasons.map((r, i) => <li key={i}>{r}</li>)}
                   </ul>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Kinematic deviations — exact degrees vs the clinical reference */}
+        {deviations.some((d) => d.band !== 'none') && (
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold tracking-wide text-slate-200">
+              Kinematic deviations
+              <span className="ml-2 text-[10px] font-normal text-slate-500">measured vs normative reference</span>
+            </h3>
+            <div className="overflow-hidden rounded-md border border-slate-800">
+              <table className="w-full text-left text-[11px]">
+                <thead className="bg-slate-900 text-[10px] uppercase tracking-wider text-slate-500">
+                  <tr>
+                    <th className="px-3 py-1.5 font-medium">Joint / metric</th>
+                    <th className="px-3 py-1.5 font-medium text-right">Measured</th>
+                    <th className="px-3 py-1.5 font-medium text-right">Normal</th>
+                    <th className="px-3 py-1.5 font-medium text-right">Deviation</th>
+                    <th className="px-3 py-1.5 font-medium">Severity</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/70 bg-slate-900/50">
+                  {deviations.filter((d) => d.band !== 'none').slice(0, 8).map((d) => (
+                    <tr key={`${d.movementId}:${d.metric}`}>
+                      <td className="px-3 py-1.5 text-slate-200">{d.label}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-slate-100">
+                        {d.measured}{d.fromReference ? '°' : ''}
+                      </td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-slate-400">
+                        {d.fromReference ? `${d.normFloor}–${d.normTarget}°` : `${d.normTarget}`}
+                      </td>
+                      <td className="px-3 py-1.5 text-right tabular-nums font-semibold text-slate-100">
+                        −{d.deviation}{d.fromReference ? '°' : ''}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${bandChip(d.band)}`}>
+                          {d.band}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {/* Auto-injected target sequences */}
+        {injected.length > 0 && (
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold tracking-wide text-slate-200">
+              Added to your training queue
+              <span className="ml-2 text-[10px] font-normal text-slate-500">targeted at your specific deficits</span>
+            </h3>
+            <div className="space-y-1.5">
+              {injected.map((seq) => (
+                <div key={seq.id} className="rounded-md border border-cyan-900/50 bg-cyan-950/20 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs font-semibold text-cyan-100">{seq.title}</div>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${bandChip(seq.band)}`}>
+                      {seq.band}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 text-[10px] text-slate-400">{seq.reason}</div>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {seq.exercises.map(({ exercise, rounds }) => (
+                      <span key={exercise.id} className="rounded bg-slate-800/80 px-2 py-0.5 text-[10px] text-slate-200">
+                        {exercise.emoji ?? '•'} {exercise.title} · {rounds}× {exercise.dose}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -646,6 +738,15 @@ function scoreColor(s: number): string {
   if (s >= 80) return 'text-emerald-300'
   if (s >= 60) return 'text-orange-300'
   return 'text-red-300'
+}
+
+function bandChip(band: 'none' | 'mild' | 'moderate' | 'severe'): string {
+  switch (band) {
+    case 'severe':   return 'bg-red-500/15 text-red-300 ring-1 ring-red-500/40'
+    case 'moderate': return 'bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/40'
+    case 'mild':     return 'bg-amber-500/15 text-amber-200 ring-1 ring-amber-500/40'
+    default:         return 'bg-slate-700/40 text-slate-300 ring-1 ring-slate-600/50'
+  }
 }
 
 function exportSummaryJson(summary: AssessmentSummary) {

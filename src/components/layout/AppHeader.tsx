@@ -18,14 +18,17 @@ export function AppHeader() {
   const [symOpen,     setSymOpen]     = useState(false)
   const [progOpen,    setProgOpen]    = useState(false)
   const [batteryOpen, setBatteryOpen] = useState(false)
+  // When true, the assessment modal opens straight into the remote call.
+  const [batteryInCall, setBatteryInCall] = useState(false)
 
-  // Open modals when the on-canvas FeatureLauncher (or other UI) fires
-  // a request via the atlas store.
+  // Open modals when the sidebar FeatureRail (or other UI) fires a request
+  // via the atlas store.
   const featureModalToOpen    = useAtlasStore((s) => s.featureModalToOpen)
   const setFeatureModalToOpen = useAtlasStore((s) => s.setFeatureModalToOpen)
   useEffect(() => {
     if (!featureModalToOpen) return
-    if (featureModalToOpen === 'battery')  setBatteryOpen(true)
+    if (featureModalToOpen === 'battery')  { setBatteryInCall(false); setBatteryOpen(true) }
+    if (featureModalToOpen === 'remote')   { setBatteryInCall(true);  setBatteryOpen(true) }
     if (featureModalToOpen === 'program')  setProgOpen(true)
     if (featureModalToOpen === 'symmetry') setSymOpen(true)
     setFeatureModalToOpen(null)
@@ -142,7 +145,7 @@ export function AppHeader() {
       <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
       <SymmetryReport       open={symOpen}  onClose={() => setSymOpen(false)} />
       <PersonalProgramView open={progOpen} onClose={() => setProgOpen(false)} />
-      <FullBodyAssessmentView open={batteryOpen} onClose={() => setBatteryOpen(false)} />
+      <FullBodyAssessmentView open={batteryOpen} startInCall={batteryInCall} onClose={() => { setBatteryOpen(false); setBatteryInCall(false) }} />
     </header>
   )
 }

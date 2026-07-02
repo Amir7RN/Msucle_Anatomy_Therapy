@@ -9,13 +9,12 @@ import { ProfileSetup } from './components/profile/ProfileSetup'
 import { useAtlasStore } from './store/atlasStore'
 import type { CameraPresetKey } from './lib/cameraUtils'
 import { Activity, MessageCircle, Box, Info, X, Sparkles, Scan } from 'lucide-react'
-import { LandingPage } from './components/landing/LandingPage'
+import { MoveMateLanding } from './components/landing/MoveMateLanding'
 import { GymApp } from './components/gym/GymApp'
 import { FullBodyAssessmentView } from './components/assessment/FullBodyAssessmentView'
 import { RemoteAssessmentCall } from './components/assessment/RemoteAssessmentCall'
 import { PersonalProgramView } from './components/insights/PersonalProgramView'
 import { SymmetryReport } from './components/insights/SymmetryReport'
-import { FeatureLauncher } from './components/layout/FeatureLauncher'
 
 /**
  * Root application component.
@@ -33,7 +32,7 @@ export default function App() {
   if (showGym) return <GymApp />
 
   if (!showAtlas) {
-    return <LandingPage atlasUrl={appUrl} diagnosticUrl={diagnosticUrl} gymUrl={gymUrl} />
+    return <MoveMateLanding atlasUrl={appUrl} diagnosticUrl={diagnosticUrl} gymUrl={gymUrl} />
   }
 
   return <AtlasApp />
@@ -182,9 +181,9 @@ function AtlasApp() {
         <main className="flex-1 min-w-0 relative">
           <ViewerCanvas />
           <DiagnosticModeToggle />
-          <FeatureLauncher />
-          {/* Movement launcher removed - the new 'Assessment' header button
-              replaces it. Mobile still has access via the bottom-nav tab. */}
+          {/* Feature launching moved to the LeftSidebar FeatureRail — the
+              canvas stays clean for the model itself. Mobile keeps the
+              bottom-nav tabs. */}
         </main>
 
         {/* Right panel — always shown on desktop; shown as full overlay on mobile when mobilePanel='details' */}

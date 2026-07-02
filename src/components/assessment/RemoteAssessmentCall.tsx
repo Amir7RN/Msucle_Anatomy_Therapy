@@ -26,7 +26,7 @@ import {
   Download, Wifi, WifiOff, Footprints, Camera, FileText, Image as ImageIcon,
 } from 'lucide-react'
 import { ensureDetector, detectVideoFrame, disposeDetector } from '../../lib/movement/poseDetector'
-import { LM } from '../../lib/movement/landmarks'
+import { LM, jointAngleDeg } from '../../lib/movement/landmarks'
 import type { LandmarkSet } from '../../lib/movement/landmarks'
 import {
   measureGaitFrame, summariseGait, fillInstantaneousSpeed, buildGaitCsv,
@@ -116,6 +116,60 @@ const median = (a: number[]) => {
   return s[Math.floor(s.length / 2)]
 }
 
+// ── Full-body live joint readout ─────────────────────────────────────────────
+// The remote assessment used to surface only the ankle pair (gait focus).
+// The evaluator now gets EVERY primary joint, live: flexion at elbows, hips
+// and knees, shoulder elevation, plus the ankle pair — each side, in degrees.
+
+export interface JointReadout {
+  /** joint key → { l, r } degrees, null when the landmarks were occluded. */
+  [joint: string]: { l: number | null; r: number | null }
+}
+
+const JOINT_ROWS: Array<{ key: string; label: string }> = [
+  { key: 'shoulder', label: 'Shoulder elev.' },
+  { key: 'elbow',    label: 'Elbow flex.' },
+  { key: 'hip',      label: 'Hip flex.' },
+  { key: 'knee',     label: 'Knee flex.' },
+  { key: 'ankle',    label: 'Ankle' },
+]
+
+/** One joint angle if all three landmarks are visible enough, else null. */
+function angleOrNull(lms: LandmarkSet, a: number, b: number, c: number, min = 0.35): number | null {
+  const pa = lms[a], pb = lms[b], pc = lms[c]
+  if (!pa || !pb || !pc) return null
+  if ((pa.visibility ?? 0) < min || (pb.visibility ?? 0) < min || (pc.visibility ?? 0) < min) return null
+  return jointAngleDeg(pa, pb, pc)
+}
+
+/** All primary joints for one frame (flexion convention: 0° = straight). */
+function measureAllJoints(lms: LandmarkSet, ankles: { l: number | null; r: number | null }): JointReadout {
+  const flex = (v: number | null) => (v === null ? null : Math.round(180 - v))
+  const raw  = (v: number | null) => (v === null ? null : Math.round(v))
+  return {
+    shoulder: {
+      l: raw(angleOrNull(lms, LM.L_HIP, LM.L_SHOULDER, LM.L_ELBOW)),
+      r: raw(angleOrNull(lms, LM.R_HIP, LM.R_SHOULDER, LM.R_ELBOW)),
+    },
+    elbow: {
+      l: flex(angleOrNull(lms, LM.L_SHOULDER, LM.L_ELBOW, LM.L_WRIST)),
+      r: flex(angleOrNull(lms, LM.R_SHOULDER, LM.R_ELBOW, LM.R_WRIST)),
+    },
+    hip: {
+      l: flex(angleOrNull(lms, LM.L_SHOULDER, LM.L_HIP, LM.L_KNEE)),
+      r: flex(angleOrNull(lms, LM.R_SHOULDER, LM.R_HIP, LM.R_KNEE)),
+    },
+    knee: {
+      l: flex(angleOrNull(lms, LM.L_HIP, LM.L_KNEE, LM.L_ANKLE)),
+      r: flex(angleOrNull(lms, LM.R_HIP, LM.R_KNEE, LM.R_ANKLE)),
+    },
+    ankle: {
+      l: ankles.l === null ? null : Math.round(ankles.l),
+      r: ankles.r === null ? null : Math.round(ankles.r),
+    },
+  }
+}
+
 export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
   const [conn, setConn]   = useState<ConnState>('idle')
   const [copied, setCopied] = useState(false)
@@ -123,12 +177,12 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
   const [facing, setFacing] = useState<'user' | 'environment'>('user')
   const [error, setError] = useState<string | null>(null)
   const [hasRemote, setHasRemote] = useState(false)
-  // Host live readout.
-  const [liveL, setLiveL] = useState<number | null>(null)
-  const [liveR, setLiveR] = useState<number | null>(null)
+  // Host live readout — every primary joint, both sides.
+  const [liveJoints, setLiveJoints] = useState<JointReadout | null>(null)
+  const lastJointPushRef = useRef(0)
   const [recording, setRecording] = useState(false)
   const [summary, setSummary] = useState<GaitSummary | null>(null)
-  const [staticCaps, setStaticCaps] = useState<StaticCapture[]>([])
+  const [staticCaps, setStaticCaps] = useState<Array<StaticCapture & { joints?: JointReadout }>>([])
   const [stepCount, setStepCount] = useState(0)
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [recSecs, setRecSecs] = useState(0)
@@ -365,8 +419,13 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
               drawSkeleton(ctx, lms, c.width, c.height)
               const m = measureGaitFrame(lms)
               lastMetrics.current = m
-              setLiveL(m.leftAnkle != null ? Math.round(m.leftAnkle) : null)
-              setLiveR(m.rightAnkle != null ? Math.round(m.rightAnkle) : null)
+              // Full-body readout, throttled to ~8 Hz so ten live numbers
+              // don't re-render the dashboard on every camera frame.
+              const nowMs = performance.now()
+              if (nowMs - lastJointPushRef.current > 120) {
+                lastJointPushRef.current = nowMs
+                setLiveJoints(measureAllJoints(lms, { l: m.leftAnkle, r: m.rightAnkle }))
+              }
               if (recRef.current) recordFrame(lms, m)
             }
             // Composite (raw video + guide lines + skeleton) onto an offscreen
@@ -402,15 +461,15 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
     if (struck) setStepCount(stepMachine.current.count())
   }
 
-  /** Static posture capture — snapshot both-ankle angles AND a screenshot of
-   *  the person with the pose overlay burned in. */
+  /** Static posture capture — snapshot the FULL joint readout AND a screenshot
+   *  of the person with the pose overlay burned in. */
   function capturePosture() {
     const m = lastMetrics.current
     if (!m) return
     let image: string | undefined
     try { image = recCanvas.current?.toDataURL('image/png') } catch { /* */ }
     setStaticCaps((prev) => [
-      { ts: Date.now(), leftAnkle: m.leftAnkle, rightAnkle: m.rightAnkle, leftShank: m.leftShank, rightShank: m.rightShank, image },
+      { ts: Date.now(), leftAnkle: m.leftAnkle, rightAnkle: m.rightAnkle, leftShank: m.leftShank, rightShank: m.rightShank, image, joints: liveJoints ?? undefined },
       ...prev,
     ].slice(0, 12))
   }
@@ -602,13 +661,36 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
             <aside className="flex w-80 flex-shrink-0 flex-col gap-3 overflow-y-auto border-l border-slate-800 bg-slate-950 p-3">
               <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-300">Evaluator dashboard</div>
 
-              {/* Live metrics */}
-              <div className="grid grid-cols-3 gap-2">
-                <Metric label="L ankle" value={liveL == null ? '—' : `${liveL}°`} tone="orange" />
-                <Metric label="R ankle" value={liveR == null ? '—' : `${liveR}°`} tone="cyan" />
-                <Metric label="Steps" value={String(stepCount)} tone="slate" />
+              {/* Live full-body joint readout */}
+              <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Live joints</span>
+                  <span className="flex items-center gap-1 text-[9px] text-slate-500">
+                    <span className={`h-1.5 w-1.5 rounded-full ${liveJoints ? 'animate-pulse bg-emerald-400' : 'bg-slate-600'}`} />
+                    {liveJoints ? 'tracking' : 'no pose'}
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  <div className="grid grid-cols-[1fr_3rem_3rem] gap-1 text-[9px] uppercase tracking-wider text-slate-500">
+                    <span /> <span className="text-right text-orange-300/80">Left</span> <span className="text-right text-cyan-300/80">Right</span>
+                  </div>
+                  {JOINT_ROWS.map(({ key, label }) => {
+                    const j = liveJoints?.[key]
+                    return (
+                      <div key={key} className="grid grid-cols-[1fr_3rem_3rem] items-center gap-1 rounded bg-slate-950/50 px-1.5 py-1 text-[11px]">
+                        <span className="truncate text-slate-300">{label}</span>
+                        <span className="text-right font-semibold tabular-nums text-orange-300">{j?.l == null ? '—' : `${j.l}°`}</span>
+                        <span className="text-right font-semibold tabular-nums text-cyan-300">{j?.r == null ? '—' : `${j.r}°`}</span>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
-              <div className="text-[10px] text-slate-500">Live ankle = raw shank↔foot angle (side view).</div>
+              <div className="grid grid-cols-2 gap-2">
+                <Metric label="Steps" value={String(stepCount)} tone="slate" />
+                <Metric label="Joints tracked" value={liveJoints ? String(Object.values(liveJoints).reduce((n, j) => n + (j.l != null ? 1 : 0) + (j.r != null ? 1 : 0), 0)) : '—'} tone="cyan" />
+              </div>
+              <div className="text-[10px] text-slate-500">Angles are flexion from straight (shoulder = elevation). Ankle = raw shank↔foot, side view.</div>
 
               {/* Tools */}
               <div className="space-y-2 rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
@@ -662,6 +744,15 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
                             <span className="text-orange-300">L {s.leftAnkle == null ? '—' : `${Math.round(s.leftAnkle)}°`}</span>{'  '}
                             <span className="text-cyan-300">R {s.rightAnkle == null ? '—' : `${Math.round(s.rightAnkle)}°`}</span>
                           </div>
+                          {s.joints && (
+                            <div className="mt-0.5 truncate text-[9px] text-slate-500">
+                              {JOINT_ROWS.filter(({ key }) => key !== 'ankle').map(({ key, label }) => {
+                                const j = s.joints![key]
+                                if (!j || (j.l == null && j.r == null)) return null
+                                return `${label.replace(/\.$/, '')} ${j.l ?? '—'}/${j.r ?? '—'}°`
+                              }).filter(Boolean).join(' · ')}
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
