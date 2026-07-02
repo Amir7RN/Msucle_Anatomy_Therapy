@@ -17,6 +17,7 @@ import { parseHealthZip, type ParseProgress } from '../../lib/health/parseHealth
 import type { HealthParseResult, ParsedWorkout } from '../../lib/health/appleHealthParser'
 import { estimateMuscleLoad, type MuscleLoadResult } from '../../lib/health/muscleLoadEstimator'
 import { HealthBalanceView } from './HealthBalanceView'
+import { PractitionerClientsView } from './PractitionerClientsView'
 
 interface Props {
   open: boolean
@@ -32,6 +33,7 @@ export function HealthImportView({ open, onClose }: Props) {
   const [load, setLoad] = useState<MuscleLoadResult | null>(null)
   const [error, setError] = useState('')
   const [dragOver, setDragOver] = useState(false)
+  const [practOpen, setPractOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Hide 3D canvas chrome while open (same convention as the other modals).
@@ -77,9 +79,14 @@ export function HealthImportView({ open, onClose }: Props) {
 
   if (!open) return null
 
+  // Practitioner path: view a connected client's shared summary.
+  if (practOpen) {
+    return <PractitionerClientsView open={true} onClose={() => setPractOpen(false)} />
+  }
+
   // Training-balance view uses the full-screen twin layout (its own header),
   // so it renders outside the upload card.
-  if (phase === 'balance' && load) {
+  if (phase === 'balance' && result) {
     return (
       <div className="fixed inset-0 z-[90] flex flex-col bg-[#040609] text-white">
         <header className="relative flex items-center gap-2 border-b border-white/10 bg-black/60 px-4 py-2 backdrop-blur-xl">
@@ -91,7 +98,7 @@ export function HealthImportView({ open, onClose }: Props) {
             Training balance
           </span>
         </header>
-        <HealthBalanceView result={load} onClose={onClose} />
+        <HealthBalanceView workouts={result.workouts} onClose={onClose} />
       </div>
     )
   }
@@ -159,6 +166,13 @@ export function HealthImportView({ open, onClose }: Props) {
               Your export is processed entirely on this device - only the computed per-muscle
               workload summary is saved to your account.
             </div>
+            <button
+              onClick={() => setPractOpen(true)}
+              className="w-full rounded-lg border border-violet-500/25 bg-violet-500/5 px-3 py-2 text-left text-[11px] text-violet-200 transition-colors hover:border-violet-400/50 hover:bg-violet-500/10"
+            >
+              <span className="font-semibold">Practitioner?</span> View the training balance a client
+              has shared with you.
+            </button>
           </div>
         )}
 

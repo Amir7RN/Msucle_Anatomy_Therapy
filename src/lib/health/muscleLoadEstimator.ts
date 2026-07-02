@@ -254,11 +254,11 @@ export function classifyAcwr(acwr: number): LoadClass {
 export interface MuscleGroupSummary {
   group:      MuscleGroupId
   label:      string
-  /** Mean daily load over the last 7 days. */
-  load7day:   number
-  /** Mean daily load over the last 28 days. */
-  load28day:  number
-  /** load7day / load28day, or null when there isn't enough chronic history. */
+  /** Mean daily load over the recent window (default 7 days). */
+  loadRecent:   number
+  /** Mean daily load over the baseline window (default 28 days). */
+  loadBaseline: number
+  /** loadRecent / loadBaseline, or null when there isn't enough baseline history. */
   acwr:       number | null
   classification: LoadClass
   /** 'broad' when the recent load is dominated by broad-estimate activities. */
@@ -267,19 +267,39 @@ export interface MuscleGroupSummary {
   renderLevel: number
 }
 
+/** Comparison windows, in days. Defaults mirror the classic 7 vs 28 ACWR. */
+export interface WindowConfig {
+  recentDays:   number
+  baselineDays: number
+}
+
+export const DEFAULT_WINDOWS: WindowConfig = { recentDays: 7, baselineDays: 28 }
+
 export interface MuscleLoadResult {
   referenceDate: string          // ISO day the windows are anchored to
   groups:        MuscleGroupSummary[]
-  /** Total workouts that contributed to the 28-day window. */
-  workoutsInWindow: number
+  /** Requested windows (what the user selected). */
+  recentDays:    number
+  baselineDays:  number
+  /** Windows actually used — clamped to the available history so a baseline
+   *  longer than the data range reports the real range instead of silently
+   *  diluting the average. */
+  effectiveRecentDays:   number
+  effectiveBaselineDays: number
+  /** Days of workout history available up to the reference date (0 = none). */
+  availableDays: number
+  /** Workouts that contributed to each effective window. */
+  workoutsInBaseline: number
+  workoutsInRecent:   number
 }
 
 /**
  * Map an ACWR + class to the 0..1 level the twin model's colour ramp expects.
  * Mirrors the existing intensity convention: low engagement sits at the cool/
  * neutral (near-baseline) end, high load at the hot end.
+ * Exported so the practitioner view can rebuild render levels from stored rows.
  */
-function renderLevelFor(cls: LoadClass, acwr: number | null): number {
+export function renderLevelFor(cls: LoadClass, acwr: number | null): number {
   if (acwr == null || cls === 'low') return 0.05 // neutral / cool
   if (cls === 'balanced') {
     // 0.8..1.3 -> 0.25..0.45
@@ -294,63 +314,87 @@ function renderLevelFor(cls: LoadClass, acwr: number | null): number {
 }
 
 /**
- * Step 4 (5-7): aggregate per-workout group loads into 7/28-day rolling means,
- * ACWR, and a class per muscle group.
+ * Step 4 (5-7): aggregate per-workout group loads into recent/baseline rolling
+ * means, ACWR, and a class per muscle group.
  *
- * @param referenceMs anchor for the windows (defaults to now). The 7-day window
- *        is (ref-7d, ref]; the 28-day window is (ref-28d, ref].
+ * @param referenceMs anchor for the windows (defaults to now). The recent
+ *        window is (ref-recentDays, ref]; baseline is (ref-baselineDays, ref].
+ * @param windows requested comparison windows in days (default 7 vs 28). Each
+ *        window is clamped to the available history — asking for a 2-year
+ *        baseline against 90 days of data averages over the real 90 days and
+ *        reports that via effectiveBaselineDays / availableDays.
  */
 export function estimateMuscleLoad(
   workouts: ParsedWorkout[],
   referenceMs: number = Date.now(),
+  windows: Partial<WindowConfig> = {},
 ): MuscleLoadResult {
+  const recentDays = Math.max(1, Math.round(windows.recentDays ?? DEFAULT_WINDOWS.recentDays))
+  const baselineDays = Math.max(1, Math.round(windows.baselineDays ?? DEFAULT_WINDOWS.baselineDays))
+
   const loads = computeWorkoutLoads(workouts)
   const refDay = new Date(referenceMs)
   const ref = Date.UTC(refDay.getUTCFullYear(), refDay.getUTCMonth(), refDay.getUTCDate()) + DAY_MS - 1
-  const win7 = ref - 7 * DAY_MS
-  const win28 = ref - 28 * DAY_MS
+
+  // Available history: from the earliest workout start to the reference day.
+  let earliest = Number.POSITIVE_INFINITY
+  for (const wl of loads) {
+    const t = new Date(wl.workout.startDate).getTime()
+    if (t < earliest) earliest = t
+  }
+  const availableDays = Number.isFinite(earliest)
+    ? Math.max(1, Math.ceil((ref - earliest) / DAY_MS))
+    : 0
+
+  // Clamp both windows to the data range (see docblock).
+  const effectiveBaselineDays = availableDays > 0 ? Math.min(baselineDays, availableDays) : baselineDays
+  const effectiveRecentDays = availableDays > 0 ? Math.min(recentDays, availableDays) : recentDays
+
+  const winRecent = ref - effectiveRecentDays * DAY_MS
+  const winBase = ref - effectiveBaselineDays * DAY_MS
 
   // Accumulate per-group summed load within each window, plus a broad-estimate
-  // load share (to decide the confidence badge) over the recent 7-day window.
-  const sum7: Record<string, number> = {}
-  const sum28: Record<string, number> = {}
-  const broad7: Record<string, number> = {}
-  const daysWith28 = new Set<string>()
-  let workoutsInWindow = 0
+  // load share (to decide the confidence badge) over the recent window.
+  const sumRecent: Record<string, number> = {}
+  const sumBase: Record<string, number> = {}
+  const broadRecent: Record<string, number> = {}
+  let workoutsInBaseline = 0
+  let workoutsInRecent = 0
 
   for (const wl of loads) {
     const t = new Date(wl.workout.startDate).getTime()
-    if (!(t > win28 && t <= ref)) continue
-    workoutsInWindow++
-    daysWith28.add(dayKey(wl.workout.startDate))
-    const in7 = t > win7
+    const inBase = t > winBase && t <= ref
+    const inRecent = t > winRecent && t <= ref
+    if (!inBase && !inRecent) continue
+    if (inBase) workoutsInBaseline++
+    if (inRecent) workoutsInRecent++
     for (const g of GROUP_IDS) {
       const v = wl.groupLoad[g] ?? 0
       if (v === 0) continue
-      sum28[g] = (sum28[g] ?? 0) + v
-      if (in7) {
-        sum7[g] = (sum7[g] ?? 0) + v
-        if (wl.confidence === 'broad') broad7[g] = (broad7[g] ?? 0) + v
+      if (inBase) sumBase[g] = (sumBase[g] ?? 0) + v
+      if (inRecent) {
+        sumRecent[g] = (sumRecent[g] ?? 0) + v
+        if (wl.confidence === 'broad') broadRecent[g] = (broadRecent[g] ?? 0) + v
       }
     }
   }
 
   const groups: MuscleGroupSummary[] = MUSCLE_GROUPS.map((def) => {
     const g = def.id
-    const load7day = (sum7[g] ?? 0) / 7
-    const load28day = (sum28[g] ?? 0) / 28
-    // ACWR needs a meaningful chronic baseline; with none, the group reads as
+    const loadRecent = (sumRecent[g] ?? 0) / effectiveRecentDays
+    const loadBaseline = (sumBase[g] ?? 0) / effectiveBaselineDays
+    // ACWR needs a meaningful baseline; with none, the group reads as
     // low engagement (needs attention) rather than a divide-by-zero spike.
-    const acwr = load28day > 1e-6 ? load7day / load28day : null
+    const acwr = loadBaseline > 1e-6 ? loadRecent / loadBaseline : null
     const classification = acwr == null ? 'low' : classifyAcwr(acwr)
-    const recent7 = sum7[g] ?? 0
+    const recentSum = sumRecent[g] ?? 0
     const confidence: 'estimated' | 'broad' =
-      recent7 > 0 && (broad7[g] ?? 0) / recent7 > 0.5 ? 'broad' : 'estimated'
+      recentSum > 0 && (broadRecent[g] ?? 0) / recentSum > 0.5 ? 'broad' : 'estimated'
     return {
       group: g,
       label: def.label,
-      load7day,
-      load28day,
+      loadRecent,
+      loadBaseline,
       acwr,
       classification,
       confidence,
@@ -361,7 +405,13 @@ export function estimateMuscleLoad(
   return {
     referenceDate: new Date(ref - DAY_MS + 1).toISOString().slice(0, 10),
     groups,
-    workoutsInWindow,
+    recentDays,
+    baselineDays,
+    effectiveRecentDays,
+    effectiveBaselineDays,
+    availableDays,
+    workoutsInBaseline,
+    workoutsInRecent,
   }
 }
 

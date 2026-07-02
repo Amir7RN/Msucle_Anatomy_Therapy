@@ -32,11 +32,14 @@ export async function saveMuscleLoadSummaries(result: MuscleLoadResult): Promise
   const userId = getActiveUserId()
   if (!userId) return { saved: false, reason: 'not-signed-in' }
 
+  // The stored summary always uses the DEFAULT 7/28-day windows (callers pass
+  // the default-window result), so rows stay comparable across imports no
+  // matter what exploratory windows the user selects in the UI.
   const rows = result.groups.map((g) => ({
     user_id:        userId,
     muscle_group:   g.group,
-    load_7day:      round(g.load7day),
-    load_28day:     round(g.load28day),
+    load_7day:      round(g.loadRecent),
+    load_28day:     round(g.loadBaseline),
     acwr:           g.acwr == null ? null : round(g.acwr),
     classification: g.classification,
   }))

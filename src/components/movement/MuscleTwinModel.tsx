@@ -21,7 +21,7 @@
 
 import React, { Suspense, useMemo, useRef, type MutableRefObject } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { useGLTF } from '@react-three/drei'
+import { useGLTF, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import type { LiveMuscleActivation } from '../../lib/movement/liveMuscleActivation'
 import {
@@ -96,9 +96,14 @@ interface Props {
   /** Optional per-family angular agility (De Leva inertia) — heavier limbs move
    *  with more momentum. */
   agilityRef?:    MutableRefObject<Partial<Record<SegmentFamily, number>>>
+  /** Opt-in user camera controls (drag-rotate / pinch-zoom). OFF by default so
+   *  the live twin keeps its fixed mirror camera; static views (e.g. the
+   *  health-data training-balance map) turn it on. Same OrbitControls setup as
+   *  the gym MuscleMap3D. */
+  orbit?:         boolean
 }
 
-export function MuscleTwinModel({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMassRef, groundedRef, agilityRef }: Props) {
+export function MuscleTwinModel({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMassRef, groundedRef, agilityRef, orbit }: Props) {
   return (
     <Canvas
       gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
@@ -119,6 +124,11 @@ export function MuscleTwinModel({ activationsRef, boneDirsRef, postureRef, yawRe
              yawRef={yawRef} rootYRef={rootYRef} bodyMassRef={bodyMassRef}
              groundedRef={groundedRef} agilityRef={agilityRef} />
       </Suspense>
+      {orbit && (
+        <OrbitControls enablePan={false} enableZoom minDistance={2.2} maxDistance={6}
+          minPolarAngle={Math.PI * 0.1} maxPolarAngle={Math.PI * 0.92}
+          enableDamping dampingFactor={0.08} />
+      )}
     </Canvas>
   )
 }
