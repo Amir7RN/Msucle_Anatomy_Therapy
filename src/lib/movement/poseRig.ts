@@ -185,21 +185,32 @@ export function computeBodyFrame(lms: LandmarkSet, prevRight?: Vec3 | null): Bod
   if (!ls || !rs || !lh || !rh) return null
 
   const up: Vec3 = { x: 0, y: 1, z: 0 }   // worldVec already flips +y to up
-  // User's right = shoulder line + hip line, flattened to horizontal so torso
-  // pitch/roll doesn't leak into the lateral axis.
-  let right: Vec3 = {
+  // Full 3-D lateral line (shoulder line + hip line averaged), and its
+  // horizontal-only projection. When upright, the lateral axis IS horizontal so
+  // the projection is strong; when the user lies on their SIDE (or is filmed
+  // side-on) the lateral axis tips toward vertical and its horizontal projection
+  // becomes tiny and noise-dominated — the exact case that used to flip the twin.
+  const latFull: Vec3 = {
     x: ((rs.x - ls.x) + (rh.x - lh.x)) / 2,
-    y: 0,
+    y: ((rs.y - ls.y) + (rh.y - lh.y)) / 2,
     z: ((rs.z - ls.z) + (rh.z - lh.z)) / 2,
   }
-  if (magnitude(right) < 1e-4) {
-    // Degenerate (user perfectly side-on) — keep the previous right if we have
-    // one, else fall back to world +x.
-    right = prevRight ? { ...prevRight } : { x: 1, y: 0, z: 0 }
+  let right: Vec3 = { x: latFull.x, y: 0, z: latFull.z }
+  const horizMag = magnitude(right)
+  const horizFrac = horizMag / (magnitude(latFull) || 1)
+  // Degeneracy guard: if the lateral axis is mostly vertical (side-lying / side-
+  // on), the horizontal projection is unreliable — hold the previous stable axis
+  // rather than rebuild it from noise.
+  if (horizFrac < 0.35 || horizMag < 1e-3) {
+    right = prevRight ? { ...prevRight } : (horizMag < 1e-3 ? { x: 1, y: 0, z: 0 } : normalize(right))
+  } else {
+    right = normalize(right)
+    // Continuity guard: a fresh axis that disagrees strongly with the stable one
+    // is a flip/glitch (not a real turn, which passes through gradually) — hold
+    // the previous axis instead of flipping. Keeps the twin from mirroring L/R
+    // during transitions in and out of the floor.
+    if (prevRight && dot(right, prevRight) < 0.2) right = { ...prevRight }
   }
-  right = normalize(right)
-  // Continuity guard: don't let the lateral axis flip 180° on a noisy frame.
-  if (prevRight && dot(right, prevRight) < 0) right = { x: -right.x, y: -right.y, z: -right.z }
   const ant = normalize(cross(right, up))   // out through the chest
 
   const visQ = Math.min(
@@ -257,10 +268,19 @@ function boneDirsFromBodyFrame(f: BodyFrame, lms: LandmarkSet): BoneDirs {
   const lk = wpt(lms, LM.L_KNEE),  rk = wpt(lms, LM.R_KNEE)
   const la = wpt(lms, LM.L_ANKLE), ra = wpt(lms, LM.R_ANKLE)
 
-  set('upperArmR', proj(ls, le)); set('upperArmL', proj(rs, re))
-  set('forearmR',  proj(le, lw)); set('forearmL',  proj(re, rw))
-  set('thighR', proj(lh, lk));    set('thighL', proj(rh, rk))
-  set('shankR', proj(lk, la));    set('shankL', proj(rk, ra))
+  const uAR = proj(ls, le), uAL = proj(rs, re)
+  const thR = proj(lh, lk), thL = proj(rh, rk)
+  set('upperArmR', uAR); set('upperArmL', uAL)
+  // Elbow/knee are HINGES with a noisy distal landmark (wrist/ankle visibility
+  // is often < 0.3). When that distal point isn't reliably seen, WELD the child
+  // segment collinear with its parent (straight joint) instead of letting a
+  // low-confidence point fling the lower limb off into space. It bends only once
+  // the wrist/ankle is confidently tracked.
+  set('forearmR', proj(le, lw) ?? uAR)
+  set('forearmL', proj(re, rw) ?? uAL)
+  set('thighR', thR); set('thighL', thL)
+  set('shankR', proj(lk, la) ?? thR)
+  set('shankL', proj(rk, ra) ?? thL)
 
   return out
 }
@@ -282,6 +302,10 @@ export function poseBoneDirections(lms: LandmarkSet): BoneDirs {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DIR_SMOOTH   = 0.5     // nlerp factor toward each fresh segment direction
+// Smoothing for a segment the current exercise does NOT expect to move: it's
+// held near its last good direction so the overlay stops jittering on limbs that
+// shouldn't move for this motion (per-exercise kinematic prior). Low = stiff.
+const HOLD_SMOOTH  = 0.12
 
 // Vertical (jump) model — operates in IMAGE space, since MediaPipe world coords
 // are hip-centred and can't see global rise. The metric is the body-center
@@ -359,7 +383,11 @@ export class PoseRigEngine {
     return this.airborne ? 'airborne' : 'grounded'
   }
 
-  update(lms: LandmarkSet, tMs = performance.now()): PoseRigFrame {
+  update(
+    lms: LandmarkSet,
+    tMs = performance.now(),
+    opts?: { holdSegments?: ReadonlySet<SegmentId> },
+  ): PoseRigFrame {
     const f = computeBodyFrame(lms, this.right)
     if (!f) {
       return {
@@ -376,12 +404,16 @@ export class PoseRigEngine {
     const frame: BodyFrame = { up: f.up, right: this.right, ant: normalize(cross(this.right, f.up)), quality: f.quality }
 
     // Per-segment directions, smoothed + held when a limb drops out of view.
+    // Segments the selected exercise doesn't move are stiffened toward their last
+    // good direction (kinematic prior) so the overlay favours the expected motion.
+    const hold = opts?.holdSegments
     const target = boneDirsFromBodyFrame(frame, lms)
     for (const seg of SEGMENT_ORDER) {
       const t = target[seg]
       if (!t) continue                       // not visible → keep last good
       const prev = this.smoothed[seg]
-      this.smoothed[seg] = prev ? nlerp(prev, t, DIR_SMOOTH) : t
+      const k = hold && hold.has(seg) ? HOLD_SMOOTH : DIR_SMOOTH
+      this.smoothed[seg] = prev ? nlerp(prev, t, k) : t
     }
 
     this.updateGround(lms, tMs)

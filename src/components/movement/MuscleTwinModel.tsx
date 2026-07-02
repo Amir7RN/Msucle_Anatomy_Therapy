@@ -70,6 +70,14 @@ const MAX_ANGLE: Partial<Record<SegmentId, number>> = {
   shankR: 150, shankL: 150,         // knee flexion
 }
 
+// The elbow and knee are HINGES, not ball joints: they may only flex about the
+// mediolateral axis relative to their parent. Left as free cones (the old
+// behaviour) the forearm/shank could swing sideways and twist off a noisy wrist/
+// ankle landmark — the "lower arm detached, rotating in space" bug. For these
+// segments we strip every off-hinge component so the child stays rigidly anchored
+// to the parent's distal pivot and can only bend like a real elbow/knee.
+const HINGE_SEGMENTS = new Set<SegmentId>(['forearmR', 'forearmL', 'shankR', 'shankL'])
+
 interface Props {
   activationsRef: MutableRefObject<LiveMuscleActivation[]>
   boneDirsRef:    MutableRefObject<BoneDirs>
@@ -216,7 +224,13 @@ function Rig({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMa
       const parentWQ = parent ? worldQuat.current[parent] : IDENT.current
 
       tmpLocal.current.copy(parentWQ).invert().multiply(desiredW.current[seg])
-      clampQuat(tmpLocal.current, MAX_ANGLE[seg] ?? 160, IDENT.current)
+      if (HINGE_SEGMENTS.has(seg)) {
+        // Hinge: keep only rotation about the mediolateral axis (constant in the
+        // parent-local frame), discard sideways swing + axial twist, clamp flexion.
+        hingeConstrain(tmpLocal.current, right, MAX_ANGLE[seg] ?? 150, IDENT.current)
+      } else {
+        clampQuat(tmpLocal.current, MAX_ANGLE[seg] ?? 160, IDENT.current)
+      }
       // Inertia/momentum: heavier limbs (low agility) track a touch slower.
       const fam = familyOf(seg)
       const ag = fam ? (agilityRef?.current?.[fam] ?? 1) : 1
@@ -274,6 +288,25 @@ function clampQuat(q: THREE.Quaternion, maxDeg: number, ident: THREE.Quaternion)
   const angle = 2 * Math.acos(Math.min(1, Math.abs(q.w)))
   const max = (maxDeg * Math.PI) / 180
   if (angle > max && angle > 1e-4) q.slerpQuaternions(ident, q.clone(), max / angle)
+}
+
+/**
+ * Constrain a local rotation to a pure HINGE about `axis` (swing-twist
+ * decomposition): project the rotation onto the axis to keep only the flexion
+ * component, drop the off-axis swing + twist, then clamp the flexion angle to
+ * ±maxDeg. This is what makes the elbow/knee behave like real hinges — the child
+ * segment can bend but never swings sideways or twists off its parent pivot.
+ */
+const _twist = new THREE.Quaternion()
+function hingeConstrain(q: THREE.Quaternion, axis: THREE.Vector3, maxDeg: number, ident: THREE.Quaternion): void {
+  const d = q.x * axis.x + q.y * axis.y + q.z * axis.z   // (rotation vector)·axis
+  _twist.set(axis.x * d, axis.y * d, axis.z * d, q.w)
+  if (_twist.lengthSq() < 1e-8) { q.copy(ident); return }  // rotation ⟂ hinge → no flexion
+  _twist.normalize()
+  const angle = 2 * Math.acos(Math.min(1, Math.abs(_twist.w)))
+  const max = (maxDeg * Math.PI) / 180
+  if (angle > max && angle > 1e-4) _twist.slerpQuaternions(ident, _twist.clone(), max / angle)
+  q.copy(_twist)
 }
 
 /**

@@ -106,6 +106,108 @@ export const EXERCISE_ACTIVATION: Record<string, ActivationPattern> = {
     deltoid_anterior: 0.85, deltoid_lateral: 0.6, triceps_brachii: 0.7,
     trapezius_upper: 0.55, serratus_anterior: 0.5,
   },
+
+  // ── MoveMate Train catalogue (gym/exercises.ts ids) ───────────────────────
+  // Canonical peak-activation patterns so the gym Muscle Twin lights the right
+  // muscles for the SELECTED exercise, blended over the geometric estimate and
+  // scaled by movement energy + load. Keys are the engine muscle ids.
+  push_up: {
+    pectoralis_major: 0.85, triceps_brachii: 0.7, deltoid_anterior: 0.6,
+    serratus_anterior: 0.55, rectus_abdominis: 0.4,
+  },
+  db_bench_press: {
+    pectoralis_major: 0.9, deltoid_anterior: 0.6, triceps_brachii: 0.7,
+    serratus_anterior: 0.4,
+  },
+  incline_press: {
+    pectoralis_major: 0.8, deltoid_anterior: 0.8, triceps_brachii: 0.65,
+    serratus_anterior: 0.45,
+  },
+  chest_fly: {
+    pectoralis_major: 0.88, deltoid_anterior: 0.45, serratus_anterior: 0.4,
+  },
+  dips: {
+    pectoralis_major: 0.75, triceps_brachii: 0.85, deltoid_anterior: 0.55,
+  },
+  bent_row: {
+    latissimus_dorsi: 0.85, trapezius_lower: 0.6, deltoid_posterior: 0.55,
+    biceps_brachii: 0.5, erector_spinae: 0.55,
+  },
+  lat_pulldown: {
+    latissimus_dorsi: 0.9, biceps_brachii: 0.5, trapezius_lower: 0.55,
+    deltoid_posterior: 0.4,
+  },
+  one_arm_row: {
+    latissimus_dorsi: 0.85, trapezius_lower: 0.55, biceps_brachii: 0.5,
+    deltoid_posterior: 0.5, erector_spinae: 0.4,
+  },
+  face_pull: {
+    deltoid_posterior: 0.8, trapezius_upper: 0.6, infraspinatus: 0.55,
+  },
+  superman: {
+    erector_spinae: 0.85, gluteus_maximus: 0.55, trapezius_lower: 0.4,
+  },
+  lateral_raise: {
+    deltoid_lateral: 0.9, deltoid_anterior: 0.4, trapezius_upper: 0.45,
+  },
+  front_raise: {
+    deltoid_anterior: 0.88, deltoid_lateral: 0.4, serratus_anterior: 0.35,
+  },
+  rear_delt_fly: {
+    deltoid_posterior: 0.88, trapezius_lower: 0.5, infraspinatus: 0.45,
+  },
+  ext_rotation: {
+    infraspinatus: 0.85, teres_minor: 0.7, deltoid_posterior: 0.4,
+  },
+  biceps_curl: {
+    biceps_brachii: 0.9, brachialis: 0.65, brachioradialis: 0.5,
+    deltoid_anterior: 0.2,
+  },
+  hammer_curl: {
+    brachioradialis: 0.85, brachialis: 0.8, biceps_brachii: 0.6,
+  },
+  triceps_ext: {
+    triceps_brachii: 0.9, deltoid_posterior: 0.25,
+  },
+  triceps_kickback: {
+    triceps_brachii: 0.88, deltoid_posterior: 0.4,
+  },
+  concentration_curl: {
+    biceps_brachii: 0.92, brachialis: 0.6, brachioradialis: 0.45,
+  },
+  bodyweight_squat: {
+    rectus_femoris: 0.8, vastus_lateralis: 0.82, gluteus_maximus: 0.6,
+    biceps_femoris: 0.35, erector_spinae: 0.4,
+  },
+  goblet_squat: {
+    rectus_femoris: 0.85, vastus_lateralis: 0.88, gluteus_maximus: 0.7,
+    biceps_femoris: 0.4, erector_spinae: 0.55, rectus_abdominis: 0.4,
+  },
+  reverse_lunge: {
+    gluteus_maximus: 0.8, rectus_femoris: 0.75, vastus_lateralis: 0.75,
+    biceps_femoris: 0.45, gluteus_medius: 0.5,
+  },
+  // hip_hinge & glute_bridge share ids with the rehab entries above (kept there).
+  calf_raise: {
+    gastrocnemius: 0.9, soleus: 0.85, tibialis_anterior: 0.2,
+  },
+  crunch: {
+    rectus_abdominis: 0.9, external_oblique: 0.55,
+  },
+  leg_raise: {
+    rectus_abdominis: 0.85, external_oblique: 0.5, rectus_femoris: 0.45,
+  },
+  bicycle: {
+    rectus_abdominis: 0.8, external_oblique: 0.8, rectus_femoris: 0.4,
+  },
+  plank: {
+    rectus_abdominis: 0.8, external_oblique: 0.65, erector_spinae: 0.5,
+    deltoid_anterior: 0.4, serratus_anterior: 0.45,
+  },
+  mountain_climber: {
+    rectus_abdominis: 0.75, external_oblique: 0.7, deltoid_anterior: 0.45,
+    rectus_femoris: 0.5, serratus_anterior: 0.4,
+  },
 }
 
 /** Canonical activation pattern for an exercise, or null if none is defined. */

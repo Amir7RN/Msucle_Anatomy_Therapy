@@ -19,6 +19,7 @@ import { disposeDetector } from '../../lib/movement/poseDetector'
 import { LiveActivationEngine, type LiveMuscleActivation, type LoadInput } from '../../lib/movement/liveMuscleActivation'
 import { LoadEstimator, type LoadEstimate } from '../../lib/movement/loadEstimator'
 import { PoseRigEngine, type BoneDirs } from '../../lib/movement/poseRig'
+import { priorFor } from '../../lib/movement/activationPriors'
 import { useVoiceOutput } from '../../hooks/useVoice'
 import { useGymStore } from '../../store/gymStore'
 import { exerciseById, muscleGroupById } from '../../lib/gym/exercises'
@@ -35,6 +36,7 @@ export function ExerciseTrainer() {
   const back       = useGymStore((s) => s.back)
   const logSet     = useGymStore((s) => s.logSet)
   const liveBpm    = useGymStore((s) => s.liveBpm)
+  const setAutoLoad = useGymStore((s) => s.setAutoLoad)
   const exercise   = exerciseId ? exerciseById(exerciseId) : undefined
   const group      = exercise ? muscleGroupById(exercise.group) : undefined
 
@@ -113,8 +115,9 @@ export function ExerciseTrainer() {
     disposeDetector()
     engineRef.current?.reset();     engineRef.current    = null
     poseEngineRef.current?.reset(); poseEngineRef.current = null
+    setAutoLoad(null)
     try { window.speechSynthesis?.cancel() } catch { /* ignore */ }
-  }, [])
+  }, [setAutoLoad])
 
   const runCoach = useCallback(async (reason: 'start' | 'halfway' | 'form' | 'done') => {
     const ex = exerciseRef.current
@@ -143,7 +146,9 @@ export function ExerciseTrainer() {
       const now = performance.now()
       // Load rides through the engine's lever-arm torque model, so the heatmap
       // localises to the joints actually fighting the mass — no flat glow scale.
-      const frame = eng.update(lms, now, loadRef.current)
+      // The selected exercise's activation prior biases the muscles toward the
+      // literature pattern for THIS lift (e.g. curl → biceps/brachialis).
+      const frame = eng.update(lms, now, loadRef.current, priorFor(exerciseRef.current?.id))
       activationsRef.current = frame.activations
       const rig = poseEngineRef.current?.update(lms)
       if (rig) {
@@ -209,12 +214,17 @@ export function ExerciseTrainer() {
         if (r.at > 0 && r.confidence >= 0.3) {
           loadRef.current = { leftKg: r.leftKg, rightKg: r.rightKg }
           setAiLoad(r)
+          // Publish the live auto-detected load to the store so the whole app
+          // reads one continuous mass value — no manual field needed.
+          setAutoLoad({ leftKg: r.leftKg, rightKg: r.rightKg, item: r.item, confidence: r.confidence, source: 'ai', at: r.at })
           return
         }
       }
       // Manual fallback: the stepper weight, split across both hands.
-      loadRef.current = { leftKg: weightRef.current / 2, rightKg: weightRef.current / 2 }
+      const half = weightRef.current / 2
+      loadRef.current = { leftKg: half, rightKg: half }
       setAiLoad(null)
+      setAutoLoad({ leftKg: half, rightKg: half, item: `${weightRef.current} kg (manual)`, confidence: 1, source: 'manual', at: Date.now() })
     }, 1000)
     return () => window.clearInterval(id)
   }, [active])

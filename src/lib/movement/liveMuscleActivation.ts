@@ -216,6 +216,28 @@ const LEVER_FLOOR     = 0.25
 // and the moment arms are short.
 const AXIAL_LOAD_SCALE = 0.45
 
+// ── Co-contraction model ──────────────────────────────────────────────────────
+// The same JOINT ORIENTATION can produce completely different muscle-activation
+// profiles: an unloaded elbow at 90° has a quiet triceps, but the same 90° while
+// bracing against a heavy load, or holding it isometrically at end-range, fires
+// the triceps HARD alongside the biceps (joint stiffening). A geometry-only
+// estimate — which reads only the angle — can't tell these apart. We model it
+// explicitly: antagonists and stabilizers get a co-activation term driven by
+//   (a) external load  — heavier held mass ⇒ more joint stiffening, and
+//   (b) isometric bracing near end-range — a loaded hold co-contracts to protect
+//       the joint, even with no movement drive.
+// This is added ON TOP of the movement-driven activation, so identical angles
+// diverge in the heatmap exactly when the mechanics diverge.
+const CO_LOAD = 0.55   // antagonist co-activation per unit of (loadFactor − 1)
+const CO_ISO  = 0.35   // extra co-activation from an isometric end-range brace
+const CO_MAX  = 0.75   // ceiling on the co-contraction term
+// How much of the co-contraction each role absorbs (agonists are already driven).
+function coRoleFactor(role: MuscleRole): number {
+  if (role === 'antagonist') return 1.0
+  if (role === 'stabilizer') return 0.85
+  return 0.0
+}
+
 function regionFor(base: MovementRule['regionBase'], side: 'L' | 'R'): SymmetryRegion {
   if (base === 'trunk') return 'trunk'
   if (base === 'neck')  return 'neck'
@@ -324,12 +346,25 @@ export class LiveActivationEngine {
 
       const lf = loadFactor(side, rule.regionBase)
 
+      // Co-contraction level for THIS movement: rises with external load and with
+      // an isometric brace held deep in range. Gated by confidence so a noisy
+      // frame doesn't fabricate stiffening. This is what makes an identical angle
+      // read differently under load vs unloaded (agonist + antagonist both fire).
+      const braceEndRange = phase === 'isometric' ? dev : 0
+      const coact = Math.min(CO_MAX, (Math.max(0, lf - 1)) * CO_LOAD + braceEndRange * CO_ISO)
+        * clamp01(r.confidence + 0.15)
+
       for (const m of rule.muscles) {
         const region = m.region ?? regionFor(m.crossBase ?? rule.regionBase, side)
         const k = muscleKey(m.muscleId, region)
         // Agonists scale with external load; antagonists/stabilizers less so.
         const loadScale = m.role === 'agonist' ? lf : 1 + (lf - 1) * 0.4
-        const t = clamp01(drive * m.weight * roleFactor(m.role, phase) * loadScale)
+        // Movement-driven activation + a co-contraction floor for the muscles
+        // that stiffen the joint (antagonists/stabilizers). Same orientation,
+        // different force ⇒ different activation.
+        const driven = drive * m.weight * roleFactor(m.role, phase) * loadScale
+        const co     = coact * m.weight * coRoleFactor(m.role)
+        const t = clamp01(driven + co)
         const prev = target.get(k) ?? 0
         if (t > prev) {
           target.set(k, t)

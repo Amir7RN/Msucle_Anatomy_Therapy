@@ -11,6 +11,22 @@ import type { HealthSummary } from '../lib/gym/health'
 
 export type GymView = 'home' | 'group' | 'trainer' | 'scan'
 
+/**
+ * Continuously auto-detected external load (per hand, kg) plus provenance. The
+ * trainer's camera-vision estimator pushes a fresh reading here every second, so
+ * the whole app reads one live mass value instead of a manual field — the same
+ * always-on model the Live Muscle Twin uses. `source` lets the UI show whether
+ * the number came from the camera AI or the manual fallback.
+ */
+export interface AutoLoad {
+  leftKg:     number
+  rightKg:    number
+  item:       string
+  confidence: number
+  source:     'ai' | 'manual'
+  at:         number
+}
+
 /** One logged set from a finished trainer session. */
 export interface SetLog {
   exerciseId:   string
@@ -43,6 +59,9 @@ interface GymState {
   hrDeviceName:      string | null
   health:            HealthSummary | null
 
+  // continuously auto-detected external load (camera vision or manual fallback)
+  autoLoad:          AutoLoad | null
+
   // history
   setLogs:           SetLog[]
   partScans:         PartScan[]
@@ -58,6 +77,7 @@ interface GymState {
   setLiveBpm:   (bpm: number | null) => void
   setHrDevice:  (name: string | null) => void
   setHealth:    (h: HealthSummary | null) => void
+  setAutoLoad:  (l: AutoLoad | null) => void
 
   logSet:       (s: SetLog) => void
   logPartScan:  (s: PartScan) => void
@@ -71,6 +91,7 @@ export const useGymStore = create<GymState>((set, get) => ({
   liveBpm: null,
   hrDeviceName: null,
   health: null,
+  autoLoad: null,
 
   setLogs: [],
   partScans: [],
@@ -87,6 +108,7 @@ export const useGymStore = create<GymState>((set, get) => ({
   setLiveBpm:  (bpm) => set({ liveBpm: bpm }),
   setHrDevice: (name) => set({ hrDeviceName: name }),
   setHealth:   (h) => set({ health: h }),
+  setAutoLoad: (l) => set({ autoLoad: l }),
 
   logSet:      (s) => set((st) => ({ setLogs: [s, ...st.setLogs].slice(0, 200) })),
   logPartScan: (s) => set((st) => ({ partScans: [s, ...st.partScans].slice(0, 200) })),

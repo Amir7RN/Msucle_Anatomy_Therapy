@@ -59,8 +59,8 @@ import { MuscleStatusEngine, type MuscleStatusFrame, STATE_META } from '../../li
 import { saveSession } from '../../lib/movement/muscleSessionLog'
 import { buildPersonalization } from '../../lib/profile/personalization'
 import { loadProfile, subscribeProfile } from '../../lib/profile/userProfile'
-import { poseBoneDirections, type BoneDirs } from '../../lib/movement/poseRig'
-import { postureForExercise, type Posture } from '../../lib/movement/exercisePose'
+import { PoseRigEngine, SEGMENT_ORDER, type BoneDirs, type SegmentId } from '../../lib/movement/poseRig'
+import { postureForExercise, movingSegmentsForExercise, type Posture } from '../../lib/movement/exercisePose'
 import { priorFor } from '../../lib/movement/activationPriors'
 import { useAtlasStore } from '../../store/atlasStore'
 
@@ -150,10 +150,24 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
   const liveEngineRef = useRef<LiveActivationEngine | null>(null)
   const liveActsRef   = useRef<LiveMuscleActivation[]>([])
   const liveBoneRef   = useRef<BoneDirs>({})
+  // Stateful pose rig — smooths + stabilises the twin (vs the old raw stateless
+  // directions) and lets us apply the per-exercise kinematic prior below.
+  const poseRigRef    = useRef<PoseRigEngine | null>(null)
   // Posture prior — the model adopts the exercise's expected posture (the model
   // favours the known exercise instead of guessing the global posture).
   const posturePriorRef = useRef<Posture | null>(null)
-  useEffect(() => { posturePriorRef.current = postureForExercise(exerciseId) }, [exerciseId])
+  // Kinematic prior — segments the exercise does NOT move, held steady so the
+  // overlay favours the expected motion (biceps curl → only forearms track).
+  const holdSegmentsRef = useRef<ReadonlySet<SegmentId> | undefined>(undefined)
+  useEffect(() => {
+    posturePriorRef.current = postureForExercise(exerciseId)
+    const moving = movingSegmentsForExercise(exerciseId)
+    holdSegmentsRef.current = moving
+      ? new Set(SEGMENT_ORDER.filter((s) => !moving.includes(s)))
+      : undefined
+    poseRigRef.current?.reset()
+  }, [exerciseId])
+  useEffect(() => () => { poseRigRef.current?.reset(); poseRigRef.current = null }, [])
   // Throttled list of the muscles actually engaged (for the quantitative readout).
   const [engagedMuscles, setEngagedMuscles] = useState<{ muscleId: string; level: number }[]>([])
   const lastEngagedRef = useRef(0)
@@ -190,7 +204,8 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
     // Exercise-grounded activation prior (literature/MinT pattern) for accuracy.
     const liveFrame = liveEngineRef.current.update(lms, liveNow, undefined, priorFor(exerciseId))
     liveActsRef.current = liveFrame.activations
-    liveBoneRef.current = poseBoneDirections(lms)
+    if (!poseRigRef.current) poseRigRef.current = new PoseRigEngine()
+    liveBoneRef.current = poseRigRef.current.update(lms, liveNow, { holdSegments: holdSegmentsRef.current }).dirs
     // Integrate the personalised fatigue/work model (same engine as the Twin).
     const statusFrame = statusEngineRef.current?.update(liveFrame, liveNow)
     if (statusFrame && liveNow - lastStatusRef.current > 250) {
