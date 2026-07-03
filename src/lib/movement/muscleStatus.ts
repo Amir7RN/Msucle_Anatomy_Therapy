@@ -95,6 +95,16 @@ export interface MuscleStatusFrame {
 
 const WORK_THRESH   = 0.30   // activation above this counts as "working"
 const REST_THRESH   = 0.20   // activation below this lets the muscle recover
+// A muscle only fatigues when it is genuinely doing work, which a single camera
+// sees as EITHER (a) the body actually moving, or (b) a hard isometric hold.
+// Standing still is neither: static postural tone (arms at the side, head level)
+// sits above WORK_THRESH on some regions purely from the neutral-pose deviation,
+// and without this gate it silently drained the fatigue battery to SPENT while
+// the user did nothing. Movement energy is 0 when perfectly still, so we require
+// real motion OR an activation clearly above postural tone (a loaded hold/plank)
+// before any fatigue accrues.
+const MOVE_EPS      = 0.04   // movementEnergy above this = the user is actually moving
+const ISO_WORK_THRESH = 0.55 // activation this high with no motion = a real isometric hold
 const FATIGUE_GAIN  = 0.085  // how fast the battery drains under full load (per s)
 const RECOVERY_RATE = 0.018  // how fast it recharges at rest (per s) — slow on purpose
 const RANGE_GAIN    = 0.20   // extra fatigue per second when range has collapsed
@@ -218,6 +228,11 @@ export class MuscleStatusEngine {
     const dt = this.prevT == null ? 0 : Math.min(0.1, Math.max(0, (tMs - this.prevT) / 1000))
     this.prevT = tMs
 
+    // Whole-body movement energy this frame (0 = perfectly still). Fatigue and
+    // work only accrue when the body is actually moving OR a region is holding a
+    // hard isometric brace — never from just standing there.
+    const moving = (frame.movementEnergy ?? 0) > MOVE_EPS
+
     // 1. Region activation this frame (max over muscles mapped to the region).
     const instAct = new Map<SymmetryRegion, number>()
     for (const a of frame.activations as LiveMuscleActivation[]) {
@@ -268,10 +283,14 @@ export class MuscleStatusEngine {
       // PT calibration: the same motion reads as harder for a deconditioned
       // user and easier for a trained one.
       const intensity = clamp01(rawAct * (isUpperLimb(region) ? Math.min(loadFactor / LOAD_MAX + 0.4, 1.2) : 1) * effortScale)
-      const working = rawAct >= WORK_THRESH
+      // "Working" now demands genuine effort the camera can justify: activation
+      // over threshold AND (the body is moving OR the region is holding a hard
+      // isometric brace). Static standing posture fails both and reads as rest.
+      const working = rawAct >= WORK_THRESH && (moving || rawAct >= ISO_WORK_THRESH)
 
       // ── Work (volume-load proxy): integrate activation × load × time ──────
-      if (rawAct >= REST_THRESH) {
+      // Only count real work — otherwise standing still inflates session volume.
+      if (working) {
         a.work += rawAct * loadFactor * dt
       }
 
@@ -295,8 +314,12 @@ export class MuscleStatusEngine {
           a.fatigue += collapse * RANGE_GAIN * dt
         }
         anyWorking = true
-      } else if (rawAct < REST_THRESH) {
-        a.fatigue -= RECOVERY_RATE * recoveryMul * dt
+      } else {
+        // Not working → recover. Full rate once activation drops to rest tone;
+        // half rate while a static posture keeps it mildly elevated. Either way
+        // the battery recharges when the user is standing still, never drains.
+        const restFactor = rawAct < REST_THRESH ? 1 : 0.5
+        a.fatigue -= RECOVERY_RATE * recoveryMul * restFactor * dt
       }
       a.fatigue = clamp01(a.fatigue)
     }

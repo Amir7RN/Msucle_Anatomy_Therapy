@@ -335,6 +335,59 @@ function slewQuat(current: THREE.Quaternion, target: THREE.Quaternion, maxStepDe
 
 // ── Rig construction ──────────────────────────────────────────────────────────
 
+/**
+ * Split one mesh into a proximal (above `worldY`) and distal (below) mesh by
+ * triangle centroid. Vertex positions/normals are baked into world space so the
+ * pieces render exactly where the original did, then get identity transforms —
+ * `Group.attach` later re-localises them onto their bone. Either piece may be
+ * null if all triangles fall on one side of the cut.
+ */
+function splitMeshAtWorldY(mesh: THREE.Mesh, worldY: number): { proximal: THREE.Mesh | null; distal: THREE.Mesh | null } {
+  mesh.updateWorldMatrix(true, false)
+  const src = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone()
+  const posAttr = src.getAttribute('position') as THREE.BufferAttribute
+  const norAttr = src.getAttribute('normal') as THREE.BufferAttribute | undefined
+  const uvAttr  = src.getAttribute('uv') as THREE.BufferAttribute | undefined
+  const mw = mesh.matrixWorld
+  const nm = new THREE.Matrix3().getNormalMatrix(mw)
+
+  const proxP: number[] = [], proxN: number[] = [], proxU: number[] = []
+  const distP: number[] = [], distN: number[] = [], distU: number[] = []
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3()
+  const n = new THREE.Vector3()
+  const triCount = Math.floor(posAttr.count / 3)
+  for (let t = 0; t < triCount; t++) {
+    const i0 = t * 3, i1 = t * 3 + 1, i2 = t * 3 + 2
+    a.fromBufferAttribute(posAttr, i0).applyMatrix4(mw)
+    b.fromBufferAttribute(posAttr, i1).applyMatrix4(mw)
+    c.fromBufferAttribute(posAttr, i2).applyMatrix4(mw)
+    const above = (a.y + b.y + c.y) / 3 >= worldY
+    const P = above ? proxP : distP, N = above ? proxN : distN, U = above ? proxU : distU
+    P.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z)
+    if (norAttr) {
+      for (const i of [i0, i1, i2]) {
+        n.fromBufferAttribute(norAttr, i).applyMatrix3(nm).normalize()
+        N.push(n.x, n.y, n.z)
+      }
+    }
+    if (uvAttr) for (const i of [i0, i1, i2]) U.push(uvAttr.getX(i), uvAttr.getY(i))
+  }
+
+  const build = (P: number[], N: number[], U: number[]): THREE.Mesh | null => {
+    if (P.length < 9) return null
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3))
+    if (N.length === P.length) g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3))
+    else g.computeVertexNormals()
+    if (U.length) g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2))
+    g.computeBoundingBox(); g.computeBoundingSphere()
+    const nMesh = new THREE.Mesh(g, (mesh.material as THREE.MeshStandardMaterial).clone())
+    nMesh.name = mesh.name
+    return nMesh
+  }
+  return { proximal: build(proxP, proxN, proxU), distal: build(distP, distN, distU) }
+}
+
 function buildRig(scene: THREE.Object3D): RigData {
   const cloned = scene.clone(true)
   cloned.position.set(0, 0, 0); cloned.scale.set(1, 1, 1); cloned.rotation.set(0, 0, 0)
@@ -387,12 +440,13 @@ function buildRig(scene: THREE.Object3D): RigData {
   // joint and stays attached, and the legs don't swing across the midline.
   const shoulderR = bUAr ? topC(bUAr) : V(-0.12, 1.35, 0)
   const shoulderL = bUAl ? topC(bUAl) : V(0.12, 1.35, 0)
-  // ELBOW = the PROXIMAL (top) end of the forearm's own meshes, so the forearm
-  // hinges exactly where it visually begins. The old pivot (bottom of the
-  // upper-arm box) sat below the brachioradialis origin, which made the
-  // rotation centre look like it was in the middle of the forearm.
-  const elbowR = bFAr ? topC(bFAr) : bUAr ? botC(bUAr) : V(-0.2, 0.95, 0)
-  const elbowL = bFAl ? topC(bFAl) : bUAl ? botC(bUAl) : V(0.2, 0.95, 0)
+  // ELBOW = 30 % DOWN the forearm's own meshes (not its proximal tip). The tip
+  // sat too high — the visible bend happened above the real elbow. We split the
+  // forearm into a proximal 0.3 stub (welded to the upper arm) and a distal 0.7
+  // that actually bends; the hinge sits at the 0.3 seam between them.
+  const FOREARM_SPLIT = 0.3
+  const elbowR = bFAr ? topC(bFAr).lerp(botC(bFAr), FOREARM_SPLIT) : bUAr ? botC(bUAr) : V(-0.2, 0.95, 0)
+  const elbowL = bFAl ? topC(bFAl).lerp(botC(bFAl), FOREARM_SPLIT) : bUAl ? botC(bUAl) : V(0.2, 0.95, 0)
   // Forearm pivots EXACTLY at the elbow (the upper arm's distal point) so it is
   // welded to the upper arm. The GLB has no hand/wrist mesh and only a short,
   // oddly-placed brachioradialis sliver, so deriving the wrist from a mesh box
@@ -448,6 +502,43 @@ function buildRig(scene: THREE.Object3D): RigData {
   }
   const right = new THREE.Vector3().crossVectors(up, ant).normalize()
   if (right.dot(shoulderR.clone().sub(shoulderL)) < 0) right.multiplyScalar(-1)
+
+  // ── Forearm split (0.3 / 0.7) ───────────────────────────────────────────────
+  // Cut each forearm mesh at the elbow seam (30 % down its length). The proximal
+  // 30 % is re-parented onto the UPPER ARM so it stays welded and doesn't swing;
+  // the distal 70 % becomes the forearm segment that hinges at the elbow. Without
+  // this the whole one-piece forearm rotated about the seam and its top third
+  // swung away from the arm.
+  const splitPlan: Array<{ seg: SegmentId; up: SegmentId; box: THREE.Box3 | null; y: number }> = [
+    { seg: 'forearmR', up: 'upperArmR', box: bFAr, y: elbowR.y },
+    { seg: 'forearmL', up: 'upperArmL', box: bFAl, y: elbowL.y },
+  ]
+  for (const { seg, up: upSeg, box: fbox, y } of splitPlan) {
+    if (!fbox) continue
+    const originals = bySeg[seg] ?? []
+    if (!originals.length) continue
+    // Drop the original (whole) forearm entries from the colour list.
+    const drop = new Set<THREE.Material>(originals.map((m) => m.material as THREE.Material))
+    for (let i = meshes.length - 1; i >= 0; i--) if (drop.has(meshes[i].mat)) meshes.splice(i, 1)
+
+    const distalMeshes: THREE.Mesh[] = []
+    for (const m of originals) {
+      const parts = splitMeshAtWorldY(m, y)
+      m.removeFromParent()
+      if (parts.proximal) {
+        cloned.add(parts.proximal)
+        ;(bySeg[upSeg] ??= []).push(parts.proximal)
+        meshes.push({ mat: parts.proximal.material as THREE.MeshStandardMaterial, stem: meshStem(m.name), side: meshSide(m.name) })
+      }
+      if (parts.distal) {
+        cloned.add(parts.distal)
+        distalMeshes.push(parts.distal)
+        meshes.push({ mat: parts.distal.material as THREE.MeshStandardMaterial, stem: meshStem(m.name), side: meshSide(m.name) })
+      }
+    }
+    bySeg[seg] = distalMeshes
+  }
+  cloned.updateMatrixWorld(true)
 
   const groups: Partial<Record<SegmentId, THREE.Group>> = {}
   const neutral: Partial<Record<SegmentId, THREE.Vector3>> = {}

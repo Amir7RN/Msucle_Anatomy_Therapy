@@ -16,6 +16,7 @@ import { useAtlasStore } from '../../store/atlasStore'
 import { parseHealthZip, type ParseProgress } from '../../lib/health/parseHealthZip'
 import type { HealthParseResult, ParsedWorkout } from '../../lib/health/appleHealthParser'
 import { estimateMuscleLoad, type MuscleLoadResult } from '../../lib/health/muscleLoadEstimator'
+import { saveHealthResult, loadHealthResult, clearHealthResult } from '../../lib/health/healthStore'
 import { HealthBalanceView } from './HealthBalanceView'
 import { PractitionerClientsView } from './PractitionerClientsView'
 
@@ -34,6 +35,10 @@ export function HealthImportView({ open, onClose }: Props) {
   const [error, setError] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const [practOpen, setPractOpen] = useState(false)
+  // True when the current result came from a previously-saved import rather than
+  // a file the user just uploaded, and when the export happened.
+  const [restored, setRestored] = useState(false)
+  const [savedAt, setSavedAt] = useState<number | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Hide 3D canvas chrome while open (same convention as the other modals).
@@ -53,7 +58,22 @@ export function HealthImportView({ open, onClose }: Props) {
       setLoad(null)
       setError('')
       setDragOver(false)
+      setRestored(false)
+      setSavedAt(null)
     }
+  }, [open])
+
+  // On open, if a previous import was saved, load it automatically and jump
+  // straight to the preview — the user can still choose to import a new file.
+  useEffect(() => {
+    if (!open) return
+    const stored = loadHealthResult()
+    if (!stored) return
+    setResult(stored.result)
+    setLoad(estimateMuscleLoad(stored.result.workouts))
+    setSavedAt(stored.savedAt)
+    setRestored(true)
+    setPhase('done')
   }, [open])
 
   async function handleFile(file: File | undefined | null) {
@@ -70,6 +90,10 @@ export function HealthImportView({ open, onClose }: Props) {
       const res = await parseHealthZip(file, setProgress)
       setResult(res)
       setLoad(estimateMuscleLoad(res.workouts))
+      // Remember this import so it loads automatically next time.
+      saveHealthResult(res)
+      setRestored(false)
+      setSavedAt(Date.now())
       setPhase('done')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not read this file.')
@@ -210,8 +234,11 @@ export function HealthImportView({ open, onClose }: Props) {
           <ResultPreview
             result={result}
             canRender={!!load && result.workouts.length > 0}
+            restored={restored}
+            savedAt={savedAt}
             onSeeBalance={() => setPhase('balance')}
             onRestart={() => setPhase('idle')}
+            onClearSaved={() => { clearHealthResult(); setResult(null); setLoad(null); setRestored(false); setSavedAt(null); setPhase('idle') }}
           />
         )}
       </div>
@@ -224,12 +251,15 @@ export function HealthImportView({ open, onClose }: Props) {
 // -----------------------------------------------------------------------------
 
 function ResultPreview({
-  result, canRender, onSeeBalance, onRestart,
+  result, canRender, restored, savedAt, onSeeBalance, onRestart, onClearSaved,
 }: {
   result: HealthParseResult
   canRender: boolean
+  restored: boolean
+  savedAt: number | null
   onSeeBalance: () => void
   onRestart: () => void
+  onClearSaved: () => void
 }) {
   const [showRaw, setShowRaw] = useState(false)
   const { workouts, skipped, parseMs } = result
@@ -252,6 +282,22 @@ function ResultPreview({
 
   return (
     <div className="mt-5 space-y-5">
+      {/* Restored-from-storage banner */}
+      {restored && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-cyan-500/25 bg-cyan-500/5 px-3 py-2 text-[11px] text-cyan-200">
+          <span>
+            <span className="font-semibold">Loaded your saved import</span>
+            {savedAt ? ` · imported ${new Date(savedAt).toLocaleDateString()}` : ''}. Upload a new export any time to replace it.
+          </span>
+          <button
+            onClick={onClearSaved}
+            className="rounded-md border border-cyan-500/30 px-2 py-1 font-semibold text-cyan-100 transition-colors hover:bg-cyan-500/10"
+          >
+            Clear saved data
+          </button>
+        </div>
+      )}
+
       {/* Summary strip */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Stat label="Workouts" value={String(workouts.length)} />
