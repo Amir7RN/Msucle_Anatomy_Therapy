@@ -1126,27 +1126,18 @@ How to coach:
 
   // API key gate
   if (!apiKey) {
+    // No visitor key is ever requested — in production the server proxy provides
+    // the AI to everyone. If it's not reachable, show the exercise intro and a
+    // gentle notice instead of blocking.
     return (
       <div className="p-3 border-b border-slate-700">
         <div className="text-[10px] uppercase tracking-wider text-cyan-400 font-semibold mb-1.5">
           AI Coach
         </div>
         <p className="text-[10px] text-slate-400 mb-2 leading-snug">
-          Add your Anthropic API key to enable the live AI physical therapist.
+          The live AI coach is being set up and will be available here shortly.
         </p>
-        <div className="flex items-center gap-1.5">
-          <KeyRound size={11} className="text-slate-500 flex-shrink-0" />
-          <input
-            type="password"
-            placeholder="sk-ant-…"
-            className="flex-1 text-[11px] bg-slate-800 text-slate-100 rounded px-2 py-1.5 border border-slate-600 focus:border-cyan-500 focus:outline-none"
-            onKeyDown={(e) => {
-              const val = (e.target as HTMLInputElement).value.trim()
-              if (e.key === 'Enter' && val) { setStoredApiKey(val); setApiKey(val) }
-            }}
-          />
-        </div>
-        <p className="mt-2.5 text-[10px] text-slate-500 uppercase tracking-wide font-semibold">Setup</p>
+        <p className="mt-2.5 text-[10px] text-slate-500 uppercase tracking-wide font-semibold">Getting started</p>
         <p className="mt-1 text-xs text-slate-300 leading-relaxed">{def.introCue}</p>
       </div>
     )

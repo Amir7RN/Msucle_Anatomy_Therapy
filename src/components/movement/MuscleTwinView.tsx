@@ -371,26 +371,9 @@ export function MuscleTwinView({ open, onClose }: Props) {
               </button>
             </div>
             {!hasKey ? (
-              <div className="space-y-1.5">
-                <div className="text-[11px] text-slate-400">
-                  Paste your Anthropic API key to let the camera detect what you're holding and scale activation by load. Stored only on this device.
-                </div>
-                <div className="flex gap-1.5">
-                  <input
-                    type="password"
-                    value={keyInput}
-                    onChange={(e) => setKeyInput(e.target.value)}
-                    placeholder="sk-ant-…"
-                    className="min-w-0 flex-1 rounded bg-slate-800 px-2 py-1 text-[11px] text-slate-100 placeholder:text-slate-500 outline-none ring-1 ring-slate-700 focus:ring-cyan-500/50"
-                  />
-                  <button
-                    onClick={saveKey}
-                    disabled={!keyInput.trim()}
-                    className="rounded bg-cyan-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-cyan-500 disabled:opacity-40"
-                  >
-                    Save
-                  </button>
-                </div>
+              <div className="text-[11px] leading-relaxed text-slate-400">
+                Automatic load detection — the camera reads what you're holding and scales activation by weight —
+                is being set up and will be available here shortly.
               </div>
             ) : load ? (
               <div>

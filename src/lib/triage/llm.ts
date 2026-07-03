@@ -93,11 +93,24 @@ export const PROXY_KEY = 'proxy'
  */
 export function getStoredApiKey(): string | null {
   if (hasLlmProxy()) return PROXY_KEY
+  // Local-development convenience ONLY: the owner can drop VITE_ANTHROPIC_API_KEY
+  // in .env.local to exercise the AI without standing up the proxy. import.meta.env.DEV
+  // is false in production builds, so this can never bake a key into the shipped site.
+  if (import.meta.env.DEV) {
+    const devKey = (import.meta.env.VITE_ANTHROPIC_API_KEY as string | undefined)?.trim()
+    if (devKey && devKey.startsWith('sk-')) return devKey
+  }
   try {
     const stored = localStorage.getItem(KEY_STORAGE)
     if (stored) return stored
   } catch { /* ignore */ }
   return null
+}
+
+/** True when the AI can be used without the visitor supplying anything (proxy
+ *  in prod, or a dev key locally). Drives whether AI sections are shown as ready. */
+export function aiReady(): boolean {
+  return !!getStoredApiKey()
 }
 export function setStoredApiKey(key: string): void {
   try { localStorage.setItem(KEY_STORAGE, key) } catch { /* ignore */ }

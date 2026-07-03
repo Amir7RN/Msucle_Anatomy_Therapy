@@ -17,7 +17,7 @@
  * caller triggers it occasionally (e.g. when movement starts), not per frame.
  */
 
-import { getStoredApiKey, setStoredApiKey } from '../triage/llm'
+import { getStoredApiKey, setStoredApiKey, anthropicMessages } from '../triage/llm'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 // Haiku is vision-capable, fast, and cheap — ample for "what weight is this".
@@ -113,26 +113,19 @@ function parseEstimate(text: string): LoadEstimate | null {
 }
 
 async function callClaudeVision(base64: string, apiKey: string): Promise<LoadEstimate | null> {
-  const res = await fetch(ANTHROPIC_URL, {
-    method: 'POST',
-    headers: {
-      'content-type':                              'application/json',
-      'x-api-key':                                 apiKey,
-      'anthropic-version':                         '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model:      MODEL_ID,
-      max_tokens: 120,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
-          { type: 'text', text: PROMPT },
-        ],
-      }],
-    }),
-  })
+  // Routes through the server proxy when configured (no key in the browser),
+  // else direct with the user's own key.
+  const res = await anthropicMessages({
+    model:      MODEL_ID,
+    max_tokens: 120,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+        { type: 'text', text: PROMPT },
+      ],
+    }],
+  }, apiKey)
   if (!res.ok) {
     let msg = `vision API ${res.status}`
     try { const b = await res.json(); if (b?.error?.message) msg = b.error.message } catch {}

@@ -38,13 +38,17 @@ items marked **[you do]** are account/hosting steps only you can perform.
 key put there is trivially extractable. The old `VITE_ANTHROPIC_API_KEY` fallback
 was **removed [done in code]** for that reason.
 
-You now have two safe modes:
-- **Bring-your-own-key (default):** each visitor pastes their own `sk-ant-…` key,
-  stored only in their browser. Nothing of yours is exposed. Good for a demo, but
-  visitors need their own key.
-- **Server proxy (recommended for a real launch) [done in code, you deploy]:** run
-  the AI on *your* key without shipping it. A Supabase Edge Function
-  (`supabase/functions/anthropic-proxy/index.ts`) holds the key server-side.
+**The app no longer asks visitors for a key** — every AI feature (triage chat,
+workout coach, camera load detection) calls a server proxy, so users just use the
+platform. Until the proxy is deployed those sections show a friendly "being set up"
+notice; **everything non-AI works regardless.** Deploying the proxy is the single
+step that turns the AI on for everyone:
+- **Server proxy [done in code, you deploy]:** run the AI on *your* key without
+  shipping it. A Supabase Edge Function (`supabase/functions/anthropic-proxy/index.ts`)
+  holds the key server-side.
+- **Local testing only:** during `npm run dev` you can put `VITE_ANTHROPIC_API_KEY`
+  in `.env.local` to exercise the AI without the proxy — it's read only in dev mode
+  and can never reach the production build.
 
   Deploy it once:
   ```bash

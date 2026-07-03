@@ -166,7 +166,7 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
       setError('Still loading muscle data — tap Send again in a moment.')
       return
     }
-    if (!apiKey) { setError('Please add your Anthropic API key first.'); return }
+    if (!apiKey) { setError('The AI assistant is temporarily unavailable. Please try again shortly.'); return }
     setSending(true); setError(null)
     // Stop the mic while we wait for the LLM so we don't pick up our own speech.
     voiceIn.stop()
@@ -344,9 +344,14 @@ export function TriageChat({ open, onClose, inline = false }: Props) {
         </div>
       </header>
 
-      {/* API key wall */}
+      {/* When the AI backend isn't reachable, show a friendly notice — never ask
+          the visitor for an API key. In production the server proxy makes the AI
+          available to everyone automatically. */}
       {!apiKey && (
-        <ApiKeyEntry onSave={(k) => { setStoredApiKey(k); setApiKey(k) }} />
+        <div className="m-3 rounded-lg border border-slate-700 bg-slate-900/60 p-4 text-center text-xs leading-relaxed text-slate-400">
+          <Brain size={16} className="mx-auto mb-2 text-orange-400" />
+          The AI assistant is being set up and will be available here shortly.
+        </div>
       )}
 
       {/* Voice mode header strip */}
