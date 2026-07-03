@@ -21,15 +21,17 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { X, Activity, Share2, Trash2 } from 'lucide-react'
+import { X, Activity, Share2, Trash2, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { MuscleTwinModel } from '../movement/MuscleTwinModel'
 import { AssessmentSession } from '../assessment/AssessmentView'
 import { getMovementsForMuscle } from '../../lib/movement/muscleJointMap'
 import { getActiveUserId } from '../../lib/movement/romHistory'
 import type { BoneDirs } from '../../lib/movement/poseRig'
 import type { LiveMuscleActivation } from '../../lib/movement/liveMuscleActivation'
-import type { ParsedWorkout } from '../../lib/health/appleHealthParser'
+import type { HealthParseResult } from '../../lib/health/appleHealthParser'
 import { loadToActivations } from '../../lib/health/muscleLoadRender'
+import { ageFromProfile } from '../../lib/health/healthInsights'
+import { HealthInsights } from './HealthInsights'
 import {
   CLASS_LABEL, DEFAULT_WINDOWS, estimateMuscleLoad, groupDef,
   type LoadClass, type MuscleGroupSummary, type MuscleLoadResult,
@@ -57,8 +59,9 @@ const BASELINE_MIN = 28
 const BASELINE_MAX = 7 * 365
 
 interface Props {
-  /** Raw parsed workouts — enables the adjustable comparison windows. */
-  workouts?: ParsedWorkout[]
+  /** Full parse result (workouts + metrics + profile) — enables the adjustable
+   *  comparison windows and the Insights tab. */
+  parse?: HealthParseResult
   /** Pre-computed summary (practitioner view of a client's stored rows). */
   fixedResult?: MuscleLoadResult
   /** Persist the default-window summary to Supabase (client mode only). */
@@ -71,12 +74,17 @@ interface Props {
 }
 
 export function HealthBalanceView({
-  workouts, fixedResult, persist = true, subtitle, onCheckOverride, onClose,
+  parse, fixedResult, persist = true, subtitle, onCheckOverride, onClose,
 }: Props) {
+  const workouts = parse?.workouts
+  // Age from the export's DOB personalises the HR-intensity band.
+  const ageYears = useMemo(() => ageFromProfile(parse?.profile), [parse?.profile])
+
   // ── Adjustable windows (workouts mode) ────────────────────────────────────
   const [win, setWin] = useState({ ...DEFAULT_WINDOWS })
+  const [tab, setTab] = useState<'balance' | 'insights'>('balance')
   const [computed, setComputed] = useState<MuscleLoadResult | null>(
-    () => (workouts ? estimateMuscleLoad(workouts) : null),
+    () => (workouts ? estimateMuscleLoad(workouts, Date.now(), { ageYears }) : null),
   )
 
   // Debounced live recompute as the sliders move. estimateMuscleLoad is a
@@ -85,11 +93,11 @@ export function HealthBalanceView({
   useEffect(() => {
     if (!workouts) return
     const id = window.setTimeout(
-      () => setComputed(estimateMuscleLoad(workouts, Date.now(), win)),
+      () => setComputed(estimateMuscleLoad(workouts, Date.now(), { ...win, ageYears })),
       180,
     )
     return () => window.clearTimeout(id)
-  }, [workouts, win])
+  }, [workouts, win, ageYears])
 
   const result = fixedResult ?? computed
 
@@ -118,17 +126,22 @@ export function HealthBalanceView({
   useEffect(() => {
     if (!persist || !workouts) return
     let cancelled = false
-    saveMuscleLoadSummaries(estimateMuscleLoad(workouts)).then((o) => {
+    saveMuscleLoadSummaries(estimateMuscleLoad(workouts, Date.now(), { ageYears })).then((o) => {
       if (!cancelled) setSaveNote(o)
     })
     return () => { cancelled = true }
-  }, [persist, workouts])
+  }, [persist, workouts, ageYears])
 
   const [checkGroup, setCheckGroup] = useState<MuscleGroupSummary | null>(null)
 
+  // Sort by workload share (heaviest first) — the primary number now.
   const sorted = useMemo(
-    () => (result ? [...result.groups].sort((a, b) => rank(b.classification) - rank(a.classification)) : []),
+    () => (result ? [...result.groups].sort((a, b) => b.sharePctRecent - a.sharePctRecent || rank(b.classification) - rank(a.classification)) : []),
     [result],
+  )
+  const maxShare = useMemo(
+    () => Math.max(...sorted.map((g) => g.sharePctRecent), 1),
+    [sorted],
   )
   const lowGroups = sorted.filter((g) => g.classification === 'low')
 
@@ -144,16 +157,16 @@ export function HealthBalanceView({
       <div className="relative h-[42vh] w-full shrink-0 lg:h-auto lg:flex-1">
         <MuscleTwinModel activationsRef={activationsRef} boneDirsRef={boneDirsRef} orbit />
 
-        {/* Legend */}
+        {/* Legend — colour now encodes each group's SHARE of total workload. */}
         <div className="absolute left-3 top-3 rounded-lg bg-black/55 px-3 py-2 text-[10px] text-slate-200 backdrop-blur">
-          <div className="mb-1 font-semibold uppercase tracking-wider text-slate-400">Training balance</div>
-          <div className="flex flex-col gap-1">
-            {(['low', 'balanced', 'elevated', 'high'] as LoadClass[]).map((c) => (
-              <span key={c} className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-sm" style={{ background: CLASS_SWATCH[c] }} />
-                {CLASS_LABEL[c]}
-              </span>
-            ))}
+          <div className="mb-1 font-semibold uppercase tracking-wider text-slate-400">Workload share</div>
+          <div
+            className="h-2 w-28 rounded-full"
+            style={{ background: 'linear-gradient(90deg, #6b5b4a 0%, #b9832f 40%, #f59e0b 70%, #b91c1c 100%)' }}
+          />
+          <div className="mt-0.5 flex justify-between text-[9px] text-slate-400">
+            <span>0%</span>
+            <span>most-worked</span>
           </div>
         </div>
       </div>
@@ -209,31 +222,56 @@ export function HealthBalanceView({
           </div>
         )}
 
-        {lowGroups.length > 0 && (
-          <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-2.5 text-[11px] text-amber-100">
-            {lowGroups.length} group{lowGroups.length === 1 ? '' : 's'} could use more attention. Run a
-            quick check to see where they stand.
+        {/* Balance | Insights tabs (insights need the raw parse data) */}
+        {parse && (
+          <div className="flex gap-1 rounded-lg border border-slate-800 bg-slate-950/60 p-1">
+            {(['balance', 'insights'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`flex-1 rounded-md px-2 py-1 text-[11px] font-semibold capitalize transition-colors ${
+                  tab === t ? 'bg-slate-800 text-slate-100' : 'text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
           </div>
         )}
 
-        <div className="divide-y divide-slate-800 rounded-lg border border-slate-800">
-          {sorted.map((g) => (
-            <GroupRow
-              key={g.group}
-              g={g}
-              onCheck={() => (onCheckOverride ? onCheckOverride(g) : setCheckGroup(g))}
-            />
-          ))}
-        </div>
+        {parse && tab === 'insights' ? (
+          <HealthInsights parse={parse} result={result} />
+        ) : (
+          <>
+            {lowGroups.length > 0 && (
+              <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-2.5 text-[11px] text-amber-100">
+                {lowGroups.length} group{lowGroups.length === 1 ? '' : 's'} carr
+                {lowGroups.length === 1 ? 'ies' : 'y'} little of your workload. Run a quick check to
+                see where they stand.
+              </div>
+            )}
 
-        {saveNote?.reason === 'not-signed-in' && (
-          <div className="text-[10px] text-slate-500">
-            Sign in to save this summary to your account.
-          </div>
+            <div className="divide-y divide-slate-800 rounded-lg border border-slate-800">
+              {sorted.map((g) => (
+                <GroupRow
+                  key={g.group}
+                  g={g}
+                  maxShare={maxShare}
+                  onCheck={() => (onCheckOverride ? onCheckOverride(g) : setCheckGroup(g))}
+                />
+              ))}
+            </div>
+
+            {saveNote?.reason === 'not-signed-in' && (
+              <div className="text-[10px] text-slate-500">
+                Sign in to save this summary to your account.
+              </div>
+            )}
+
+            {/* Client-side sharing — explicit opt-in, read access only. */}
+            {workouts && <ShareWithPractitioner />}
+          </>
         )}
-
-        {/* Client-side sharing — explicit opt-in, read access only. */}
-        {workouts && <ShareWithPractitioner />}
 
         <p className="text-[10px] leading-relaxed text-slate-500">
           A training-load estimate from your workout history, in the same spirit as a relative-effort
@@ -304,33 +342,61 @@ function rank(c: LoadClass): number {
 //  Group row
 // ─────────────────────────────────────────────────────────────────────────────
 
-function GroupRow({ g, onCheck }: { g: MuscleGroupSummary; onCheck: () => void }) {
+/** Colour along the model's tan->amber->red ramp for a share fraction 0..1. */
+function shareColor(frac: number): string {
+  if (frac <= 0.02) return '#6b5b4a'
+  if (frac < 0.4) return '#8f6f3d'
+  if (frac < 0.65) return '#b9832f'
+  if (frac < 0.85) return '#f59e0b'
+  return '#b91c1c'
+}
+
+function GroupRow({ g, maxShare, onCheck }: { g: MuscleGroupSummary; maxShare: number; onCheck: () => void }) {
+  const frac = maxShare > 0 ? g.sharePctRecent / maxShare : 0
+  const ratioUp = g.acwr != null && g.acwr > 1.1
+  const ratioDown = g.acwr != null && g.acwr < 0.9
+  const TrendIcon = ratioUp ? TrendingUp : ratioDown ? TrendingDown : Minus
   return (
-    <div className="flex items-center gap-3 px-3 py-2">
-      <span className="h-3 w-3 shrink-0 rounded-sm" style={{ background: CLASS_SWATCH[g.classification] }} />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs font-semibold text-slate-100">{g.label}</span>
+    <div className="px-3 py-2">
+      <div className="flex items-center gap-2">
+        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-100">
+          {g.label}
           {g.confidence === 'broad' && (
-            <span className="rounded bg-slate-700/60 px-1 py-0.5 text-[8px] font-semibold uppercase tracking-wider text-slate-300"
+            <span className="ml-1.5 rounded bg-slate-700/60 px-1 py-0.5 align-middle text-[8px] font-semibold uppercase tracking-wider text-slate-300"
               title="This group's recent load comes mostly from composite activity types, so it's a broad estimate.">
-              Broad estimate
+              Broad
             </span>
           )}
-        </div>
-        <div className="text-[10px] text-slate-500 tabular-nums">
-          {CLASS_LABEL[g.classification]}
-          {g.acwr != null && <span> · ratio {g.acwr.toFixed(2)}</span>}
-        </div>
+        </span>
+        <span className="text-xs font-bold tabular-nums text-slate-100">
+          {g.sharePctRecent.toFixed(g.sharePctRecent < 10 ? 1 : 0)}%
+        </span>
+        {g.classification === 'low' && (
+          <button
+            onClick={onCheck}
+            className="flex shrink-0 items-center gap-1 rounded-md bg-cyan-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-cyan-500"
+          >
+            <Activity size={11} /> Check this
+          </button>
+        )}
       </div>
-      {g.classification === 'low' && (
-        <button
-          onClick={onCheck}
-          className="flex shrink-0 items-center gap-1 rounded-md bg-cyan-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-cyan-500"
-        >
-          <Activity size={11} /> Check this
-        </button>
-      )}
+      {/* Share bar — same ramp as the 3D model */}
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-800/80">
+        <div
+          className="h-full rounded-full transition-all duration-300"
+          style={{ width: `${Math.max(2, frac * 100)}%`, background: shareColor(frac) }}
+        />
+      </div>
+      <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-slate-500 tabular-nums">
+        <span>{CLASS_LABEL[g.classification]}</span>
+        {g.acwr != null && (
+          <span className="flex items-center gap-0.5">
+            · ratio {g.acwr.toFixed(2)}
+            <TrendIcon size={10} className={ratioUp ? 'text-orange-300' : ratioDown ? 'text-slate-400' : 'text-slate-500'} />
+          </span>
+        )}
+        <span className="ml-auto text-slate-600">baseline {g.sharePctBaseline.toFixed(0)}%</span>
+      </div>
     </div>
   )
 }

@@ -75,6 +75,8 @@ self.onmessage = async (e: MessageEvent) => {
       kind: 'done',
       result: {
         workouts: scanner.workouts,
+        metrics: scanner.metrics(),
+        profile: scanner.profile,
         skipped: scanner.skipped,
         parseMs: Math.round(performance.now() - t0),
       },

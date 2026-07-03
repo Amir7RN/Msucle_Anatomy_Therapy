@@ -74,6 +74,11 @@ export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
     setCandidateMuscles(ids)
   }
 
+  // Sorted, and bar widths are RELATIVE to the strongest contributor so the
+  // ranking reads instantly even when absolute probabilities are small.
+  const sortedGroups = [...grouped].sort((a, b) => b.probability - a.probability)
+  const maxProb = Math.max(...sortedGroups.map((e) => e.probability), 1e-6)
+
   return (
     <section className="border-b border-slate-200 dark:border-slate-700 p-4">
       <header className="mb-3 flex items-center justify-between">
@@ -84,12 +89,24 @@ export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
         <button onClick={closeDrawer} aria-label="Close" className="text-xs text-neutral-400 hover:text-white">✕</button>
       </header>
 
+      {/* Pattern legend: direct = strongest at the clicked spot; referred =
+          the sensation pattern radiates there from somewhere else. */}
+      <div className="mb-2 flex gap-3 text-[9px] uppercase tracking-wider text-neutral-500">
+        <span className="flex items-center gap-1">
+          <i className="h-1.5 w-3 rounded-full bg-orange-400" /> direct
+        </span>
+        <span className="flex items-center gap-1">
+          <i className="h-1.5 w-3 rounded-full bg-cyan-400" /> referred pattern
+        </span>
+      </div>
+
       <ul className="space-y-1.5">
-        {grouped.map((entry) => {
+        {sortedGroups.map((entry, rank) => {
           const isSingle = entry.muscles.length === 1
+          const top = rank === 0
 
           return (
-            <li key={entry.id} className="rounded-md border border-neutral-800/80">
+            <li key={entry.id} className={`overflow-hidden rounded-md border ${top ? 'border-orange-500/40 bg-orange-500/5' : 'border-neutral-800/80'}`}>
               {/* Row header — clickable if single muscle, hover-only if group */}
               <div
                 role={isSingle ? 'button' : undefined}
@@ -98,34 +115,47 @@ export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
                 onMouseLeave={handleHoverOut}
                 onClick={isSingle ? () => handleSelectMuscle(entry.muscles[0]) : undefined}
                 onKeyDown={isSingle ? (e) => { if (e.key === 'Enter' || e.key === ' ') handleSelectMuscle(entry.muscles[0]) } : undefined}
-                className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left transition-colors hover:bg-neutral-800 ${isSingle ? 'cursor-pointer' : 'cursor-default'}`}
+                className={`w-full rounded-md px-2 py-1.5 text-left transition-colors hover:bg-neutral-800 ${isSingle ? 'cursor-pointer' : 'cursor-default'}`}
               >
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm">{entry.label}</div>
-                  {!isSingle && (
-                    <div className="text-[10px] uppercase tracking-wider text-neutral-500">{entry.muscles.length} muscles</div>
-                  )}
+                <div className="flex items-center gap-2">
+                  <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold tabular-nums ${top ? 'bg-orange-500 text-white' : 'bg-neutral-800 text-neutral-400'}`}>
+                    {rank + 1}
+                  </span>
+                  <div className="min-w-0 flex-1 truncate text-sm">
+                    {entry.label}
+                    {!isSingle && (
+                      <span className="ml-1.5 text-[10px] uppercase tracking-wider text-neutral-500">
+                        {entry.muscles.length} muscles
+                      </span>
+                    )}
+                  </div>
+                  <span className="w-9 shrink-0 text-right text-xs font-semibold tabular-nums text-neutral-200">
+                    {Math.round(entry.probability * 100)}%
+                  </span>
                 </div>
-                <span className="w-9 text-right text-xs tabular-nums text-neutral-200">
-                  {Math.round(entry.probability * 100)}%
-                </span>
+                {/* Relative-likelihood bar */}
+                <MuscleBar muscles={entry.muscles} frac={entry.probability / maxProb} />
               </div>
 
               {/* Expanded sub-list for groups */}
               {!isSingle && (
                 <ul className="mb-1 ml-2 mr-1 space-y-1 border-l border-neutral-800 pl-2">
-                  {entry.muscles.map((muscle) => (
+                  {[...entry.muscles].sort((a, b) => b.probability - a.probability).map((muscle) => (
                     <li key={muscle.muscle_id}>
                       <button
                         onMouseEnter={() => handleHoverMuscle(muscle)}
                         onMouseLeave={handleHoverOut}
                         onClick={() => handleSelectMuscle(muscle)}
-                        className="flex w-full items-center justify-between rounded-md px-2 py-1 text-left transition-colors hover:bg-neutral-800"
+                        className="w-full rounded-md px-2 py-1 text-left transition-colors hover:bg-neutral-800"
                       >
-                        <span className="truncate text-xs">{muscle.common_name}</span>
-                        <span className="w-9 text-right text-[11px] tabular-nums text-neutral-300">
-                          {Math.round(muscle.probability * 100)}%
-                        </span>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="min-w-0 flex-1 truncate text-xs">{muscle.common_name}</span>
+                          <PatternChip matchType={muscle.matchType} />
+                          <span className="w-9 shrink-0 text-right text-[11px] tabular-nums text-neutral-300">
+                            {Math.round(muscle.probability * 100)}%
+                          </span>
+                        </div>
+                        <MuscleBar muscles={[muscle]} frac={muscle.probability / maxProb} thin />
                       </button>
                     </li>
                   ))}
@@ -136,5 +166,31 @@ export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
         })}
       </ul>
     </section>
+  )
+}
+
+/** Direct-vs-referred chip for a contributor row. */
+function PatternChip({ matchType }: { matchType: 'primary' | 'referred' }) {
+  return matchType === 'primary' ? (
+    <span className="shrink-0 rounded bg-orange-500/15 px-1 py-0.5 text-[8px] font-semibold uppercase tracking-wider text-orange-300">direct</span>
+  ) : (
+    <span className="shrink-0 rounded bg-cyan-500/15 px-1 py-0.5 text-[8px] font-semibold uppercase tracking-wider text-cyan-300">referred</span>
+  )
+}
+
+/**
+ * Likelihood bar, coloured by the dominant match type (orange = strongest
+ * signal directly at the clicked spot, cyan = referred pattern).
+ */
+function MuscleBar({ muscles, frac, thin }: { muscles: MuscleContribution[]; frac: number; thin?: boolean }) {
+  const primaryShare = muscles.filter((m) => m.matchType === 'primary').length / Math.max(1, muscles.length)
+  const color = primaryShare >= 0.5 ? '#fb923c' : '#22d3ee'
+  return (
+    <div className={`mt-1 w-full overflow-hidden rounded-full bg-neutral-800/80 ${thin ? 'h-0.5' : 'h-1'}`}>
+      <div
+        className="h-full rounded-full transition-all duration-300"
+        style={{ width: `${Math.max(3, frac * 100)}%`, background: color }}
+      />
+    </div>
   )
 }

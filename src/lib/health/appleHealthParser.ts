@@ -34,8 +34,35 @@ export interface ParsedWorkout {
   endDate: string
 }
 
+/** Body/gait metrics harvested from <Record> elements (daily means). */
+export type BodyMetricKey =
+  | 'bodyMass'                 // kg
+  | 'height'                   // cm
+  | 'vo2Max'                   // mL/kg/min
+  | 'restingHeartRate'         // bpm
+  | 'hrvSdnn'                  // ms
+  | 'walkingAsymmetryPct'      // %
+  | 'walkingDoubleSupportPct'  // %
+  | 'walkingSpeed'             // km/h
+
+export interface MetricPoint {
+  /** Day, YYYY-MM-DD. */
+  d: string
+  /** Daily mean value (unit per BodyMetricKey). */
+  v: number
+}
+
+export interface HealthProfile {
+  /** From the export's <Me> element, when present. */
+  dateOfBirth: string | null
+  biologicalSex: 'male' | 'female' | null
+}
+
 export interface HealthParseResult {
   workouts: ParsedWorkout[]
+  /** Daily-mean series per harvested metric (empty array when absent). */
+  metrics: Record<BodyMetricKey, MetricPoint[]>
+  profile: HealthProfile
   /** Number of <Workout> elements that were present but unusable
    *  (missing activity type or dates). */
   skipped: number
@@ -103,6 +130,31 @@ function durationMinutes(attrs: Record<string, string>, startIso: string | null,
 const OPEN_TAG = '<Workout '
 const CLOSE_TAG = '</Workout>'
 
+// <Record> types worth harvesting for the insights panel. Values are unit
+// converters into the canonical unit documented on BodyMetricKey.
+const RECORD_TYPES: Record<string, { key: BodyMetricKey; convert: (v: number, unit: string) => number }> = {
+  BodyMass:                      { key: 'bodyMass', convert: (v, u) => (u === 'lb' ? v * 0.45359237 : u === 'g' ? v / 1000 : v) },
+  Height:                        { key: 'height', convert: (v, u) => (u === 'in' ? v * 2.54 : u === 'm' ? v * 100 : u === 'ft' ? v * 30.48 : v) },
+  VO2Max:                        { key: 'vo2Max', convert: (v) => v },
+  RestingHeartRate:              { key: 'restingHeartRate', convert: (v) => v },
+  HeartRateVariabilitySDNN:      { key: 'hrvSdnn', convert: (v) => v },
+  WalkingAsymmetryPercentage:    { key: 'walkingAsymmetryPct', convert: (v, u) => (u === '%' ? v : v * 100) },
+  WalkingDoubleSupportPercentage:{ key: 'walkingDoubleSupportPct', convert: (v, u) => (u === '%' ? v : v * 100) },
+  WalkingSpeed:                  { key: 'walkingSpeed', convert: (v, u) => (u === 'm/s' ? v * 3.6 : u === 'mi/hr' ? v * 1.609344 : v) },
+}
+
+const RECORD_RE = new RegExp(
+  '<Record type="HKQuantityTypeIdentifier(' + Object.keys(RECORD_TYPES).join('|') + ')"[^>]*>',
+  'g',
+)
+
+export function emptyMetrics(): Record<BodyMetricKey, MetricPoint[]> {
+  return {
+    bodyMass: [], height: [], vo2Max: [], restingHeartRate: [], hrvSdnn: [],
+    walkingAsymmetryPct: [], walkingDoubleSupportPct: [], walkingSpeed: [],
+  }
+}
+
 /**
  * Feed string chunks with `push()`; call `finish()` after the last chunk.
  * Extracted workouts accumulate on `workouts`.
@@ -115,9 +167,24 @@ const CLOSE_TAG = '</Workout>'
 export class WorkoutXmlScanner {
   readonly workouts: ParsedWorkout[] = []
   skipped = 0
+  profile: HealthProfile = { dateOfBirth: null, biologicalSex: null }
   private carry = ''
+  /** Per-metric, per-day accumulators (sum + count -> daily mean). */
+  private metricDays: Record<BodyMetricKey, Map<string, { s: number; n: number }>> = {
+    bodyMass: new Map(), height: new Map(), vo2Max: new Map(),
+    restingHeartRate: new Map(), hrvSdnn: new Map(),
+    walkingAsymmetryPct: new Map(), walkingDoubleSupportPct: new Map(),
+    walkingSpeed: new Map(),
+  }
+  private recCarry = ''
+  private sawMe = false
 
   push(chunk: string): void {
+    this.scanRecords(chunk)
+    this.scanWorkouts(chunk)
+  }
+
+  private scanWorkouts(chunk: string): void {
     const text = this.carry + chunk
     this.carry = ''
     let pos = 0
@@ -151,6 +218,73 @@ export class WorkoutXmlScanner {
 
   finish(): void {
     this.carry = ''
+    this.recCarry = ''
+  }
+
+  /** Daily-mean series per metric, chronologically sorted. */
+  metrics(): Record<BodyMetricKey, MetricPoint[]> {
+    const out = emptyMetrics()
+    for (const key of Object.keys(this.metricDays) as BodyMetricKey[]) {
+      const pts: MetricPoint[] = []
+      for (const [d, acc] of this.metricDays[key]) {
+        pts.push({ d, v: Math.round((acc.s / acc.n) * 100) / 100 })
+      }
+      pts.sort((a, b) => a.d.localeCompare(b.d))
+      out[key] = pts
+    }
+    return out
+  }
+
+  /**
+   * Harvest self-closing <Record .../> elements (each sits on its own line in
+   * Apple's export) plus the single <Me .../> characteristics element. Uses a
+   * newline-framed carry, independent from the workout carry, so a tag split
+   * across chunks is completed on the next push.
+   */
+  private scanRecords(chunk: string): void {
+    const text = this.recCarry + chunk
+    const lastNl = text.lastIndexOf('\n')
+    if (lastNl === -1) {
+      // Pathological single-line chunk stream — cap the carry so it can't grow
+      // unbounded; Record lines are far shorter than 64k.
+      this.recCarry = text.length > 65536 ? text.slice(-65536) : text
+      return
+    }
+    const body = text.slice(0, lastNl)
+    this.recCarry = text.slice(lastNl + 1)
+
+    if (!this.sawMe) {
+      const me = body.indexOf('<Me ')
+      if (me !== -1) {
+        const end = body.indexOf('>', me)
+        if (end !== -1) {
+          const a = readAttrs(body.slice(me, end + 1))
+          const dob = a.HKCharacteristicTypeIdentifierDateOfBirth
+          if (dob && /^\d{4}-\d{2}-\d{2}/.test(dob)) this.profile.dateOfBirth = dob.slice(0, 10)
+          const sex = a.HKCharacteristicTypeIdentifierBiologicalSex
+          if (sex === 'HKBiologicalSexMale') this.profile.biologicalSex = 'male'
+          else if (sex === 'HKBiologicalSexFemale') this.profile.biologicalSex = 'female'
+          this.sawMe = true
+        }
+      }
+    }
+
+    RECORD_RE.lastIndex = 0
+    let m: RegExpExecArray | null
+    while ((m = RECORD_RE.exec(body))) {
+      const spec = RECORD_TYPES[m[1]]
+      if (!spec) continue
+      const a = readAttrs(m[0])
+      const v = parseFloat(a.value)
+      if (!Number.isFinite(v)) continue
+      const date = (a.startDate ?? a.endDate ?? '').slice(0, 10)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue
+      const cv = spec.convert(v, a.unit ?? '')
+      if (!Number.isFinite(cv)) continue
+      const day = this.metricDays[spec.key]
+      const acc = day.get(date)
+      if (acc) { acc.s += cv; acc.n++ } else day.set(date, { s: cv, n: 1 })
+    }
   }
 
   private handleElement(elem: string): void {

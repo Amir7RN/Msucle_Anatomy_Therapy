@@ -191,9 +191,21 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v))
 }
 
-export function intensityFactor(w: ParsedWorkout, activityMet: number): number {
+/**
+ * When the export carries a date of birth we personalise the HR band with the
+ * Tanaka max-HR estimate (208 - 0.7*age): easy = 55% HRmax, hard = 88% HRmax.
+ * Without an age we keep the population-typical 100..160 bpm band.
+ */
+export function intensityFactor(w: ParsedWorkout, activityMet: number, ageYears?: number | null): number {
   if (w.avgHeartRateBpm != null && w.avgHeartRateBpm > 40) {
-    const zone = clamp((w.avgHeartRateBpm - HR_EASY) / (HR_HARD - HR_EASY), 0, 1)
+    let easy = HR_EASY
+    let hard = HR_HARD
+    if (ageYears != null && ageYears >= 10 && ageYears <= 100) {
+      const hrMax = 208 - 0.7 * ageYears
+      easy = hrMax * 0.55
+      hard = hrMax * 0.88
+    }
+    const zone = clamp((w.avgHeartRateBpm - easy) / (hard - easy), 0, 1)
     return 0.6 + zone * 0.9 // 0.6 (easy) .. 1.5 (hard)
   }
   // MET fallback: ~0.4 (very light) .. ~1.3 (vigorous).
@@ -216,10 +228,10 @@ export interface WorkoutLoad {
 }
 
 /** Step 2-4: compute per-workout intensity, load, and group distribution. */
-export function computeWorkoutLoads(workouts: ParsedWorkout[]): WorkoutLoad[] {
+export function computeWorkoutLoads(workouts: ParsedWorkout[], ageYears?: number | null): WorkoutLoad[] {
   return workouts.map((w) => {
     const prof = profileFor(w.activityKey)
-    const intensity = intensityFactor(w, prof.met)
+    const intensity = intensityFactor(w, prof.met, ageYears)
     const loadW = w.durationMin * intensity
     const groupLoad: EmphasisVec = {}
     for (const g of GROUP_IDS) {
@@ -260,6 +272,11 @@ export interface MuscleGroupSummary {
   loadBaseline: number
   /** loadRecent / loadBaseline, or null when there isn't enough baseline history. */
   acwr:       number | null
+  /** This group's percentage of the TOTAL workload in each window (0..100).
+   *  The primary "how much of my training hits this group" number — what the
+   *  model colours by and what the row percent shows. */
+  sharePctRecent:   number
+  sharePctBaseline: number
   classification: LoadClass
   /** 'broad' when the recent load is dominated by broad-estimate activities. */
   confidence: 'estimated' | 'broad'
@@ -271,6 +288,8 @@ export interface MuscleGroupSummary {
 export interface WindowConfig {
   recentDays:   number
   baselineDays: number
+  /** Age (years) for HR-zone personalisation, when the export carries a DOB. */
+  ageYears?:    number | null
 }
 
 export const DEFAULT_WINDOWS: WindowConfig = { recentDays: 7, baselineDays: 28 }
@@ -294,11 +313,20 @@ export interface MuscleLoadResult {
 }
 
 /**
- * Map an ACWR + class to the 0..1 level the twin model's colour ramp expects.
- * Mirrors the existing intensity convention: low engagement sits at the cool/
- * neutral (near-baseline) end, high load at the hot end.
- * Exported so the practitioner view can rebuild render levels from stored rows.
+ * Colour level from a group's SHARE of the total workload, relative to the
+ * hardest-worked group (0..1 for the twin ramp: tan -> amber -> red). Share —
+ * not the acute:chronic ratio — is what makes a runner's legs glow red and an
+ * untouched chest stay neutral; the ratio only says how the last window
+ * compares to baseline and goes flat/low for every group at once whenever
+ * overall volume dips, which read as "nothing is coloured".
+ * Exported so the practitioner view can rebuild levels from stored rows.
  */
+export function shareRenderLevel(sharePct: number, maxSharePct: number): number {
+  if (sharePct <= 0 || maxSharePct <= 0) return 0.05 // neutral / cool
+  return 0.15 + 0.8 * clamp(sharePct / maxSharePct, 0, 1)
+}
+
+/** Deprecated ACWR-based level (kept for backwards compatibility). */
 export function renderLevelFor(cls: LoadClass, acwr: number | null): number {
   if (acwr == null || cls === 'low') return 0.05 // neutral / cool
   if (cls === 'balanced') {
@@ -311,6 +339,15 @@ export function renderLevelFor(cls: LoadClass, acwr: number | null): number {
   }
   // high: 1.5..2.5+ -> 0.85..1.0
   return clamp(0.85 + (acwr - 1.5) / 1.0 * 0.15, 0.85, 1)
+}
+
+/** A group is "low engagement / needs attention" when its share of the total
+ *  workload is under half of an even split across all groups — a VOLUME test
+ *  (never trained ≈ 0%), independent of the recent:baseline ratio. */
+export const LOW_SHARE_FRACTION = 0.5
+
+export function isLowShare(sharePct: number, groupCount: number): boolean {
+  return sharePct < (100 / groupCount) * LOW_SHARE_FRACTION
 }
 
 /**
@@ -332,7 +369,7 @@ export function estimateMuscleLoad(
   const recentDays = Math.max(1, Math.round(windows.recentDays ?? DEFAULT_WINDOWS.recentDays))
   const baselineDays = Math.max(1, Math.round(windows.baselineDays ?? DEFAULT_WINDOWS.baselineDays))
 
-  const loads = computeWorkoutLoads(workouts)
+  const loads = computeWorkoutLoads(workouts, windows.ageYears)
   const refDay = new Date(referenceMs)
   const ref = Date.UTC(refDay.getUTCFullYear(), refDay.getUTCMonth(), refDay.getUTCDate()) + DAY_MS - 1
 
@@ -379,14 +416,34 @@ export function estimateMuscleLoad(
     }
   }
 
+  // Window totals -> per-group workload SHARE (the primary accuracy signal).
+  let totRecent = 0
+  let totBase = 0
+  for (const g of GROUP_IDS) {
+    totRecent += sumRecent[g] ?? 0
+    totBase += sumBase[g] ?? 0
+  }
+
   const groups: MuscleGroupSummary[] = MUSCLE_GROUPS.map((def) => {
     const g = def.id
     const loadRecent = (sumRecent[g] ?? 0) / effectiveRecentDays
     const loadBaseline = (sumBase[g] ?? 0) / effectiveBaselineDays
+    const sharePctRecent = totRecent > 0 ? (100 * (sumRecent[g] ?? 0)) / totRecent : 0
+    const sharePctBaseline = totBase > 0 ? (100 * (sumBase[g] ?? 0)) / totBase : 0
     // ACWR needs a meaningful baseline; with none, the group reads as
     // low engagement (needs attention) rather than a divide-by-zero spike.
     const acwr = loadBaseline > 1e-6 ? loadRecent / loadBaseline : null
-    const classification = acwr == null ? 'low' : classifyAcwr(acwr)
+    // Classification: "needs attention" is a VOLUME call (share far below an
+    // even split — e.g. a runner's chest), not a ratio call. Ratio-driven
+    // classes (elevated/high spike risk) apply only to adequately-worked
+    // groups; a plain lower recent volume on a well-worked group stays
+    // "balanced" (the row's trend arrow + ratio still show the dip).
+    const lowVolume = isLowShare(Math.max(sharePctRecent, sharePctBaseline), MUSCLE_GROUPS.length)
+    const classification: LoadClass =
+      acwr == null || lowVolume ? 'low'
+      : acwr > 1.5 ? 'high'
+      : acwr > 1.3 ? 'elevated'
+      : 'balanced'
     const recentSum = sumRecent[g] ?? 0
     const confidence: 'estimated' | 'broad' =
       recentSum > 0 && (broadRecent[g] ?? 0) / recentSum > 0.5 ? 'broad' : 'estimated'
@@ -396,11 +453,21 @@ export function estimateMuscleLoad(
       loadRecent,
       loadBaseline,
       acwr,
+      sharePctRecent,
+      sharePctBaseline,
       classification,
       confidence,
-      renderLevel: renderLevelFor(classification, acwr),
+      renderLevel: 0, // filled below once the max share is known
     }
   })
+
+  // Colour by share relative to the hardest-worked group. When the recent
+  // window is empty, fall back to baseline shares so the model still paints.
+  const useRecent = totRecent > 0
+  const maxShare = Math.max(...groups.map((g) => (useRecent ? g.sharePctRecent : g.sharePctBaseline)), 0)
+  for (const g of groups) {
+    g.renderLevel = shareRenderLevel(useRecent ? g.sharePctRecent : g.sharePctBaseline, maxShare)
+  }
 
   return {
     referenceDate: new Date(ref - DAY_MS + 1).toISOString().slice(0, 10),

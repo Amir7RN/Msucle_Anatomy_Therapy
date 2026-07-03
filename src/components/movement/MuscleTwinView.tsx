@@ -131,6 +131,11 @@ export function MuscleTwinView({ open, onClose }: Props) {
   const agilityRef     = useRef<Partial<Record<SegmentFamily, number>>>(bodyModel.agility)
   const loadRef        = useRef<LoadInput>({})
   const lastHudRef     = useRef(0)
+  // Tracking gate: the twin holds its neutral standing pose until the pose
+  // engine reports a confident, well-framed user, and FREEZES (instead of
+  // flailing) when confidence drops mid-session (user half in frame).
+  // Hysteresis: needs quality >= 0.5 to start tracking, keeps it down to 0.25.
+  const trackedRef     = useRef(false)
 
   // Keep the physics mass + inertia live and persist the user's body.
   useEffect(() => {
@@ -154,7 +159,7 @@ export function MuscleTwinView({ open, onClose }: Props) {
     } else {
       setReady(false); setError(null); setLoad(null); setLoadErr(null)
       activationsRef.current = []; boneDirsRef.current = {}; loadRef.current = {}
-      yawRef.current = 0; rootYRef.current = 0
+      yawRef.current = 0; rootYRef.current = 0; trackedRef.current = false
       // Persist the session's muscle status before tearing the engine down, so
       // the weekly "volume-load" trend keeps building across workouts.
       if (statusEngineRef.current?.hasMeaningfulSession()) {
@@ -217,12 +222,27 @@ export function MuscleTwinView({ open, onClose }: Props) {
     // jump/squat vertical offset so the twin turns and reacts to gravity.
     const rig = poseEngineRef.current?.update(lms)
     if (rig) {
-      boneDirsRef.current = rig.dirs
-      yawRef.current = rig.yaw
-      rootYRef.current = rig.rootY
-      groundedRef.current = rig.grounded
+      // Gate on tracking quality: drive the model only while the user is
+      // confidently framed. Before first lock the twin stands still; if the
+      // user is only partially in frame afterwards, the last good pose is
+      // frozen rather than letting garbage landmarks fling / rotate the model.
+      if (!trackedRef.current && rig.quality >= 0.5) trackedRef.current = true
+      else if (trackedRef.current && rig.quality < 0.25) trackedRef.current = false
+
+      if (trackedRef.current) {
+        boneDirsRef.current = rig.dirs
+        yawRef.current = rig.yaw
+        rootYRef.current = rig.rootY
+        groundedRef.current = rig.grounded
+        postureRef.current = toPosture(frame.orientation.orientation)
+      } else if (Object.keys(boneDirsRef.current).length === 0) {
+        // Never locked yet — keep the neutral standing defaults.
+        yawRef.current = 0
+        rootYRef.current = 0
+        groundedRef.current = true
+        postureRef.current = null
+      }
     }
-    postureRef.current = toPosture(frame.orientation.orientation)
 
     if (now - lastHudRef.current >= HUD_MS) {
       lastHudRef.current = now

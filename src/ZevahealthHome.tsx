@@ -28,7 +28,8 @@ type ZevahealthHomeProps = {
 }
 
 const diagnosisVideoUrl = new URL('../Videos/Shoulder-Deltoid/Diagnosis.mp4', import.meta.url).href
-const aiCoachVideoUrl = new URL('../Videos/Shoulder-Deltoid/AICouch.mp4', import.meta.url).href
+// Demo2 — the new AI-coach walkthrough footage (repo root, next to /Videos).
+const aiCoachVideoUrl = new URL('../Demo2.mp4', import.meta.url).href
 const chatBotImageBefore = new URL('../Videos/Shoulder-Deltoid/ChatBotImage_Example1.png', import.meta.url).href
 const chatBotImageAfter = new URL('../Videos/Shoulder-Deltoid/ChatBotImage_Example2.png', import.meta.url).href
 
@@ -204,24 +205,24 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
             <Reveal className="mb-6 flex justify-center lg:justify-start">
               <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm backdrop-blur">
                 <Sparkles className="h-4 w-4 text-cyan-500" />
-                For every body — desk workers, lifters, runners, weekend warriors
+                AI muscle pain diagnosis · posture &amp; movement check · free in your browser
               </span>
             </Reveal>
 
             <Reveal delay={60}>
               <h1 className="text-5xl font-extrabold leading-[0.95] tracking-[-0.045em] text-slate-900 sm:text-6xl lg:text-[4.5rem]">
-                Sore spots shouldn&apos;t be a{' '}
                 <span className="zh-gradient-text bg-gradient-to-r from-orange-500 via-rose-500 to-cyan-500 bg-clip-text text-transparent">
-                  mystery
-                </span>
-                .
+                  Muscle pain relief
+                </span>{' '}
+                starts with knowing the{' '}
+                <span className="zh-underline">muscle</span>.
               </h1>
             </Reveal>
 
             <Reveal delay={120}>
               <p className="mx-auto mt-6 max-w-xl text-lg leading-8 text-slate-600 sm:text-xl lg:mx-0">
-                Talk to the AI or pinpoint the muscle behind the hurt. Then move through suggested exercises with your AI
-                coach — and feel better.
+                Pinpoint what hurts on a 3D muscle anatomy model, get muscle pain relief exercises matched
+                to it, and work out with an AI coach that checks your form and posture on every rep.
               </p>
             </Reveal>
 
@@ -229,9 +230,9 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
               <div className="mt-9 flex flex-col items-center justify-center gap-4 sm:flex-row lg:justify-start">
                 <a
                   href={diagnosticUrl}
-                  className="group inline-flex min-w-56 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-orange-500 to-rose-500 px-8 py-4 text-base font-semibold text-white shadow-[0_18px_45px_-15px_rgba(244,63,94,0.8)] transition hover:-translate-y-0.5 hover:shadow-[0_24px_55px_-15px_rgba(244,63,94,0.9)]"
+                  className="zh-cta-breathe group inline-flex min-w-56 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-orange-500 to-rose-500 px-8 py-4 text-base font-semibold text-white transition hover:-translate-y-0.5"
                 >
-                  Try it free <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                  Find my sore muscle <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                 </a>
                 <a
                   href={atlasUrl}
@@ -283,7 +284,7 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {STATS.map((s, i) => (
             <Reveal key={s.label} delay={i * 70}>
-              <div className="h-full rounded-3xl border border-slate-900/5 bg-white p-6 text-center shadow-[0_24px_60px_-35px_rgba(15,23,42,0.3)]">
+              <div className="zh-shine h-full rounded-3xl border border-slate-900/5 bg-white p-6 text-center shadow-[0_24px_60px_-35px_rgba(15,23,42,0.3)] transition hover:-translate-y-0.5">
                 <div className="bg-gradient-to-r from-cyan-600 to-teal-500 bg-clip-text text-3xl font-extrabold tracking-tight text-transparent sm:text-4xl">
                   {s.value}
                 </div>
@@ -297,10 +298,10 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
       {/* ── Feature 1 — Pinpoint the muscle ─────────────────────────────────── */}
       <FeatureSplit
         id="pinpoint"
-        eyebrow="Pinpoint the Muscle"
+        eyebrow="Muscle Pain Diagnosis"
         icon={<ScanSearch className="h-3.5 w-3.5" />}
         title="Tap the spot. Find the source."
-        subtitle="Watch how Zevahealth turns a hand on a sore shoulder into a clear answer."
+        subtitle="AI muscle pain diagnosis on an interactive 3D anatomy model — a sore shoulder becomes a named muscle with its tension pattern."
         hue="cyan"
       >
         <DiagnosisStoryPanel />
@@ -314,7 +315,7 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
           eyebrow="Just Ask Zevahealth"
           icon={<MessageSquare className="h-3.5 w-3.5" />}
           title="Or just talk to it."
-          subtitle="Type or speak. Zevahealth asks the right questions until the source is clear."
+          subtitle="Describe your muscle pain in plain words — the AI asks the right questions, then hands you targeted relief exercises."
           hue="orange"
         >
           <AIChatPanel />
@@ -324,10 +325,10 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
       {/* ── Feature 3 — AI Form Coach ───────────────────────────────────────── */}
       <FeatureSplit
         id="coach"
-        eyebrow="AI Form Coach"
+        eyebrow="AI Workout Coach"
         icon={<Camera className="h-3.5 w-3.5" />}
-        title="A coach that watches every rep."
-        subtitle="Pose tracking, joint angles, and live cues — your trainer in two megapixels."
+        title="An AI workout coach on every rep."
+        subtitle="Live form check and posture correction — pose tracking measures your joint angles and cues you mid-set, like a personal trainer in your camera."
         hue="cyan"
       >
         <AICoachPanel />
@@ -340,14 +341,14 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
             eyebrow="Why Zevahealth"
             icon={<Sparkles className="h-3.5 w-3.5" />}
             title="Three tools. One body model."
-            subtitle="Everything you need to understand soreness and move better — in one bright, friendly place."
+            subtitle="Muscle pain diagnosis, relief exercises, and an AI workout coach — one interactive anatomy model, right in your browser."
             hue="orange"
           />
         </Reveal>
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {BENEFITS.map((b, i) => (
             <Reveal key={b.title} delay={i * 80}>
-              <div className="group h-full rounded-3xl border border-slate-900/5 bg-white p-7 shadow-[0_24px_60px_-35px_rgba(15,23,42,0.3)] transition hover:-translate-y-1 hover:shadow-[0_30px_70px_-30px_rgba(15,23,42,0.4)]">
+              <div className="zh-shine group h-full rounded-3xl border border-slate-900/5 bg-white p-7 shadow-[0_24px_60px_-35px_rgba(15,23,42,0.3)] transition hover:-translate-y-1 hover:shadow-[0_30px_70px_-30px_rgba(15,23,42,0.4)]">
                 <span className={`mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl ${b.tile} transition group-hover:scale-110`}>
                   {b.icon}
                 </span>
@@ -376,8 +377,8 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
                 Made to move with you.
               </h2>
               <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-cyan-50">
-                The first interactive muscle-target body model for everyday soreness relief. Find what hurts, then move
-                through suggested exercises with your AI coach by your side.
+                The interactive muscle anatomy model for everyday muscle pain relief. Diagnose what hurts,
+                get relief exercises tuned to that muscle, and train with your AI workout coach by your side.
               </p>
               <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
                 <a
@@ -422,47 +423,47 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
 /* ───────────────────────────── Content data ───────────────────────────── */
 
 const AUDIENCE = [
-  'Desk workers',
-  'Lifters',
-  'Runners',
-  'Weekend warriors',
-  'Climbers',
-  'Swimmers',
-  'Cyclists',
-  'New parents',
-  'Yogis',
-  'Gardeners',
+  'Muscle pain relief exercises',
+  'AI workout coach',
+  'Posture correction',
+  'Movement assessment',
+  '3D muscle anatomy',
+  'Form check',
+  'Desk-neck & shoulder relief',
+  'Runner recovery',
+  'Mobility & stretching',
+  'Workout routines by muscle',
 ]
 
 const STATS: { value: string; label: string }[] = [
-  { value: '100+', label: 'Muscles you can target' },
-  { value: '3-in-1', label: 'Find · Ask · Coach' },
-  { value: '0', label: 'Sign-ups required' },
-  { value: 'Live', label: 'In-browser pose tracking' },
+  { value: '100+', label: 'Muscles on the 3D anatomy model' },
+  { value: '3-in-1', label: 'Diagnose · Relief exercises · AI coach' },
+  { value: '0', label: 'Sign-ups or downloads required' },
+  { value: 'Live', label: 'Posture & form tracking in-browser' },
 ]
 
 const BENEFITS: { title: string; body: string; icon: React.ReactNode; tile: string }[] = [
   {
-    title: 'Find the source',
-    body: 'Tap a sore spot on the 3D body and see the muscles most likely behind the hurt light up.',
+    title: 'Muscle pain diagnosis',
+    body: 'Tap a sore spot on the 3D anatomy model and see the muscles most likely behind the hurt light up, ranked.',
     icon: <MousePointerClick className="h-6 w-6" />,
     tile: 'bg-cyan-100 text-cyan-600',
   },
   {
-    title: 'Talk it through',
-    body: 'Describe it in plain words. The AI asks smart follow-ups until the real source is clear.',
+    title: 'Relief exercises that fit',
+    body: 'Get muscle pain relief exercises and stretches matched to the exact muscle — not a generic workout list.',
     icon: <MessageSquare className="h-6 w-6" />,
     tile: 'bg-orange-100 text-orange-500',
   },
   {
-    title: 'Move with a coach',
-    body: 'Live pose tracking counts your reps, measures joint angles, and cues your form in real time.',
+    title: 'AI workout coach',
+    body: 'Live form check and posture correction: pose tracking counts reps, measures joint angles, and cues you mid-set.',
     icon: <Gauge className="h-6 w-6" />,
     tile: 'bg-rose-100 text-rose-500',
   },
   {
-    title: 'No barriers',
-    body: 'No signup, no download, nothing to install. The whole experience runs right in your browser.',
+    title: 'Movement assessment',
+    body: 'Measure your range of motion and symmetry over time — a full movement assessment with no wearables needed.',
     icon: <Zap className="h-6 w-6" />,
     tile: 'bg-teal-100 text-teal-600',
   },
@@ -735,7 +736,7 @@ function DiagnosisStoryPanel() {
   return (
     <div
       ref={containerRef}
-      className="relative rounded-[2rem] border border-slate-900/5 bg-white p-3 shadow-[0_40px_110px_-45px_rgba(15,23,42,0.5)]"
+      className="zh-glow-frame relative rounded-[2rem] border border-slate-900/5 bg-white p-3 shadow-[0_40px_110px_-45px_rgba(15,23,42,0.5)]"
     >
       <div className="flex items-center gap-1.5 px-3 py-2">
         <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
@@ -1000,7 +1001,7 @@ function AICoachPanel() {
   return (
     <div
       ref={containerRef}
-      className="relative rounded-[2rem] border border-slate-900/5 bg-white p-3 shadow-[0_40px_110px_-45px_rgba(15,23,42,0.5)]"
+      className="zh-glow-frame relative rounded-[2rem] border border-slate-900/5 bg-white p-3 shadow-[0_40px_110px_-45px_rgba(15,23,42,0.5)]"
     >
       <div className="flex items-center gap-1.5 px-3 py-2">
         <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />

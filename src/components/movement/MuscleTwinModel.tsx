@@ -376,6 +376,7 @@ function buildRig(scene: THREE.Object3D): RigData {
   const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z)
 
   const bUAr = box(['upperArmR']), bUAl = box(['upperArmL'])
+  const bFAr = box(['forearmR']),  bFAl = box(['forearmL'])
   const bThR = box(['thighR']),    bThL = box(['thighL'])
   const bShR = box(['shankR']),    bShL = box(['shankL'])
   const bTrunk = box(['trunk']),   bPelv = box(['pelvis'])
@@ -386,8 +387,12 @@ function buildRig(scene: THREE.Object3D): RigData {
   // joint and stays attached, and the legs don't swing across the midline.
   const shoulderR = bUAr ? topC(bUAr) : V(-0.12, 1.35, 0)
   const shoulderL = bUAl ? topC(bUAl) : V(0.12, 1.35, 0)
-  const elbowR = bUAr ? botC(bUAr) : V(-0.2, 0.95, 0)
-  const elbowL = bUAl ? botC(bUAl) : V(0.2, 0.95, 0)
+  // ELBOW = the PROXIMAL (top) end of the forearm's own meshes, so the forearm
+  // hinges exactly where it visually begins. The old pivot (bottom of the
+  // upper-arm box) sat below the brachioradialis origin, which made the
+  // rotation centre look like it was in the middle of the forearm.
+  const elbowR = bFAr ? topC(bFAr) : bUAr ? botC(bUAr) : V(-0.2, 0.95, 0)
+  const elbowL = bFAl ? topC(bFAl) : bUAl ? botC(bUAl) : V(0.2, 0.95, 0)
   // Forearm pivots EXACTLY at the elbow (the upper arm's distal point) so it is
   // welded to the upper arm. The GLB has no hand/wrist mesh and only a short,
   // oddly-placed brachioradialis sliver, so deriving the wrist from a mesh box

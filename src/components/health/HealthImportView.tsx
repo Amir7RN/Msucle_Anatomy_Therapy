@@ -98,7 +98,7 @@ export function HealthImportView({ open, onClose }: Props) {
             Training balance
           </span>
         </header>
-        <HealthBalanceView workouts={result.workouts} onClose={onClose} />
+        <HealthBalanceView parse={result} onClose={onClose} />
       </div>
     )
   }

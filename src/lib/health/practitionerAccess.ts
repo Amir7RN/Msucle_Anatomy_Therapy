@@ -18,7 +18,7 @@
 import { supabase } from '../supabase'
 import { getActiveUserId } from '../movement/romHistory'
 import {
-  MUSCLE_GROUPS, renderLevelFor, type LoadClass, type MuscleGroupId,
+  MUSCLE_GROUPS, shareRenderLevel, type LoadClass, type MuscleGroupId,
   type MuscleGroupSummary, type MuscleLoadResult,
 } from './muscleLoadEstimator'
 
@@ -135,21 +135,38 @@ export async function fetchClientLoadSummary(clientUserId: string): Promise<Clie
   const batch = data.filter((r) => String(r.computed_at) === newest)
 
   const byGroup = new Map(batch.map((r) => [String(r.muscle_group), r]))
+  // Rebuild workload shares from the stored per-group loads so the
+  // practitioner sees the same share-based colours/percentages as the client.
+  let totRecent = 0
+  let totBase = 0
+  for (const r of batch) {
+    totRecent += r.load_7day != null ? Number(r.load_7day) : 0
+    totBase += r.load_28day != null ? Number(r.load_28day) : 0
+  }
   const groups: MuscleGroupSummary[] = MUSCLE_GROUPS.map((def) => {
     const row = byGroup.get(def.id)
     const acwr = row && row.acwr != null ? Number(row.acwr) : null
     const classification = (row?.classification as LoadClass | undefined) ?? 'low'
+    const loadRecent = row?.load_7day != null ? Number(row.load_7day) : 0
+    const loadBaseline = row?.load_28day != null ? Number(row.load_28day) : 0
     return {
       group: def.id as MuscleGroupId,
       label: def.label,
-      loadRecent: row?.load_7day != null ? Number(row.load_7day) : 0,
-      loadBaseline: row?.load_28day != null ? Number(row.load_28day) : 0,
+      loadRecent,
+      loadBaseline,
       acwr,
+      sharePctRecent: totRecent > 0 ? (100 * loadRecent) / totRecent : 0,
+      sharePctBaseline: totBase > 0 ? (100 * loadBaseline) / totBase : 0,
       classification,
       confidence: 'estimated',
-      renderLevel: renderLevelFor(classification, acwr),
+      renderLevel: 0,
     }
   })
+  const useRecent = totRecent > 0
+  const maxShare = Math.max(...groups.map((g) => (useRecent ? g.sharePctRecent : g.sharePctBaseline)), 0)
+  for (const g of groups) {
+    g.renderLevel = shareRenderLevel(useRecent ? g.sharePctRecent : g.sharePctBaseline, maxShare)
+  }
 
   return {
     computedAt: newest,

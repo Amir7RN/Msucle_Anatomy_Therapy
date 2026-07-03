@@ -205,9 +205,75 @@
     transform: translateY(0);
   }
 
+  /* ── "Woooww" layer: shine sweeps, glowing borders, animated underline ──── */
+
+  /* Light-beam shine that sweeps across a card on hover. */
+  .zh-shine { position: relative; overflow: hidden; }
+  .zh-shine::after {
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0; left: -80%;
+    width: 55%;
+    background: linear-gradient(105deg, transparent 0%, rgba(255,255,255,0.65) 50%, transparent 100%);
+    transform: skewX(-18deg);
+    transition: left 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+    pointer-events: none;
+  }
+  .zh-shine:hover::after { left: 130%; }
+
+  /* Slow panning gradient border glow for the showcase frames. */
+  @keyframes zh-border-pan {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+  .zh-glow-frame { position: relative; }
+  .zh-glow-frame::before {
+    content: '';
+    position: absolute;
+    inset: -1.5px;
+    border-radius: inherit;
+    padding: 1.5px;
+    background: linear-gradient(120deg,
+      rgba(34,211,238,0.55), rgba(251,146,60,0.5), rgba(244,63,94,0.45), rgba(34,211,238,0.55));
+    background-size: 300% 300%;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    animation: zh-border-pan 8s linear infinite;
+    pointer-events: none;
+  }
+
+  /* Hand-drawn-style animated underline for hero keywords. */
+  .zh-underline { position: relative; white-space: nowrap; }
+  .zh-underline::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; bottom: 0.02em;
+    height: 0.16em;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #f97316, #f43f5e);
+    opacity: 0.35;
+    transform-origin: left;
+    animation: zh-underline-grow 1.1s 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  @keyframes zh-underline-grow {
+    from { transform: scaleX(0); }
+    to   { transform: scaleX(1); }
+  }
+
+  /* Soft breathing glow behind primary CTAs. */
+  @keyframes zh-cta-breathe {
+    0%, 100% { box-shadow: 0 18px 45px -15px rgba(244,63,94,0.8); }
+    50%      { box-shadow: 0 22px 60px -12px rgba(249,115,22,0.9); }
+  }
+  .zh-cta-breathe { animation: zh-cta-breathe 3.2s ease-in-out infinite; }
+
   @media (prefers-reduced-motion: reduce) {
     .zh-blob-a, .zh-blob-b, .zh-gradient-text, .zh-marquee-track,
     .zh-float, .zh-float-slow, .zh-spin-slow, .zh-scan { animation: none; }
     .zh-reveal { opacity: 1; transform: none; transition: none; }
+    .zh-glow-frame::before, .zh-cta-breathe, .zh-underline::after { animation: none; }
+    .zh-shine::after { display: none; }
   }
 }
