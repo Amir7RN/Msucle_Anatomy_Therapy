@@ -21,6 +21,7 @@ import {
 import { useAuth } from './lib/auth/authContext'
 import { AuthModal } from './components/auth/AuthModal'
 import { MoveMateTrainNavLink, MoveMateTrainHeroCard } from './components/landing/MoveMateTrainPromo'
+import { HeroStage } from './components/landing/HeroStage'
 
 // MoveMate Train (the gym-training platform) isn't ready to launch, so its promo
 // entry points are hidden on the published landing page. The content is preserved
@@ -202,60 +203,16 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
       {/* Hero deliberately breaks the max-width grid: text hugs the left edge and
           the showcase runs full-bleed to the right edge (no right margin) so the
           video + data boxes render large. Other sections keep the centered width. */}
-      <section id="top" className="relative z-10 w-full pb-6 pl-4 pr-0 pt-12 sm:pl-8 lg:pt-16">
-        <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)] lg:gap-12">
-          {/* Left — copy */}
-          <div className="text-center lg:text-left">
-            <Reveal className="mb-6 flex justify-center lg:justify-start">
-              <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm backdrop-blur">
-                <Sparkles className="h-4 w-4 text-cyan-500" />
-                AI muscle pain diagnosis · posture &amp; movement check · free in your browser
-              </span>
-            </Reveal>
-
-            <Reveal delay={60}>
-              <h1 className="text-5xl font-extrabold leading-[0.95] tracking-[-0.045em] text-slate-900 sm:text-6xl lg:text-[4.5rem]">
-                <span className="zh-gradient-text bg-gradient-to-r from-orange-500 via-rose-500 to-cyan-500 bg-clip-text text-transparent">
-                  Muscle pain relief
-                </span>{' '}
-                starts with knowing the{' '}
-                <span className="zh-underline">muscle</span>.
-              </h1>
-            </Reveal>
-
-            <Reveal delay={120}>
-              <p className="mx-auto mt-6 max-w-xl text-lg leading-8 text-slate-600 sm:text-xl lg:mx-0">
-                Pinpoint what hurts on a 3D muscle anatomy model, get muscle pain relief exercises matched
-                to it, and work out with an AI coach that checks your form and posture on every rep.
-              </p>
-            </Reveal>
-
-            <Reveal delay={180}>
-              <div className="mt-9 flex flex-col items-center justify-center gap-4 sm:flex-row lg:justify-start">
-                <a
-                  href={diagnosticUrl}
-                  className="zh-cta-breathe group inline-flex min-w-56 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-orange-500 to-rose-500 px-8 py-4 text-base font-semibold text-white transition hover:-translate-y-0.5"
-                >
-                  Find my sore muscle <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                </a>
-                <a
-                  href={atlasUrl}
-                  className="inline-flex min-w-56 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-8 py-4 text-base font-semibold text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300 hover:text-cyan-700"
-                >
-                  Explore the body <ChevronRight className="h-4 w-4" />
-                </a>
-              </div>
-              {/* Second platform — MoveMate Train gym training. Parked until launch;
-                  content preserved in MoveMateTrainPromo.tsx (SHOW_MOVEMATE_TRAIN). */}
-              {SHOW_MOVEMATE_TRAIN && <MoveMateTrainHeroCard gymUrl={gymUrl} />}
-            </Reveal>
+      <section id="top" className="relative z-10 w-full pb-6 pt-6 sm:pt-10 lg:pt-14">
+        {/* Free-form, draggable hero canvas (text + video + data boxes).
+            Open with ?edit=1 to rearrange; see HeroStage.tsx. */}
+        <HeroStage atlasUrl={atlasUrl} diagnosticUrl={diagnosticUrl} />
+        {/* MoveMate Train promo parked until launch (SHOW_MOVEMATE_TRAIN). */}
+        {SHOW_MOVEMATE_TRAIN && (
+          <div className="mt-6 px-4 sm:px-8">
+            <MoveMateTrainHeroCard gymUrl={gymUrl} />
           </div>
-
-          {/* Right — generated cover image with live overlays */}
-          <Reveal delay={120} className="relative">
-            <HeroShowcase />
-          </Reveal>
-        </div>
+        )}
       </section>
 
       {/* ── Audience marquee strip ──────────────────────────────────────────── */}
