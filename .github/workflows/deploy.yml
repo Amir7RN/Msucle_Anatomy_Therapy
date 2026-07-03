@@ -47,27 +47,27 @@ jobs:
         run: npm ci
 
       - name: Build for GitHub Pages
-        # VITE_BASE_PATH tells vite.config.ts to prefix all asset URLs with
-        # the repo sub-path so the app works at /Msucle_Anatomy_Therapy/
+        # VITE_BASE_PATH = '/' because the site is served at the ROOT of the
+        # custom domain zeva.health (a custom domain does NOT keep the repo
+        # sub-path). public/CNAME pins the domain across deploys.
         #
-        # VITE_ANTHROPIC_API_KEY is baked into the JS bundle at build time so
-        # visitors don't need to enter their own key.
+        # ⚠️ Do NOT bake an Anthropic key into the build: every VITE_* value is
+        # inlined into the public JS and is trivially extractable. To run the AI
+        # on your own key, deploy the Supabase proxy (supabase/functions/
+        # anthropic-proxy) and set VITE_LLM_PROXY_URL to its public URL instead.
         #
-        # VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are baked in for auth +
-        # ROM history persistence on the deployed site. The anon key is
-        # designed to be public (RLS protects rows server-side).
-        #
-        # Set all three in:
-        #   GitHub repo → Settings → Secrets and variables → Actions → New secret
-        #     VITE_ANTHROPIC_API_KEY   sk-ant-...
-        #     VITE_SUPABASE_URL        https://YOUR-PROJECT.supabase.co
-        #     VITE_SUPABASE_ANON_KEY   eyJhbGciOi...
+        # VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are safe to bake in (the anon
+        # key is public by design; row-level security protects data server-side).
+        # Set these in:
+        #   GitHub repo → Settings → Secrets and variables → Actions
+        #     Secrets:   VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
+        #     Variables: VITE_LLM_PROXY_URL  (the proxy URL — not a secret)
         #
         # NODE_OPTIONS gives the Node process extra heap for minifying large bundles.
         run: npm run build
         env:
-          VITE_BASE_PATH: /Msucle_Anatomy_Therapy/
-          VITE_ANTHROPIC_API_KEY: ${{ secrets.VITE_ANTHROPIC_API_KEY }}
+          VITE_BASE_PATH: /
+          VITE_LLM_PROXY_URL:     ${{ vars.VITE_LLM_PROXY_URL }}
           VITE_SUPABASE_URL:      ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           NODE_OPTIONS: --max-old-space-size=4096
