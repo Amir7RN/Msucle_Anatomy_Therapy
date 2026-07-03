@@ -19,6 +19,16 @@ declare const Deno: any
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 
+// ── Abuse limits ─────────────────────────────────────────────────────────────
+// The function is public (deployed --no-verify-jwt so guests can use the AI),
+// which means anyone who finds the URL can POST to it. These caps bound what a
+// stolen-URL caller can spend: only the cheap model the app actually uses, a
+// max_tokens ceiling matching the app's largest request (personalProgram: 4000),
+// and a body-size cap sized for one camera frame (bodyVision base64 images).
+const ALLOWED_MODELS = new Set(['claude-haiku-4-5-20251001'])
+const MAX_TOKENS_CAP = 4096
+const MAX_BODY_BYTES = 10 * 1024 * 1024 // 10 MB
+
 // ALLOWED_ORIGIN may be a single origin, a comma-separated list, or '*'.
 function allowedOrigins(): string[] {
   return (Deno.env.get('ALLOWED_ORIGIN') || '*')
@@ -59,20 +69,48 @@ Deno.serve(async (req: Request) => {
     })
   }
 
-  // Optional origin lock: reject requests from other sites reusing your proxy.
-  // (Requests with no Origin header — e.g. curl — are allowed for testing.)
-  if (origin && !originAllowed(origin)) {
+  // Origin lock: when ALLOWED_ORIGIN is configured (not '*'), require a match.
+  // Requests with NO Origin header are rejected too — browsers always send one
+  // on cross-site POSTs, so a missing header means a non-browser client. (To
+  // test with curl, temporarily `supabase secrets set ALLOWED_ORIGIN='*'`.)
+  if (!allowedOrigins().includes('*') && !originAllowed(origin)) {
     return new Response(JSON.stringify({ error: { message: 'Origin not allowed' } }), {
       status: 403, headers: { ...cors, 'content-type': 'application/json' },
     })
   }
 
-  let body: unknown
-  try { body = await req.json() } catch {
+  // Bound the request size before parsing (one bodyVision camera frame is the
+  // legitimate worst case). content-length is set by all real clients; a
+  // missing header falls through to the JSON parse, which still fails fast.
+  const declaredLen = Number(req.headers.get('content-length') || '0')
+  if (declaredLen > MAX_BODY_BYTES) {
+    return new Response(JSON.stringify({ error: { message: 'Request too large' } }), {
+      status: 413, headers: { ...cors, 'content-type': 'application/json' },
+    })
+  }
+
+  let body: Record<string, unknown>
+  try {
+    const text = await req.text()
+    if (text.length > MAX_BODY_BYTES) throw new Error('too large')
+    body = JSON.parse(text)
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('not an object')
+  } catch {
     return new Response(JSON.stringify({ error: { message: 'Invalid JSON body' } }), {
       status: 400, headers: { ...cors, 'content-type': 'application/json' },
     })
   }
+
+  // Clamp what the caller may spend: only the app's model, capped max_tokens,
+  // and no streaming (the app never streams; keeps billing predictable).
+  if (typeof body.model !== 'string' || !ALLOWED_MODELS.has(body.model)) {
+    return new Response(JSON.stringify({ error: { message: 'Model not allowed' } }), {
+      status: 400, headers: { ...cors, 'content-type': 'application/json' },
+    })
+  }
+  const requestedMax = typeof body.max_tokens === 'number' ? body.max_tokens : MAX_TOKENS_CAP
+  body.max_tokens = Math.min(Math.max(1, requestedMax), MAX_TOKENS_CAP)
+  delete body.stream
 
   // Forward the request body verbatim, attaching the key server-side.
   const upstream = await fetch(ANTHROPIC_URL, {

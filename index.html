@@ -15,11 +15,14 @@
       })()
     </script>
     <meta name="referrer" content="strict-origin-when-cross-origin" />
-    <!-- Optional hardening (Content-Security-Policy). TEST locally before shipping —
-         a wrong value can blank the page because MediaPipe (jsdelivr + Google
-         Storage), Supabase, Anthropic and the TURN relay must each be allow-listed:
+    <!-- Content-Security-Policy. GitHub Pages cannot send response headers, so
+         this <meta> tag is the delivery mechanism (frame-ancestors / X-Frame-
+         Options cannot be expressed in a meta CSP — those need an edge layer,
+         see public/_headers). Every remote the app talks to is allow-listed:
+         MediaPipe (jsdelivr + Google Storage), Google Fonts, Supabase (REST,
+         realtime WS, edge functions), Anthropic (BYOK direct mode), and the
+         metered.ca TURN relay for remote assessment calls. -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob: data:; worker-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net https://storage.googleapis.com https://api.anthropic.com https://*.supabase.co wss://*.supabase.co https://*.functions.supabase.co https://*.metered.live https://*.metered.ca blob: data:" />
-    -->
     <link rel="icon" type="image/svg+xml" href="./zevahealth-icon.svg" />
     <meta name="theme-color" content="#f7f8fc" />
     <meta name="description" content="Zevahealth AI — Find what hurts. Move better. Feel better. An interactive muscle-target body model with an AI form coach." />

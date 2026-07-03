@@ -9,3 +9,5 @@ vite.config.ts.timestamp-*
 # Videos/ is intentionally tracked — exercise clips are bundled by Vite
 # at build time via new URL() imports from src/. If a specific subfolder
 # gets too large, exclude it explicitly here (e.g. Videos/Raw/).
+# Supabase CLI local state (project link, session cache) — not source
+supabase/.temp/

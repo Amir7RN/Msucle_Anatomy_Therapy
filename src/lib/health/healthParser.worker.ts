@@ -30,6 +30,15 @@ interface StreamableZipEntry {
 const post = (msg: ParserWorkerResponse): void =>
   (self as unknown as { postMessage(m: ParserWorkerResponse): void }).postMessage(msg)
 
+/**
+ * Cap on DECOMPRESSED XML text. A genuine export.xml tops out at a few GB;
+ * a zip bomb decompresses to orders of magnitude more. Without a cap the
+ * stream would happily spin the worker for hours. When exceeded we post an
+ * error — the main thread terminates this worker on any error message, which
+ * kills the stream.
+ */
+const MAX_XML_CHARS = 8 * 1024 * 1024 * 1024 // ~8 G chars
+
 self.onmessage = async (e: MessageEvent) => {
   const { buffer } = e.data as ParserWorkerRequest
   const t0 = performance.now()
@@ -51,10 +60,19 @@ self.onmessage = async (e: MessageEvent) => {
     const entry = zip.files[entryName] as unknown as StreamableZipEntry
 
     let lastReported = -1
+    let streamedChars = 0
+    let aborted = false
     await new Promise<void>((resolve, reject) => {
       entry
         .internalStream('string')
         .on('data', (chunk, meta) => {
+          if (aborted) return
+          streamedChars += chunk.length
+          if (streamedChars > MAX_XML_CHARS) {
+            aborted = true
+            reject(new Error('This export decompresses far beyond any real Apple Health file, so the import was stopped. Re-export from the Health app and try again.'))
+            return
+          }
           scanner.push(chunk)
           const pct = Math.floor(meta.percent)
           if (pct !== lastReported) {

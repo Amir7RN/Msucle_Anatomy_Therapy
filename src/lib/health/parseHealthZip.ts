@@ -14,11 +14,26 @@ export interface ParseProgress {
   workoutsFound: number
 }
 
+/**
+ * Upper bound on the compressed zip we accept. Real Apple Health exports are
+ * typically 50–300 MB; 1 GB leaves generous headroom while stopping an
+ * arbitrarily large upload from being buffered wholesale into an ArrayBuffer
+ * and exhausting the tab's memory.
+ */
+const MAX_ZIP_BYTES = 1024 * 1024 * 1024 // 1 GB
+
 export function parseHealthZip(
   file: File,
   onProgress?: (p: ParseProgress) => void,
 ): Promise<HealthParseResult> {
   return new Promise<HealthParseResult>((resolve, reject) => {
+    if (file.size > MAX_ZIP_BYTES) {
+      reject(new Error(
+        `This file is ${(file.size / (1024 * 1024 * 1024)).toFixed(1)} GB — larger than the 1 GB limit. ` +
+        'Export a fresh copy from the Health app (it should be well under this size).',
+      ))
+      return
+    }
     const worker = new Worker(new URL('./healthParser.worker.ts', import.meta.url), {
       type: 'module',
     })
