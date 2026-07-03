@@ -41,7 +41,7 @@ import {
 } from '../../lib/movement/biofeedback'
 import { useVoiceInput, useVoiceOutput } from '../../hooks/useVoice'
 import { createRepCounter } from '../../lib/movement/repCounter'
-import { getStoredApiKey, setStoredApiKey } from '../../lib/triage/llm'
+import { getStoredApiKey, setStoredApiKey, anthropicMessages } from '../../lib/triage/llm'
 import { completeSentences } from '../../lib/speechText'
 import { FormTrendTracker } from '../../lib/movement/coachContext'
 import {
@@ -1072,24 +1072,17 @@ How to coach:
     if (!isProactive) { setMessages(baseHistory); setInput('') }
 
     try {
-      const res = await fetch(ANTHROPIC_URL, {
-        method:  'POST',
-        headers: {
-          'content-type':                              'application/json',
-          'x-api-key':                                 apiKey,
-          'anthropic-version':                         '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify({
-          model:      COACH_MODEL,
-          // Headroom over the 1–2 sentences the system prompt asks for;
-          // completeSentences trims any budget-cut reply to a clean boundary
-          // so the spoken cue never ends mid-sentence.
-          max_tokens: 160,
-          system:     systemPrompt,
-          messages:   [...baseHistory, { role: 'user', content: userMsg }],
-        }),
-      })
+      // Routes through the server proxy when configured (no key in the browser),
+      // else calls Anthropic directly with the user's own key.
+      const res = await anthropicMessages({
+        model:      COACH_MODEL,
+        // Headroom over the 1–2 sentences the system prompt asks for;
+        // completeSentences trims any budget-cut reply to a clean boundary
+        // so the spoken cue never ends mid-sentence.
+        max_tokens: 160,
+        system:     systemPrompt,
+        messages:   [...baseHistory, { role: 'user', content: userMsg }],
+      }, apiKey)
       const data  = await res.json()
       const reply: string = completeSentences(data.content?.[0]?.text ?? '')
       if (reply) {

@@ -185,6 +185,7 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
   const [staticCaps, setStaticCaps] = useState<Array<StaticCapture & { joints?: JointReadout }>>([])
   const [stepCount, setStepCount] = useState(0)
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
+  const [videoExt, setVideoExt] = useState<'mp4' | 'webm'>('mp4')
   const [recSecs, setRecSecs] = useState(0)
   const [attempt, setAttempt] = useState(0)   // bump to re-run the connection
   // Runtime TURN setup (host) — paste free Metered creds without rebuilding.
@@ -475,7 +476,17 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
   }
 
   function pickMime(): string {
-    const opts = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4']
+    // Prefer MP4 (H.264/AAC) so the downloaded clip is a universally-playable
+    // .mp4. Recent Chrome/Edge/Safari support MP4 in MediaRecorder; browsers that
+    // don't fall back to WebM (and the download is named accordingly).
+    const opts = [
+      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+      'video/mp4;codecs=avc1',
+      'video/mp4',
+      'video/webm;codecs=vp9',
+      'video/webm;codecs=vp8',
+      'video/webm',
+    ]
     for (const o of opts) { if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(o)) return o }
     return ''
   }
@@ -505,7 +516,9 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
         const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
         mr.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.current.push(e.data) }
         mr.onstop = () => {
-          const blob = new Blob(recChunks.current, { type: recChunks.current[0]?.type || 'video/webm' })
+          const type = recChunks.current[0]?.type || mime || 'video/webm'
+          const blob = new Blob(recChunks.current, { type })
+          setVideoExt(type.includes('mp4') ? 'mp4' : 'webm')
           setVideoUrl(URL.createObjectURL(blob))
         }
         mr.start(250)
@@ -781,7 +794,7 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
               {videoUrl && (
                 <a
                   href={videoUrl}
-                  download={`remote-walk-${Date.now()}.webm`}
+                  download={`remote-walk-${Date.now()}.${videoExt}`}
                   className="flex items-center justify-center gap-1.5 rounded-md bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-700"
                 >
                   <Download size={13} /> Download recorded video

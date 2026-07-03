@@ -3,6 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Force HTTPS (the .health registry requires SSL/TLS on live sites). GitHub
+         Pages issues a free certificate for a custom domain once "Enforce HTTPS"
+         is enabled; this is a belt-and-suspenders redirect for any plain-http hit. -->
+    <script>
+      (function () {
+        var h = location.hostname
+        if (location.protocol === 'http:' && h !== 'localhost' && !/^127\./.test(h)) {
+          location.replace('https://' + location.host + location.pathname + location.search + location.hash)
+        }
+      })()
+    </script>
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <!-- Optional hardening (Content-Security-Policy). TEST locally before shipping —
+         a wrong value can blank the page because MediaPipe (jsdelivr + Google
+         Storage), Supabase, Anthropic and the TURN relay must each be allow-listed:
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob: data:; worker-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net https://storage.googleapis.com https://api.anthropic.com https://*.supabase.co wss://*.supabase.co https://*.functions.supabase.co https://*.metered.live https://*.metered.ca blob: data:" />
+    -->
     <link rel="icon" type="image/svg+xml" href="./zevahealth-icon.svg" />
     <meta name="theme-color" content="#f7f8fc" />
     <meta name="description" content="Zevahealth AI — Find what hurts. Move better. Feel better. An interactive muscle-target body model with an AI form coach." />

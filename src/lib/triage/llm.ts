@@ -67,26 +67,73 @@ export interface TriageTurnResult {
 const KEY_STORAGE = 'muscleAtlas.triage.apiKey'
 
 /**
- * Returns the active API key using this priority order:
- *   1. Key saved by the user in localStorage (their own personal key)
- *   2. VITE_ANTHROPIC_API_KEY baked into the build at deploy time
- *      (set as a GitHub Actions secret → everyone who visits the site uses it)
- *   3. null → the UI shows the key-entry prompt
+ * Server-side proxy (recommended for public launch)
+ * ──────────────────────────────────────────────────
+ * When VITE_LLM_PROXY_URL is set, the browser sends chat requests to THAT URL
+ * instead of api.anthropic.com, and the proxy attaches the real Anthropic key
+ * server-side (e.g. a Supabase Edge Function — see supabase/functions/
+ * anthropic-proxy/). The key is NEVER shipped to the browser, so visitors can't
+ * read it out of the JS bundle and abuse it.
+ *
+ * ⚠️ Do NOT put an Anthropic key in a VITE_* variable: every VITE_* value is
+ * inlined into the public build and is trivially extractable. The old
+ * VITE_ANTHROPIC_API_KEY fallback was removed for exactly this reason.
+ */
+export const LLM_PROXY_URL = (import.meta.env.VITE_LLM_PROXY_URL as string | undefined)?.trim() || ''
+export function hasLlmProxy(): boolean { return !!LLM_PROXY_URL }
+
+/** Sentinel returned by getStoredApiKey() when a proxy handles auth for us. */
+export const PROXY_KEY = 'proxy'
+
+/**
+ * The active credential:
+ *   1. If a proxy is configured → a sentinel (no real key lives in the browser).
+ *   2. Otherwise the user's own key from localStorage (bring-your-own-key).
+ *   3. null → the UI shows the key-entry prompt.
  */
 export function getStoredApiKey(): string | null {
+  if (hasLlmProxy()) return PROXY_KEY
   try {
     const stored = localStorage.getItem(KEY_STORAGE)
     if (stored) return stored
   } catch { /* ignore */ }
-  // Fall back to the build-time env variable (set via GitHub Actions secret)
-  const envKey = import.meta.env.VITE_ANTHROPIC_API_KEY as string | undefined
-  return envKey && envKey.startsWith('sk-') ? envKey : null
+  return null
 }
 export function setStoredApiKey(key: string): void {
   try { localStorage.setItem(KEY_STORAGE, key) } catch { /* ignore */ }
 }
 export function clearStoredApiKey(): void {
   try { localStorage.removeItem(KEY_STORAGE) } catch { /* ignore */ }
+}
+
+/**
+ * Single entry point for calling Claude's Messages API. Routes through the proxy
+ * when configured (no key in the browser), otherwise calls Anthropic directly
+ * with the user's own key. Both the triage chat and the live workout coach use
+ * this so the key handling stays in one place.
+ */
+export async function anthropicMessages(
+  body: Record<string, unknown>,
+  apiKey?: string | null,
+): Promise<Response> {
+  if (hasLlmProxy()) {
+    return fetch(LLM_PROXY_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  }
+  if (!apiKey || apiKey === PROXY_KEY) throw new Error('Missing API key')
+  return fetch(ANTHROPIC_URL, {
+    method: 'POST',
+    headers: {
+      'content-type':                              'application/json',
+      'x-api-key':                                 apiKey,
+      'anthropic-version':                         '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify(body),
+  })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -133,31 +180,22 @@ export async function chatTriage(
   catalogue: DiagnosticMuscle[],
   apiKey:    string,
 ): Promise<TriageTurnResult> {
-  if (!apiKey) throw new Error('Missing API key')
+  if (!apiKey && !hasLlmProxy()) throw new Error('Missing API key')
   if (catalogue.length === 0) throw new Error('Diagnostic catalogue not loaded')
 
   const system = getSystemPrompt(catalogue)
   const messages = history.map((m) => ({ role: m.role, content: m.content }))
 
-  const res = await fetch(ANTHROPIC_URL, {
-    method: 'POST',
-    headers: {
-      'content-type':                              'application/json',
-      'x-api-key':                                 apiKey,
-      'anthropic-version':                         '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model:      MODEL_ID,
-      // Short replies + the structured tool payload (zones/reasoning/red_flags
-      // arrays). 220 was tight enough that a verbose differential could get
-      // budget-cut mid-JSON, losing the whole tool call for that turn.
-      max_tokens: 400,
-      system,
-      tools:      [PRESENT_DIFFERENTIAL_TOOL],
-      messages,
-    }),
-  })
+  const res = await anthropicMessages({
+    model:      MODEL_ID,
+    // Short replies + the structured tool payload (zones/reasoning/red_flags
+    // arrays). 220 was tight enough that a verbose differential could get
+    // budget-cut mid-JSON, losing the whole tool call for that turn.
+    max_tokens: 400,
+    system,
+    tools:      [PRESENT_DIFFERENTIAL_TOOL],
+    messages,
+  }, apiKey)
 
   if (!res.ok) {
     let msg = `LLM API error ${res.status}`

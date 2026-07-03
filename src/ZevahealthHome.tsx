@@ -352,16 +352,40 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
 
       {/* ── Footer ──────────────────────────────────────────────────────────── */}
       <footer className="relative z-10 border-t border-slate-900/5 bg-white/60 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-5 py-8 text-center sm:flex-row sm:px-8 sm:text-left">
-          <div className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-teal-500 text-white">
-              <ZevaLogo className="h-5 w-5" />
-            </span>
-            <span className="text-sm font-semibold text-slate-700">Zevahealth AI</span>
+        <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8">
+          <div className="flex flex-col gap-8 sm:flex-row sm:items-start sm:justify-between">
+            {/* Brand */}
+            <div className="flex items-center gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-teal-500 text-white">
+                <ZevaLogo className="h-5 w-5" />
+              </span>
+              <span className="text-sm font-semibold text-slate-700">Zevahealth AI</span>
+            </div>
+
+            {/* Owner & contact — required to be clearly visible for a .health site */}
+            <div className="text-xs leading-relaxed text-slate-500">
+              <div className="mb-1 font-semibold uppercase tracking-wider text-slate-400">Site owner &amp; contact</div>
+              <div className="text-slate-600">Amirreza Naseri</div>
+              <div>Waltham, MA, USA</div>
+              <a href="mailto:amir73rn@gmail.com" className="text-cyan-700 hover:underline">amir73rn@gmail.com</a>
+            </div>
+
+            {/* Sources — clinical/medical information must cite its sources */}
+            <div className="max-w-xs text-xs leading-relaxed text-slate-500">
+              <div className="mb-1 font-semibold uppercase tracking-wider text-slate-400">Sources</div>
+              Muscle, movement and pain information is based on standard anatomy and kinesiology references, including
+              F.P. Kendall et&nbsp;al., <em>Muscles: Testing and Function</em>, and D.A. Neumann,
+              <em> Kinesiology of the Musculoskeletal System</em>.
+            </div>
           </div>
-          <p className="max-w-md text-xs leading-relaxed text-slate-400">
-            Built for every body. Suggestive, general-purpose movement guidance. Not a substitute for professional
-            advice.
+
+          {/* Medical disclaimer */}
+          <p className="mt-8 border-t border-slate-900/5 pt-6 text-[11px] leading-relaxed text-slate-400">
+            <span className="font-semibold text-slate-500">Medical disclaimer.</span> Zevahealth AI provides general,
+            informational movement and muscle-education content and AI-assisted suggestions. It is not medical advice,
+            diagnosis, or treatment, and is not a substitute for care from a licensed healthcare professional. Always
+            consult a qualified professional about any medical condition or before starting an exercise program. If you
+            think you may have a medical emergency, contact your local emergency services.
           </p>
         </div>
       </footer>
