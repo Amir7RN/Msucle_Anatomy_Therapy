@@ -2,6 +2,23 @@ import React from 'react'
 import { Environment } from '@react-three/drei'
 
 /**
+ * The drei <Environment preset="studio"> fetches an HDR from a remote CDN at
+ * runtime. If that fetch fails (offline, CDN hiccup, blocked), the rejection
+ * used to bubble up and blank the whole app. This boundary confines the failure
+ * to the env map alone — the scene still renders with the directional light rig.
+ */
+class EnvBoundary extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError() { return { failed: true } }
+  componentDidCatch(err: unknown) {
+    console.warn('[Lights] environment map unavailable — falling back to lights only.', err)
+  }
+  render() {
+    return this.state.failed ? null : this.props.children
+  }
+}
+
+/**
  * Anatomy-studio lighting rig — v6 (fiber normal-map edition)
  *
  * Upgraded from v5 to maximise the visibility of the procedural muscle-fiber
@@ -159,7 +176,11 @@ export function Lights() {
         Intensity 0.4 supplements rather than dominates the directional rig.
         background=false preserves our dark canvas background.
       */}
-      <Environment preset="studio" background={false} environmentIntensity={0.70} />
+      <EnvBoundary>
+        <React.Suspense fallback={null}>
+          <Environment preset="studio" background={false} environmentIntensity={0.70} />
+        </React.Suspense>
+      </EnvBoundary>
     </>
   )
 }
