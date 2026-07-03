@@ -115,7 +115,9 @@ function BadgeGroup() {
 
 function HeadlineGroup() {
   return (
-    <h1 className="text-[3.4rem] font-extrabold leading-[0.95] tracking-[-0.045em] text-slate-900">
+    {/* Phone (< sm) gets a smaller size so it never overflows; sm+ (tablet) and
+        the lg+ desktop canvas keep the original 3.4rem exactly as before. */}
+    <h1 className="text-[2.15rem] leading-[1.05] sm:text-[3.4rem] sm:leading-[0.95] font-extrabold tracking-[-0.045em] text-slate-900">
       <span className="zh-gradient-text bg-gradient-to-r from-orange-500 via-rose-500 to-cyan-500 bg-clip-text text-transparent">
         Muscle pain relief
       </span>{' '}
@@ -299,7 +301,9 @@ export function HeroStage({ atlasUrl, diagnosticUrl }: { atlasUrl: string; diagn
 
   return (
     <>
-      {/* ── Mobile / small: simple readable stack (no free-form canvas) ─────── */}
+      {/* ── Mobile / small: readable stack (no free-form canvas) ──────────────
+          Changes here are scoped to phones (< sm). Tablet (sm–lg) and the lg+
+          desktop canvas are left exactly as they were. */}
       <div className="px-4 lg:hidden">
         <div className="space-y-5">
           <BadgeGroup />
@@ -309,7 +313,9 @@ export function HeroStage({ atlasUrl, diagnosticUrl }: { atlasUrl: string; diagn
         </div>
         <div className="mt-8">
           <VideoFrame />
-          <div className="mt-3 grid grid-cols-2 gap-3">
+          {/* Phones: one box per row (full-width & readable). Tablet keeps the
+              original 2-up grid. */}
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             {(['engagement', 'balance', 'rom'] as const).map((id) => (
               <div key={id}>{itemContent(id, live, urls)}</div>
             ))}
