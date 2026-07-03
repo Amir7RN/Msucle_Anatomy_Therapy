@@ -43,6 +43,48 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+/**
+ * Catches render-time crashes so a single failing component shows a readable
+ * message (and logs the error) instead of a blank white page.
+ */
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props)
+    this.state = { error: null }
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[Zevahealth] render error:', error, info)
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f6f8fc', padding: 24, fontFamily: 'Inter, Arial, sans-serif' }}>
+          <div style={{ maxWidth: 520, textAlign: 'center' }}>
+            <h1 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', margin: '0 0 8px' }}>Something went wrong loading this page</h1>
+            <p style={{ fontSize: 14, color: '#475569', margin: '0 0 16px' }}>
+              Try reloading. If it keeps happening, the details below help us fix it.
+            </p>
+            <pre style={{ textAlign: 'left', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, color: '#b91c1c', background: '#fff', border: '1px solid #e6eaf1', borderRadius: 8, padding: 12, margin: '0 0 16px' }}>
+              {String(this.state.error?.message || this.state.error)}
+            </pre>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+              <button onClick={() => location.reload()} style={{ padding: '10px 20px', borderRadius: 9999, border: 'none', background: '#f97316', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>Reload</button>
+              <a href={import.meta.env.BASE_URL} style={{ padding: '10px 20px', borderRadius: 9999, border: '1px solid #e2e8f0', background: '#fff', color: '#0f172a', fontWeight: 600, textDecoration: 'none' }}>Home</a>
+            </div>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 function Root() {
   const params = new URLSearchParams(window.location.search)
   const showAtlas = params.has('atlas')
@@ -80,8 +122,10 @@ function AtlasEntry({ diagnosticRequested }: { diagnosticRequested: boolean }) {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <AuthProvider>
-      <Root />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <Root />
+      </AuthProvider>
+    </ErrorBoundary>
   </React.StrictMode>,
 )
