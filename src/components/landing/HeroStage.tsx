@@ -31,7 +31,7 @@ const mainVideoUrl = new URL('../../../MainVideoLanding.mp4', import.meta.url).h
 // (nothing clipped) on any screen size. Sized to fit the finalized layout below.
 const DESIGN_W = 1800
 const DESIGN_H = 700
-const LS_KEY = 'mm.hero.layout.v3'
+const LS_KEY = 'mm.hero.layout.v4'
 
 export type Box = { x: number; y: number; w: number }
 export type HeroLayout = {
@@ -44,29 +44,27 @@ export type HeroLayout = {
   twin: Box
   engagement: Box
   balance: Box
-  map: Box
   rom: Box
 }
 
 // Finalized arrangement (from the in-page editor).
 const DEFAULT_LAYOUT: HeroLayout = {
-  badge:      { x: 3,    y: 127, w: 380 },
-  headline:   { x: 343,  y: -10, w: 1450 },
-  copy:       { x: 55,   y: 212, w: 258 },
-  cta:        { x: 32,   y: 467, w: 300 },
-  video:      { x: 433,  y: 68,  w: 1022 },
-  twin:       { x: 433,  y: 68,  w: 190 },
-  engagement: { x: 1464, y: 76,  w: 204 },
-  balance:    { x: 1462, y: 299, w: 216 },
-  map:        { x: 862,  y: 489, w: 216 },
-  rom:        { x: 1466, y: 533, w: 216 },
+  badge:      { x: 29,   y: 185, w: 380 },
+  headline:   { x: 351,  y: -7,  w: 1397 },
+  copy:       { x: 75,   y: 274, w: 258 },
+  cta:        { x: 57,   y: 537, w: 300 },
+  video:      { x: 471,  y: 112, w: 1022 },
+  twin:       { x: 471,  y: 112, w: 190 },
+  engagement: { x: 1502, y: 129, w: 204 },
+  balance:    { x: 1502, y: 352, w: 216 },
+  rom:        { x: 1502, y: 571, w: 216 },
 }
 
-const ITEM_IDS: (keyof HeroLayout)[] = ['badge', 'headline', 'copy', 'cta', 'video', 'twin', 'engagement', 'balance', 'map', 'rom']
+const ITEM_IDS: (keyof HeroLayout)[] = ['badge', 'headline', 'copy', 'cta', 'video', 'twin', 'engagement', 'balance', 'rom']
 const ITEM_LABEL: Record<keyof HeroLayout, string> = {
   badge: 'Badge', headline: 'Headline', copy: 'Paragraph', cta: 'Buttons',
   video: 'Video frame', twin: 'Digital Twin',
-  engagement: 'Muscle Engagement', balance: 'Left / Right', map: 'Engagement Map', rom: 'Range of Motion',
+  engagement: 'Muscle Engagement', balance: 'Left / Right', rom: 'Range of Motion',
 }
 
 function clamp(n: number, min: number, max: number) { return Math.max(min, Math.min(max, n)) }
@@ -195,19 +193,6 @@ function itemContent(id: keyof HeroLayout, live: { spark: number[]; bal: number;
           </div>
         </CalloutCard>
       )
-    case 'map':
-      return (
-        <CalloutCard title="Engagement Map" sub="By group — arms, legs, trunk, neck">
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-            {['Upper', 'Lower', 'Trunk', 'Neck'].map((g, i) => (
-              <span key={g} className="flex items-center gap-1.5 text-[11px] font-medium text-slate-300">
-                <span className="mm-pulse-soft h-2 w-2 rounded-full bg-cyan-400" style={{ animationDelay: `${i * 160}ms` }} />
-                {g}
-              </span>
-            ))}
-          </div>
-        </CalloutCard>
-      )
     case 'rom':
       return (
         <CalloutCard title="Range of Motion" sub="Every joint, as you move">
@@ -325,7 +310,7 @@ export function HeroStage({ atlasUrl, diagnosticUrl }: { atlasUrl: string; diagn
         <div className="mt-8">
           <VideoFrame />
           <div className="mt-3 grid grid-cols-2 gap-3">
-            {(['engagement', 'balance', 'map', 'rom'] as const).map((id) => (
+            {(['engagement', 'balance', 'rom'] as const).map((id) => (
               <div key={id}>{itemContent(id, live, urls)}</div>
             ))}
           </div>
