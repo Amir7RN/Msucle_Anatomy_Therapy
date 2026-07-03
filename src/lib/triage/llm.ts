@@ -79,7 +79,11 @@ const KEY_STORAGE = 'muscleAtlas.triage.apiKey'
  * inlined into the public build and is trivially extractable. The old
  * VITE_ANTHROPIC_API_KEY fallback was removed for exactly this reason.
  */
-export const LLM_PROXY_URL = (import.meta.env.VITE_LLM_PROXY_URL as string | undefined)?.trim() || ''
+const _rawProxy = (import.meta.env.VITE_LLM_PROXY_URL as string | undefined)?.trim() || ''
+// Guard: a URL pasted without a scheme (e.g. "xyz.supabase.co/functions/v1/…")
+// would be treated by fetch() as a RELATIVE path and POST to the static site,
+// which returns 405. Prepend https:// so the proxy is always hit absolutely.
+export const LLM_PROXY_URL = _rawProxy && !/^https?:\/\//i.test(_rawProxy) ? `https://${_rawProxy}` : _rawProxy
 export function hasLlmProxy(): boolean { return !!LLM_PROXY_URL }
 
 /** Sentinel returned by getStoredApiKey() when a proxy handles auth for us. */
