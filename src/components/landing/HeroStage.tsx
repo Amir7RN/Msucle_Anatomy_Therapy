@@ -22,14 +22,16 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowRight, ChevronRight, Sparkles, Copy, RotateCcw, Check } from 'lucide-react'
+import { ArrowRight, Sparkles, Copy, RotateCcw, Check } from 'lucide-react'
 
 const mainVideoUrl = new URL('../../../MainVideoLanding.mp4', import.meta.url).href
 
-// Design coordinate space. All layout numbers below are in these units.
-const DESIGN_W = 1280
-const DESIGN_H = 640
-const LS_KEY = 'mm.hero.layout.v2'
+// Design coordinate space. All layout numbers below are in these units. The
+// canvas is scaled to fit the column width, so the whole arrangement stays intact
+// (nothing clipped) on any screen size. Sized to fit the finalized layout below.
+const DESIGN_W = 1800
+const DESIGN_H = 700
+const LS_KEY = 'mm.hero.layout.v3'
 
 export type Box = { x: number; y: number; w: number }
 export type HeroLayout = {
@@ -46,18 +48,18 @@ export type HeroLayout = {
   rom: Box
 }
 
-// Starting arrangement — tweak live, then export to replace this.
+// Finalized arrangement (from the in-page editor).
 const DEFAULT_LAYOUT: HeroLayout = {
-  badge:      { x: 8,    y: 34,  w: 380 },
-  headline:   { x: 8,    y: 92,  w: 380 },
-  copy:       { x: 8,    y: 338, w: 360 },
-  cta:        { x: 8,    y: 470, w: 400 },
-  video:      { x: 404,  y: 60,  w: 612 },
-  twin:       { x: 424,  y: 82,  w: 190 },
-  engagement: { x: 1044, y: 58,  w: 216 },
-  balance:    { x: 1044, y: 214, w: 216 },
-  map:        { x: 1044, y: 370, w: 216 },
-  rom:        { x: 1044, y: 512, w: 216 },
+  badge:      { x: 3,    y: 127, w: 380 },
+  headline:   { x: 343,  y: -10, w: 1450 },
+  copy:       { x: 55,   y: 212, w: 258 },
+  cta:        { x: 32,   y: 467, w: 300 },
+  video:      { x: 433,  y: 68,  w: 1022 },
+  twin:       { x: 433,  y: 68,  w: 190 },
+  engagement: { x: 1464, y: 76,  w: 204 },
+  balance:    { x: 1462, y: 299, w: 216 },
+  map:        { x: 862,  y: 489, w: 216 },
+  rom:        { x: 1466, y: 533, w: 216 },
 }
 
 const ITEM_IDS: (keyof HeroLayout)[] = ['badge', 'headline', 'copy', 'cta', 'video', 'twin', 'engagement', 'balance', 'map', 'rom']
@@ -133,16 +135,11 @@ function CopyGroup() {
   )
 }
 
-function CtaGroup({ diagnosticUrl, atlasUrl }: { diagnosticUrl: string; atlasUrl: string }) {
+function CtaGroup({ diagnosticUrl }: { diagnosticUrl: string }) {
   return (
-    <div className="flex flex-col gap-4 sm:flex-row">
-      <a href={diagnosticUrl} className="zh-cta-breathe group inline-flex min-w-56 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-orange-500 to-rose-500 px-8 py-4 text-base font-semibold text-white transition hover:-translate-y-0.5">
-        Find my sore muscle <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-      </a>
-      <a href={atlasUrl} className="inline-flex min-w-56 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-8 py-4 text-base font-semibold text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300 hover:text-cyan-700">
-        Explore the body <ChevronRight className="h-4 w-4" />
-      </a>
-    </div>
+    <a href={diagnosticUrl} className="zh-cta-breathe group inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-gradient-to-r from-orange-500 to-rose-500 px-8 py-4 text-base font-semibold text-white transition hover:-translate-y-0.5">
+      Find my sore muscle <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+    </a>
   )
 }
 
@@ -167,7 +164,7 @@ function itemContent(id: keyof HeroLayout, live: { spark: number[]; bal: number;
     case 'copy':
       return <CopyGroup />
     case 'cta':
-      return <CtaGroup diagnosticUrl={urls.diagnosticUrl} atlasUrl={urls.atlasUrl} />
+      return <CtaGroup diagnosticUrl={urls.diagnosticUrl} />
     case 'video':
       return <VideoFrame />
     case 'twin':
@@ -256,7 +253,7 @@ export function HeroStage({ atlasUrl, diagnosticUrl }: { atlasUrl: string; diagn
   useLayoutEffect(() => {
     const el = wrapRef.current
     if (!el) return
-    const measure = () => setScale(clamp(el.clientWidth / DESIGN_W, 0.4, 1.5))
+    const measure = () => setScale(clamp(el.clientWidth / DESIGN_W, 0.35, 1.2))
     measure()
     const ro = new ResizeObserver(measure)
     ro.observe(el)
@@ -323,7 +320,7 @@ export function HeroStage({ atlasUrl, diagnosticUrl }: { atlasUrl: string; diagn
           <BadgeGroup />
           <HeadlineGroup />
           <CopyGroup />
-          <CtaGroup diagnosticUrl={diagnosticUrl} atlasUrl={atlasUrl} />
+          <CtaGroup diagnosticUrl={diagnosticUrl} />
         </div>
         <div className="mt-8">
           <VideoFrame />
