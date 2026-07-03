@@ -200,7 +200,7 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
 
       {/* ── Hero ────────────────────────────────────────────────────────────── */}
       <section id="top" className="relative z-10 mx-auto max-w-[100rem] px-5 pb-6 pt-12 sm:px-8 lg:pt-16">
-        <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,0.66fr)_minmax(0,1.6fr)] lg:gap-10">
+        <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,0.62fr)_minmax(0,1.62fr)] lg:gap-20">
           {/* Left — copy */}
           <div className="text-center lg:text-left">
             <Reveal className="mb-6 flex justify-center lg:justify-start">
@@ -461,15 +461,11 @@ const BENEFITS: { title: string; body: string; icon: React.ReactNode; tile: stri
   },
 ]
 
-/* ───────────── Hero showcase — animated dashboard collage + live overlays ───────────── */
+/* ───────────── Hero showcase — replayable product video + dynamic callouts ───────────── */
 
-// The hero is a collage of four product panels (cut from LandingImage.png). They
-// animate in sequence — the body figure in the middle is always present, then the
-// right dashboard pops up, then the two left panels — over a dark "screen" stage.
-const panelBodyUrl       = new URL('./assets/landing/panel_body.png', import.meta.url).href
-const panelDashboardUrl  = new URL('./assets/landing/panel_dashboard.png', import.meta.url).href
-const panelStatusUrl     = new URL('./assets/landing/panel_status.png', import.meta.url).href
-const panelActivationUrl = new URL('./assets/landing/panel_activation.png', import.meta.url).href
+// The hero plays a looping screen capture of the Live Muscle Twin, with five
+// "dynamic" callout cards that pop in over it to name what the viewer is seeing.
+const mainVideoUrl = new URL('../MainVideoLanding.mp4', import.meta.url).href
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
@@ -502,133 +498,137 @@ function LiveSparkline({ data, gradId }: { data: number[]; gradId: string }) {
 
 function HeroShowcase() {
   const [containerRef, inView] = useInView<HTMLDivElement>(0.2)
-  // Sequenced entrance: -1 = hidden, 0 = body (mid) only, 1 = + right dashboard,
-  // 2 = + top-left panel, 3 = + bottom-left panel. Plays once when scrolled in.
-  const [phase, setPhase] = useState(-1)
-  const [angle, setAngle] = useState(82)
-  const [match, setMatch] = useState(96)
-  const [reps, setReps] = useState(3)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  // How many callout boxes have popped in (0 = none yet). They reveal one by one
+  // once the hero scrolls into view.
+  const [shown, setShown] = useState(0)
   const [spark, setSpark] = useState<number[]>(() =>
     Array.from({ length: 20 }, (_, i) => 45 + Math.round(26 * Math.sin(i / 2.2))),
   )
-  const [pulse, setPulse] = useState<number[]>(() =>
-    Array.from({ length: 20 }, (_, i) => 50 + Math.round(20 * Math.sin(i / 1.7))),
-  )
+  const [bal, setBal] = useState(55)   // left/right balance, % to the left
+  const [rom, setRom] = useState(72)   // range-of-motion fill, %
 
-  // Entrance sequence — restarts each time the hero scrolls into view.
+  // Play/pause the loop with visibility; reveal the callouts in sequence.
   useEffect(() => {
-    if (!inView) { setPhase(-1); return }
-    setPhase(0)
-    const t1 = window.setTimeout(() => setPhase(1), 450)
-    const t2 = window.setTimeout(() => setPhase(2), 1050)
-    const t3 = window.setTimeout(() => setPhase(3), 1350)
-    return () => { window.clearTimeout(t1); window.clearTimeout(t2); window.clearTimeout(t3) }
+    const v = videoRef.current
+    if (inView) {
+      try { if (v) v.currentTime = 0 } catch {}
+      v?.play().catch(() => {})
+      setShown(0)
+      const ts = [350, 700, 1050, 1400, 1750].map((ms, i) =>
+        window.setTimeout(() => setShown(i + 1), ms),
+      )
+      return () => ts.forEach((t) => window.clearTimeout(t))
+    }
+    v?.pause()
   }, [inView])
 
-  // Drive the "live measurement" feel — values drift and the plots scroll,
-  // but only while the hero is actually on screen.
+  // Drift the live values so the callout plots feel alive (only while on screen).
   useEffect(() => {
     if (!inView) return
     const id = window.setInterval(() => {
-      setAngle((a) => clamp(a + Math.round((Math.random() - 0.45) * 9), 62, 96))
-      setMatch((m) => clamp(m + Math.round((Math.random() - 0.5) * 4), 91, 99))
-      setReps((r) => (r >= 8 ? 1 : r + 1))
       setSpark((s) => [...s.slice(1), clamp(s[s.length - 1] + Math.round((Math.random() - 0.5) * 36), 12, 94)])
-      setPulse((s) => [...s.slice(1), clamp(s[s.length - 1] + Math.round((Math.random() - 0.5) * 30), 20, 92)])
+      setBal((b) => clamp(b + Math.round((Math.random() - 0.5) * 6), 44, 64))
+      setRom((r) => clamp(r + Math.round((Math.random() - 0.5) * 14), 32, 96))
     }, 1100)
     return () => window.clearInterval(id)
   }, [inView])
 
-  // Entrance transition for a panel: fades + slides from `from` into place.
-  const panel = (visible: boolean, from: string, delay = 0): React.CSSProperties => ({
+  // Fade + rise reveal for a callout box.
+  const reveal = (visible: boolean): React.CSSProperties => ({
     opacity: visible ? 1 : 0,
-    transform: visible ? 'translate(0,0) scale(1)' : from,
-    transition: 'opacity 0.6s ease, transform 0.75s cubic-bezier(0.22,1,0.36,1)',
-    transitionDelay: `${delay}ms`,
+    transform: visible ? 'translateY(0) scale(1)' : 'translateY(12px) scale(0.94)',
+    transition: 'opacity 0.55s ease, transform 0.6s cubic-bezier(0.22,1,0.36,1)',
   })
 
   return (
     <div ref={containerRef} className="relative mx-auto w-full max-w-2xl lg:max-w-none">
-      {/* Dark "screen" stage so the four dark product panels read as one dashboard */}
-      <div className="relative aspect-[1609/1054] w-full overflow-hidden rounded-[1.5rem] border border-slate-900/10 bg-[radial-gradient(circle_at_50%_35%,#111b34,#070b16)] shadow-[0_40px_90px_-45px_rgba(15,23,42,0.6)]">
-        {/* Middle — body figure (always present first) */}
-        <img
-          src={panelBodyUrl}
-          alt="Live muscular body model"
-          draggable={false}
-          className="absolute select-none"
-          style={{ left: '40%', top: '9%', width: '28%', ...panel(phase >= 0, 'translate(0,18px) scale(0.96)') }}
-        />
-        {/* Right — health / workload dashboard (pops up second) */}
-        <img
-          src={panelDashboardUrl}
-          alt="Workload by muscle group and health metrics"
-          draggable={false}
-          className="absolute select-none drop-shadow-[0_12px_30px_rgba(0,0,0,0.45)]"
-          style={{ right: '0%', top: '0%', width: '34%', ...panel(phase >= 1, 'translate(44px,0) scale(0.95)') }}
-        />
-        {/* Top-left — muscle status (third) */}
-        <img
-          src={panelStatusUrl}
-          alt="Muscle status — fatigue and work per region"
-          draggable={false}
-          className="absolute select-none drop-shadow-[0_12px_30px_rgba(0,0,0,0.45)]"
-          style={{ left: '0.5%', top: '12%', width: '42%', ...panel(phase >= 2, 'translate(-44px,0) scale(0.95)') }}
-        />
-        {/* Bottom-left — activation radars + range of motion (fourth) */}
-        <img
-          src={panelActivationUrl}
-          alt="Muscle activation radars and range of motion"
-          draggable={false}
-          className="absolute select-none drop-shadow-[0_12px_30px_rgba(0,0,0,0.45)]"
-          style={{ left: '0.5%', top: '49%', width: '42%', ...panel(phase >= 3, 'translate(-44px,0) scale(0.95)', 120) }}
-        />
-
-        {/* Sweeping live-scan line across the stage */}
-        <div className="pointer-events-none absolute inset-2 overflow-hidden rounded-[1.25rem]">
-          <div className="zh-scan absolute left-[6%] right-[6%] h-px bg-gradient-to-r from-transparent via-cyan-400/80 to-transparent shadow-[0_0_14px_2px_rgba(34,211,238,0.55)]" />
-        </div>
-
-        {/* LIVE badge */}
-        <div className="absolute left-3 top-3 flex items-center gap-2 rounded-full border border-white/15 bg-slate-900/70 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-cyan-100 shadow-lg backdrop-blur">
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500" />
-          </span>
-          Live scan
-        </div>
-
-        {/* Dynamic activation plot — floats over the LEFT column */}
-        <div
-          className="pointer-events-none absolute left-[3%] top-[35%] hidden rounded-2xl border border-white/10 bg-slate-900/80 px-3.5 py-3 shadow-[0_18px_40px_-18px_rgba(0,0,0,0.7)] backdrop-blur sm:block"
-          style={panel(phase >= 2, 'translate(-30px,0) scale(0.9)', 200)}
-        >
-          <div className="mb-1.5 flex items-center justify-between gap-5">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-300">Activation</span>
-            <span className="text-xs font-bold tabular-nums text-cyan-300">{spark[spark.length - 1]}%</span>
+      {/* One framed unit: video on the LEFT, dynamic data boxes stacked to its
+          RIGHT so they never cover the live readouts inside the video. */}
+      <div className="rounded-[1.75rem] border border-slate-200/80 bg-white/50 p-3 shadow-[0_40px_90px_-50px_rgba(15,23,42,0.45)] backdrop-blur-sm sm:p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
+          {/* Video — dark stage */}
+          <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-slate-900/10 bg-[radial-gradient(circle_at_50%_35%,#111b34,#070b16)] lg:flex-1">
+            <video
+              ref={videoRef}
+              src={mainVideoUrl}
+              className="h-full w-full object-cover"
+              autoPlay
+              muted
+              loop
+              playsInline
+            />
+            {/* Sweeping live-scan line */}
+            <div className="pointer-events-none absolute inset-0 overflow-hidden">
+              <div className="zh-scan absolute left-[4%] right-[4%] h-px bg-gradient-to-r from-transparent via-cyan-400/70 to-transparent shadow-[0_0_14px_2px_rgba(34,211,238,0.45)]" />
+            </div>
+            {/* Digital Twin — the only overlay, on the empty top-left (no readout there) */}
+            <div className="absolute left-3 top-3 hidden sm:block" style={reveal(shown >= 1)}>
+              <CalloutCard title="Digital Twin" sub="Live motion & muscle tracking">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-400" />
+                </span>
+              </CalloutCard>
+            </div>
           </div>
-          <LiveSparkline data={spark} gradId="zh-spark-left" />
-        </div>
 
-        {/* Dynamic metric plot — floats over the RIGHT dashboard */}
-        <div
-          className="pointer-events-none absolute right-[3%] bottom-[8%] hidden rounded-2xl border border-white/10 bg-slate-900/80 px-3.5 py-3 shadow-[0_18px_40px_-18px_rgba(0,0,0,0.7)] backdrop-blur sm:block"
-          style={panel(phase >= 1, 'translate(30px,0) scale(0.9)', 200)}
-        >
-          <div className="mb-1.5 flex items-center justify-between gap-5">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-300">Recovery</span>
-            <span className="text-xs font-bold tabular-nums text-orange-300">{pulse[pulse.length - 1]}%</span>
+          {/* Right column — data boxes OUTSIDE the video (2×2 on mobile) */}
+          <div className="grid grid-cols-2 gap-3 lg:flex lg:w-64 lg:flex-col lg:justify-between">
+            <div style={reveal(shown >= 2)}>
+              <CalloutCard title="Muscle Engagement" sub="What's firing, in real time" wide>
+                <LiveSparkline data={spark} gradId="zh-cb2" />
+              </CalloutCard>
+            </div>
+            <div style={reveal(shown >= 3)}>
+              <CalloutCard title="Left / Right Balance" sub="Load symmetry across muscles" wide>
+                <div className="flex h-2 w-full overflow-hidden rounded-full bg-slate-700/60">
+                  <div className="h-full bg-cyan-400 transition-all duration-700" style={{ width: `${bal}%` }} />
+                  <div className="h-full bg-amber-400 transition-all duration-700" style={{ width: `${100 - bal}%` }} />
+                </div>
+                <div className="mt-1 flex justify-between text-[9px] font-semibold tabular-nums">
+                  <span className="text-cyan-300">L {bal}%</span>
+                  <span className="text-amber-300">R {100 - bal}%</span>
+                </div>
+              </CalloutCard>
+            </div>
+            <div style={reveal(shown >= 4)}>
+              <CalloutCard title="Engagement Map" sub="By group — arms, legs, trunk, neck" wide>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {['Upper', 'Lower', 'Trunk', 'Neck'].map((g, i) => (
+                    <span key={g} className="flex items-center gap-1 text-[9px] font-medium text-slate-300">
+                      <span className="mm-pulse-soft h-1.5 w-1.5 rounded-full bg-cyan-400" style={{ animationDelay: `${i * 160}ms` }} />
+                      {g}
+                    </span>
+                  ))}
+                </div>
+              </CalloutCard>
+            </div>
+            <div style={reveal(shown >= 5)}>
+              <CalloutCard title="Range of Motion" sub="Every joint, as you move" wide>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-700/60">
+                  <div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-emerald-300 transition-all duration-700" style={{ width: `${rom}%` }} />
+                </div>
+                <div className="mt-1 text-right text-[9px] font-semibold tabular-nums text-emerald-300">{rom}% of range</div>
+              </CalloutCard>
+            </div>
           </div>
-          <LiveSparkline data={pulse} gradId="zh-spark-right" />
         </div>
       </div>
+    </div>
+  )
+}
 
-      {/* Mobile live strip — below the collage so it never covers the panels */}
-      <div className="mt-3 flex flex-wrap items-center justify-center gap-2 sm:hidden">
-        <span className="rounded-lg border border-cyan-200 bg-white px-2.5 py-1 text-xs font-bold tabular-nums text-cyan-600 shadow-sm">{angle}° joint</span>
-        <span className="rounded-lg border border-orange-200 bg-white px-2.5 py-1 text-xs font-bold tabular-nums text-orange-500 shadow-sm">{match}% match</span>
-        <span className="rounded-lg border border-rose-200 bg-white px-2.5 py-1 text-xs font-bold tabular-nums text-rose-500 shadow-sm">{reps}/8 reps</span>
+/** A glass label card with a title, subtitle and a small live accent.
+ *  `wide` fills the container width (used in the right-hand data column). */
+function CalloutCard({ title, sub, children, wide = false }: { title: string; sub: string; children: React.ReactNode; wide?: boolean }) {
+  return (
+    <div className={`${wide ? 'w-full' : 'w-max max-w-[15rem]'} rounded-2xl border border-white/12 bg-slate-900/85 px-3.5 py-2.5 shadow-[0_18px_40px_-18px_rgba(0,0,0,0.75)] backdrop-blur`}>
+      <div className="flex items-center gap-2">
+        <span className="text-[13px] font-bold leading-tight text-white">{title}</span>
       </div>
+      <div className="mt-0.5 text-[10px] font-medium leading-snug text-slate-400">{sub}</div>
+      <div className="mt-2">{children}</div>
     </div>
   )
 }
