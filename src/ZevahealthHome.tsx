@@ -199,8 +199,11 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
       </nav>
 
       {/* ── Hero ────────────────────────────────────────────────────────────── */}
-      <section id="top" className="relative z-10 mx-auto max-w-[100rem] px-5 pb-6 pt-12 sm:px-8 lg:pt-16">
-        <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,0.62fr)_minmax(0,1.62fr)] lg:gap-20">
+      {/* Hero deliberately breaks the max-width grid: text hugs the left edge and
+          the showcase runs full-bleed to the right edge (no right margin) so the
+          video + data boxes render large. Other sections keep the centered width. */}
+      <section id="top" className="relative z-10 w-full pb-6 pl-4 pr-0 pt-12 sm:pl-8 lg:pt-16">
+        <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)] lg:gap-12">
           {/* Left — copy */}
           <div className="text-center lg:text-left">
             <Reveal className="mb-6 flex justify-center lg:justify-start">
@@ -242,7 +245,6 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
                   Explore the body <ChevronRight className="h-4 w-4" />
                 </a>
               </div>
-              <p className="mt-6 text-sm text-slate-500">No signup. No download. Works in your browser.</p>
               {/* Second platform — MoveMate Train gym training. Parked until launch;
                   content preserved in MoveMateTrainPromo.tsx (SHOW_MOVEMATE_TRAIN). */}
               {SHOW_MOVEMATE_TRAIN && <MoveMateTrainHeroCard gymUrl={gymUrl} />}
@@ -430,7 +432,7 @@ const AUDIENCE = [
 const STATS: { value: string; label: string }[] = [
   { value: '100+', label: 'Muscles on the 3D anatomy model' },
   { value: '3-in-1', label: 'Diagnose · Relief exercises · AI coach' },
-  { value: '0', label: 'Sign-ups or downloads required' },
+  { value: 'Free', label: 'AI muscle pain diagnosis' },
   { value: 'Live', label: 'Posture & form tracking in-browser' },
 ]
 
@@ -479,7 +481,7 @@ function LiveSparkline({ data, gradId }: { data: number[]; gradId: string }) {
     .join(' ')
   const area = `0,${H} ${line} ${W},${H}`
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="h-9 w-32 overflow-visible">
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="h-11 w-full overflow-visible">
       <defs>
         <linearGradient id={`${gradId}-line`} x1="0" y1="0" x2="1" y2="0">
           <stop offset="0%" stopColor="#06b6d4" />
@@ -574,7 +576,7 @@ function HeroShowcase() {
           </div>
 
           {/* Right column — data boxes OUTSIDE the video (2×2 on mobile) */}
-          <div className="grid grid-cols-2 gap-3 lg:flex lg:w-64 lg:flex-col lg:justify-between">
+          <div className="grid grid-cols-2 gap-3 lg:flex lg:w-80 lg:flex-col lg:justify-between lg:gap-4">
             <div style={reveal(shown >= 2)}>
               <CalloutCard title="Muscle Engagement" sub="What's firing, in real time" wide>
                 <LiveSparkline data={spark} gradId="zh-cb2" />
@@ -582,11 +584,11 @@ function HeroShowcase() {
             </div>
             <div style={reveal(shown >= 3)}>
               <CalloutCard title="Left / Right Balance" sub="Load symmetry across muscles" wide>
-                <div className="flex h-2 w-full overflow-hidden rounded-full bg-slate-700/60">
+                <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-slate-700/60">
                   <div className="h-full bg-cyan-400 transition-all duration-700" style={{ width: `${bal}%` }} />
                   <div className="h-full bg-amber-400 transition-all duration-700" style={{ width: `${100 - bal}%` }} />
                 </div>
-                <div className="mt-1 flex justify-between text-[9px] font-semibold tabular-nums">
+                <div className="mt-1.5 flex justify-between text-[11px] font-semibold tabular-nums">
                   <span className="text-cyan-300">L {bal}%</span>
                   <span className="text-amber-300">R {100 - bal}%</span>
                 </div>
@@ -594,10 +596,10 @@ function HeroShowcase() {
             </div>
             <div style={reveal(shown >= 4)}>
               <CalloutCard title="Engagement Map" sub="By group — arms, legs, trunk, neck" wide>
-                <div className="grid grid-cols-2 gap-1.5">
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
                   {['Upper', 'Lower', 'Trunk', 'Neck'].map((g, i) => (
-                    <span key={g} className="flex items-center gap-1 text-[9px] font-medium text-slate-300">
-                      <span className="mm-pulse-soft h-1.5 w-1.5 rounded-full bg-cyan-400" style={{ animationDelay: `${i * 160}ms` }} />
+                    <span key={g} className="flex items-center gap-1.5 text-[11px] font-medium text-slate-300">
+                      <span className="mm-pulse-soft h-2 w-2 rounded-full bg-cyan-400" style={{ animationDelay: `${i * 160}ms` }} />
                       {g}
                     </span>
                   ))}
@@ -606,10 +608,10 @@ function HeroShowcase() {
             </div>
             <div style={reveal(shown >= 5)}>
               <CalloutCard title="Range of Motion" sub="Every joint, as you move" wide>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-700/60">
+                <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-700/60">
                   <div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-emerald-300 transition-all duration-700" style={{ width: `${rom}%` }} />
                 </div>
-                <div className="mt-1 text-right text-[9px] font-semibold tabular-nums text-emerald-300">{rom}% of range</div>
+                <div className="mt-1.5 text-right text-[11px] font-semibold tabular-nums text-emerald-300">{rom}% of range</div>
               </CalloutCard>
             </div>
           </div>
@@ -623,12 +625,12 @@ function HeroShowcase() {
  *  `wide` fills the container width (used in the right-hand data column). */
 function CalloutCard({ title, sub, children, wide = false }: { title: string; sub: string; children: React.ReactNode; wide?: boolean }) {
   return (
-    <div className={`${wide ? 'w-full' : 'w-max max-w-[15rem]'} rounded-2xl border border-white/12 bg-slate-900/85 px-3.5 py-2.5 shadow-[0_18px_40px_-18px_rgba(0,0,0,0.75)] backdrop-blur`}>
+    <div className={`${wide ? 'w-full' : 'w-max max-w-[16rem]'} rounded-2xl border border-white/12 bg-slate-900/85 px-4 py-3 shadow-[0_18px_40px_-18px_rgba(0,0,0,0.75)] backdrop-blur`}>
       <div className="flex items-center gap-2">
-        <span className="text-[13px] font-bold leading-tight text-white">{title}</span>
+        <span className="text-[15px] font-bold leading-tight text-white sm:text-base">{title}</span>
       </div>
-      <div className="mt-0.5 text-[10px] font-medium leading-snug text-slate-400">{sub}</div>
-      <div className="mt-2">{children}</div>
+      <div className="mt-0.5 text-[11px] font-medium leading-snug text-slate-400 sm:text-xs">{sub}</div>
+      <div className="mt-2.5">{children}</div>
     </div>
   )
 }
