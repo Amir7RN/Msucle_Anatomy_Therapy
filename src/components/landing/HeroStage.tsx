@@ -114,9 +114,9 @@ function BadgeGroup() {
 }
 
 function HeadlineGroup() {
+  // Phone (< sm) gets a smaller size so it never overflows; sm+ (tablet) and
+  // the lg+ desktop canvas keep the original 3.4rem exactly as before.
   return (
-    {/* Phone (< sm) gets a smaller size so it never overflows; sm+ (tablet) and
-        the lg+ desktop canvas keep the original 3.4rem exactly as before. */}
     <h1 className="text-[2.15rem] leading-[1.05] sm:text-[3.4rem] sm:leading-[0.95] font-extrabold tracking-[-0.045em] text-slate-900">
       <span className="zh-gradient-text bg-gradient-to-r from-orange-500 via-rose-500 to-cyan-500 bg-clip-text text-transparent">
         Muscle pain relief
