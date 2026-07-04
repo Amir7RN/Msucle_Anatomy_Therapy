@@ -25,8 +25,39 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob: data:; worker-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net https://storage.googleapis.com https://api.anthropic.com https://*.supabase.co wss://*.supabase.co https://*.functions.supabase.co https://*.metered.live https://*.metered.ca blob: data:" />
     <link rel="icon" type="image/svg+xml" href="./zevahealth-icon.svg" />
     <meta name="theme-color" content="#f7f8fc" />
-    <meta name="description" content="Zevahealth AI — Find what hurts. Move better. Feel better. An interactive muscle-target body model with an AI form coach." />
-    <title>Zevahealth AI — Move smarter. Feel better.</title>
+    <meta name="description" content="Zevahealth AI: pinpoint muscle pain on an interactive 3D anatomy model, get relief exercises matched to the exact muscle, and train with an AI form coach that checks your posture — free in your browser." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://zeva.health/" />
+    <title>Zevahealth AI — Muscle pain relief &amp; 3D anatomy diagnosis</title>
+
+    <!-- Open Graph (Google, LinkedIn, Facebook, iMessage link previews) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Zevahealth AI" />
+    <meta property="og:url" content="https://zeva.health/" />
+    <meta property="og:title" content="Zevahealth AI — muscle pain relief starts with knowing the muscle" />
+    <meta property="og:description" content="Pinpoint muscle pain on a 3D anatomy model, get relief exercises matched to the muscle, and train with an AI form coach — free in your browser." />
+    <meta property="og:image" content="https://zeva.health/headerLogo.png" />
+
+    <!-- Twitter / X card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Zevahealth AI — muscle pain relief starts with knowing the muscle" />
+    <meta name="twitter:description" content="Pinpoint muscle pain on a 3D anatomy model, get relief exercises matched to the muscle, and train with an AI form coach — free in your browser." />
+    <meta name="twitter:image" content="https://zeva.health/headerLogo.png" />
+
+    <!-- Structured data — helps Google understand the site -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Zevahealth AI",
+        "url": "https://zeva.health/",
+        "applicationCategory": "HealthApplication",
+        "operatingSystem": "Web",
+        "browserRequirements": "Requires JavaScript and a modern browser",
+        "description": "Pinpoint muscle pain on an interactive 3D anatomy model, get relief exercises matched to the exact muscle, and train with an AI form coach.",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -40,6 +71,15 @@
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <div style="max-width:640px;margin:48px auto;padding:0 20px;font-family:Inter,Arial,sans-serif;color:#0f172a;">
+        <h1>Muscle pain relief starts with knowing the muscle</h1>
+        <p>Zevahealth AI lets you pinpoint what hurts on an interactive 3D muscle anatomy model,
+        get muscle pain relief exercises matched to the exact muscle, and work out with an AI
+        coach that checks your form and posture — free in your browser.</p>
+        <p>Please enable JavaScript to use the interactive app.</p>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
