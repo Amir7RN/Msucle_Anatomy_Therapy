@@ -136,9 +136,11 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
       <nav className="sticky top-0 z-30 border-b border-slate-900/5 bg-white/70 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-3.5 sm:px-8">
           <a href="#top" className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500 to-teal-500 text-white shadow-[0_8px_24px_-8px_rgba(8,145,178,0.7)]">
-              <ZevaLogo className="h-6 w-6" />
-            </span>
+            <img
+              src={`${import.meta.env.BASE_URL}logo.png`}
+              alt="Zevahealth AI logo"
+              className="h-10 w-10 object-contain"
+            />
             <span>
               <span className="block text-sm font-bold tracking-tight text-slate-900">Zevahealth AI</span>
               <span className="block text-xs text-slate-500">Move smarter. Feel better.</span>
@@ -356,9 +358,11 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
           <div className="flex flex-col gap-8 sm:flex-row sm:items-start sm:justify-between">
             {/* Brand */}
             <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-teal-500 text-white">
-                <ZevaLogo className="h-5 w-5" />
-              </span>
+              <img
+                src={`${import.meta.env.BASE_URL}logo.png`}
+                alt="Zevahealth AI logo"
+                className="h-9 w-9 object-contain"
+              />
               <span className="text-sm font-semibold text-slate-700">Zevahealth AI</span>
             </div>
 
