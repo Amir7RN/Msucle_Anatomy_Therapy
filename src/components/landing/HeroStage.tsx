@@ -313,9 +313,9 @@ export function HeroStage({ atlasUrl, diagnosticUrl }: { atlasUrl: string; diagn
         </div>
         <div className="mt-8">
           <VideoFrame />
-          {/* Phones: one box per row (full-width & readable). Tablet keeps the
-              original 2-up grid. */}
-          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {/* Data boxes are hidden on phones (< sm) per request; tablet (sm–lg)
+              keeps the original 2-up grid, desktop uses the canvas below. */}
+          <div className="mt-3 hidden gap-3 sm:grid sm:grid-cols-2">
             {(['engagement', 'balance', 'rom'] as const).map((id) => (
               <div key={id}>{itemContent(id, live, urls)}</div>
             ))}
