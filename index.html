@@ -25,37 +25,133 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob: data:; worker-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net https://storage.googleapis.com https://api.anthropic.com https://*.supabase.co wss://*.supabase.co https://*.functions.supabase.co https://*.metered.live https://*.metered.ca blob: data:" />
     <link rel="icon" type="image/svg+xml" href="./zevahealth-icon.svg" />
     <meta name="theme-color" content="#f7f8fc" />
-    <meta name="description" content="Zevahealth AI uses pose detection and an interactive 3D anatomy model to assess mobility, highlight muscles that need attention, and match you with personalized movement guidance and an AI form coach." />
-    <meta name="robots" content="index, follow" />
+    <meta name="description" content="Zevahealth AI (MoveMate) helps you find the muscle behind your pain or soreness, then guides you through targeted exercises with an AI form coach that tracks every rep. Free, no signup, works in your browser." />
+    <meta name="keywords" content="find the muscle causing my pain, muscle pain finder, interactive 3D muscle model, AI form coach, pose detection exercise app, shoulder pain muscle, sore muscle diagnosis, AI movement coach, muscle anatomy explorer" />
+    <meta name="author" content="Zevahealth" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://zeva.health/" />
-    <title>Zevahealth AI — AI Movement Guidance &amp; 3D Muscle Insights</title>
+    <title>Zevahealth AI — Find the Muscle Behind Your Pain | 3D Body &amp; AI Form Coach</title>
 
     <!-- Open Graph (Google, LinkedIn, Facebook, iMessage link previews) -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Zevahealth AI" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:url" content="https://zeva.health/" />
-    <meta property="og:title" content="Zevahealth AI — AI Movement Guidance &amp; 3D Muscle Insights" />
-    <meta property="og:description" content="Pose detection and an interactive 3D anatomy model that assess mobility, highlight muscles that need attention, and match you with personalized movement guidance and an AI form coach." />
+    <meta property="og:title" content="Zevahealth AI — Find the Muscle Behind Your Pain | 3D Body &amp; AI Form Coach" />
+    <meta property="og:description" content="Tap the sore spot or just ask — Zevahealth AI finds the muscle behind your pain, then coaches you through targeted exercises with live pose tracking. Free, no signup, in your browser." />
     <meta property="og:image" content="https://zeva.health/headerLogo.png" />
+    <meta property="og:image:alt" content="Zevahealth AI interactive 3D muscle model highlighting the muscle behind a sore shoulder" />
 
     <!-- Twitter / X card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Zevahealth AI — AI Movement Guidance &amp; 3D Muscle Insights" />
-    <meta name="twitter:description" content="Pose detection and an interactive 3D anatomy model that assess mobility, highlight muscles that need attention, and match you with personalized movement guidance and an AI form coach." />
+    <meta name="twitter:title" content="Zevahealth AI — Find the Muscle Behind Your Pain | 3D Body &amp; AI Form Coach" />
+    <meta name="twitter:description" content="Tap the sore spot or just ask — Zevahealth AI finds the muscle behind your pain, then coaches you through targeted exercises with live pose tracking. Free, no signup, in your browser." />
     <meta name="twitter:image" content="https://zeva.health/headerLogo.png" />
 
-    <!-- Structured data — helps Google understand the site -->
+    <!-- Structured data — helps Google + AI answer engines (ChatGPT, Perplexity,
+         Gemini, Google AI Overviews) understand and cite the site. -->
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
-        "@type": "WebApplication",
-        "name": "Zevahealth AI",
-        "url": "https://zeva.health/",
-        "applicationCategory": "HealthApplication",
-        "operatingSystem": "Web",
-        "browserRequirements": "Requires JavaScript and a modern browser",
-        "description": "Uses pose detection and an interactive 3D anatomy model to assess mobility, highlight muscles that need attention, and provide personalized movement guidance and an AI form coach.",
-        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://zeva.health/#organization",
+            "name": "Zevahealth",
+            "alternateName": ["Zevahealth AI", "MoveMate AI"],
+            "url": "https://zeva.health/",
+            "logo": "https://zeva.health/headerLogo.png",
+            "description": "Zevahealth builds MoveMate AI, an interactive muscle-target body model that helps everyday people find the muscle behind their pain and move through targeted exercises with an AI form coach."
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://zeva.health/#website",
+            "url": "https://zeva.health/",
+            "name": "Zevahealth AI",
+            "publisher": { "@id": "https://zeva.health/#organization" },
+            "inLanguage": "en"
+          },
+          {
+            "@type": "WebApplication",
+            "@id": "https://zeva.health/#webapp",
+            "name": "Zevahealth AI (MoveMate)",
+            "url": "https://zeva.health/",
+            "applicationCategory": "HealthApplication",
+            "operatingSystem": "Web",
+            "browserRequirements": "Requires JavaScript and a modern browser",
+            "description": "Interactive 3D muscle model and AI coach. Tap a sore spot or describe your pain in chat to find the likely muscle, then follow targeted exercises with an AI form coach that uses pose detection to track joint angles and reps.",
+            "featureList": [
+              "Interactive 3D muscle and anatomy model",
+              "Tap-the-spot muscle pain finder",
+              "AI chat that triages pain to likely muscle sources",
+              "AI form coach with live pose tracking, joint-angle and rep counting",
+              "Personalized, targeted exercise suggestions"
+            ],
+            "isAccessibleForFree": true,
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+            "publisher": { "@id": "https://zeva.health/#organization" }
+          },
+          {
+            "@type": "FAQPage",
+            "@id": "https://zeva.health/#faq",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "What is Zevahealth AI?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Zevahealth AI (the MoveMate app) is a free browser tool that helps you find the muscle behind your pain or soreness. You tap the sore spot on an interactive 3D body model, or describe the pain in chat, and it highlights the likely muscle contributors — then guides you through targeted exercises with an AI form coach. No signup or download required."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How do I find which muscle is causing my pain?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Open the app and tap the spot that feels sore on the 3D body model. Zevahealth AI lights up the likely muscle contributors, lets you isolate each one to view its tension pattern, and confirms the most probable source. You can also just describe the pain in chat and answer a few follow-up questions to reach the same answer."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is Zevahealth AI free?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. Zevahealth AI is free to use, requires no signup and no download, and runs entirely in your web browser on desktop or mobile."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How does the AI form coach work?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "The AI form coach uses your device camera and pose detection to track your body as you exercise. It measures joint angles, counts reps, scores your form, and gives live cues — for example telling you to slow the descent and control the eccentric — so you move safely without a personal trainer."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is Zevahealth AI a substitute for a doctor or physical therapist?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. Zevahealth AI provides suggestive, general-purpose movement guidance for everyday soreness. It is not medical advice and not a substitute for a qualified doctor or physical therapist. See a professional for severe, persistent, or worsening pain."
+                }
+              }
+            ]
+          },
+          {
+            "@type": "HowTo",
+            "@id": "https://zeva.health/#howto",
+            "name": "How to find the muscle behind your pain with Zevahealth AI",
+            "description": "Use the interactive 3D body model to identify the likely muscle source of soreness and get targeted exercises.",
+            "totalTime": "PT2M",
+            "step": [
+              { "@type": "HowToStep", "position": 1, "name": "Tap the sore spot", "text": "Tap the spot that feels sore on the interactive 3D body model." },
+              { "@type": "HowToStep", "position": 2, "name": "See likely muscles", "text": "See the likely muscle contributors light up on the model." },
+              { "@type": "HowToStep", "position": 3, "name": "Isolate a muscle", "text": "Isolate one muscle to view its tension pattern." },
+              { "@type": "HowToStep", "position": 4, "name": "Confirm the source", "text": "Try another muscle to confirm the real source of the pain." },
+              { "@type": "HowToStep", "position": 5, "name": "Get exercises", "text": "Get suggested exercises tuned to your muscle and move through them with the AI form coach." }
+            ]
+          }
+        ]
       }
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -72,12 +168,51 @@
   <body>
     <div id="root"></div>
     <noscript>
-      <div style="max-width:640px;margin:48px auto;padding:0 20px;font-family:Inter,Arial,sans-serif;color:#0f172a;">
-        <h1>AI movement guidance and 3D muscle insights</h1>
-        <p>Zevahealth AI uses pose detection and an interactive 3D anatomy model to assess mobility,
-        highlight muscles that need attention, and match you with personalized movement guidance and
-        an AI form coach.</p>
-        <p>Please enable JavaScript to use the interactive app.</p>
+      <div style="max-width:760px;margin:48px auto;padding:0 20px;font-family:Inter,Arial,sans-serif;color:#0f172a;line-height:1.6;">
+        <h1>Zevahealth AI — find the muscle behind your pain</h1>
+        <p><strong>Zevahealth AI</strong> (the MoveMate app) is a free, browser-based tool that helps
+        everyday people — desk workers, lifters, runners, and weekend warriors — pinpoint the muscle
+        behind their soreness and move through targeted exercises with an AI form coach. No signup,
+        no download; it runs in your browser on desktop or mobile.</p>
+
+        <h2>Find the muscle causing your pain</h2>
+        <p>Tap the sore spot on an interactive 3D body model and Zevahealth AI highlights the likely
+        muscle contributors. Isolate each muscle to see its tension pattern, compare candidates, and
+        confirm the real source of the pain. Prefer words? Just describe the pain in chat and the AI
+        asks the right follow-up questions until the source is clear.</p>
+
+        <h2>What Zevahealth AI does</h2>
+        <ul>
+          <li><strong>Interactive 3D muscle model:</strong> explore a full anatomy model and tap the exact spot that hurts.</li>
+          <li><strong>Muscle pain finder:</strong> see the likely muscle contributors behind sore shoulders, backs, hips, knees, and more.</li>
+          <li><strong>AI pain chat:</strong> type or speak your symptoms; the AI triages your pain to the most probable muscle source.</li>
+          <li><strong>AI form coach:</strong> uses your camera and pose detection to track joint angles, count reps, score form, and give live cues while you exercise.</li>
+          <li><strong>Targeted exercises:</strong> get suggested movements tuned to the specific muscle you identified.</li>
+        </ul>
+
+        <h2>How to find the muscle behind your pain</h2>
+        <ol>
+          <li>Tap the spot that feels sore on the 3D body model.</li>
+          <li>See the likely muscle contributors light up.</li>
+          <li>Isolate one muscle to view its tension pattern.</li>
+          <li>Try another to confirm the real source.</li>
+          <li>Get suggested exercises tuned to your muscle and move through them with the AI coach.</li>
+        </ol>
+
+        <h2>Frequently asked questions</h2>
+        <h3>What is Zevahealth AI?</h3>
+        <p>A free browser tool that helps you find the muscle behind your pain, then guides you through
+        targeted exercises with an AI form coach. No signup or download required.</p>
+        <h3>Is it free?</h3>
+        <p>Yes — free, no signup, no download, works in any modern browser on desktop or mobile.</p>
+        <h3>How does the AI form coach work?</h3>
+        <p>It uses your device camera and pose detection to track your body as you move, measuring joint
+        angles, counting reps, scoring form, and giving live cues so you exercise safely without a trainer.</p>
+        <h3>Is it a substitute for a doctor or physical therapist?</h3>
+        <p>No. Zevahealth AI offers suggestive, general-purpose movement guidance for everyday soreness.
+        It is not medical advice. See a professional for severe, persistent, or worsening pain.</p>
+
+        <p><a href="https://zeva.health/">Open Zevahealth AI</a> — please enable JavaScript to use the interactive 3D app.</p>
       </div>
     </noscript>
     <script type="module" src="/src/main.tsx"></script>

@@ -1,0 +1,43 @@
+# Zevahealth AI (MoveMate)
+
+> Zevahealth AI is a free, browser-based tool that helps everyday people find the muscle behind their pain or soreness, then guides them through targeted exercises with an AI form coach. No signup, no download — it runs in the browser on desktop and mobile.
+
+Site: https://zeva.health/
+Maker: Zevahealth
+App name: MoveMate AI
+Category: Health & fitness / movement guidance (not medical advice)
+Audience: Desk workers, lifters, runners, weekend warriors — anyone with everyday muscle soreness.
+
+## What it does
+
+- **Find the muscle behind your pain.** Tap the sore spot on an interactive 3D body model and the app highlights the likely muscle contributors. Isolate each muscle to see its tension pattern and confirm the real source.
+- **AI pain chat.** Describe the pain by typing or speaking; the AI asks targeted follow-up questions and triages your symptoms to the most probable muscle source.
+- **AI form coach.** Uses your device camera and pose detection to track joint angles, count reps, score form, and give live cues (e.g. "slow the descent — control the eccentric") while you exercise.
+- **Targeted exercises.** Suggests movements tuned to the specific muscle you identified.
+
+## How to use it (5 steps)
+
+1. Tap the spot that feels sore on the 3D body model.
+2. See the likely muscle contributors light up.
+3. Isolate one muscle to view its tension pattern.
+4. Try another to confirm the real source.
+5. Get suggested exercises tuned to your muscle and move through them with the AI coach.
+
+## Key facts
+
+- Price: Free. No signup, no download.
+- Platform: Any modern web browser (desktop or mobile). Requires JavaScript; the AI form coach needs camera access.
+- Privacy: Pose/camera processing happens in the browser.
+
+## FAQ
+
+**Is Zevahealth AI free?** Yes — free, no signup, no download, runs in your browser.
+
+**How do I find which muscle is causing my pain?** Tap the sore spot on the 3D body model (or describe it in chat); the app highlights likely muscle contributors and helps you confirm the source.
+
+**Is it medical advice?** No. It offers suggestive, general-purpose movement guidance for everyday soreness and is not a substitute for a doctor or physical therapist. See a professional for severe, persistent, or worsening pain.
+
+## Links
+
+- Home / app: https://zeva.health/
+- Sitemap: https://zeva.health/sitemap.xml
