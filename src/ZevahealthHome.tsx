@@ -192,10 +192,10 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
             {SHOW_MOVEMATE_TRAIN && <MoveMateTrainNavLink gymUrl={gymUrl} />}
             <a
               href={diagnosticUrl}
-              title="MoveMate Relief — pain & recovery platform"
+              title="Zevahealth Relief — pain & recovery platform"
               className="rounded-full bg-gradient-to-r from-orange-500 to-rose-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_30px_-10px_rgba(244,63,94,0.7)] transition hover:shadow-[0_14px_36px_-8px_rgba(244,63,94,0.85)]"
             >
-              MoveMate Relief
+              Zevahealth Relief
             </a>
           </div>
         </div>
