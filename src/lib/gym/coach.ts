@@ -15,7 +15,9 @@ import { completeSentences } from '../speechText'
 import type { Exercise } from './exercises'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
-const MODEL_ID = 'claude-haiku-4-5-20251001'
+// Opus 4.8 — cues are spoken aloud; Haiku's phrasing read as robotic. Calls
+// stay throttled + tiny (max_tokens 80), so the per-set cost is still cents.
+const MODEL_ID = 'claude-opus-4-8'
 const COOLDOWN_MS = 12000
 
 export interface CoachSnapshot {
@@ -64,7 +66,8 @@ export function createGymCoach(exercise: Exercise) {
       (snap.heldKg ? `, holding ${Math.round(snap.heldKg)} kg` : '') +
       (snap.depthTrend ? `, rep depth ${snap.depthTrend} across the set` : '') + `. ` +
       `Context: ${reason}. Give ONE short spoken cue (max 14 words), motivating and specific — ` +
-      `prefer the trend over the number ("depth is shrinking, own these last reps"). No preamble.`
+      `prefer the trend over the number ("depth is shrinking, own these last reps"). ` +
+      `Sound like a real trainer mid-set: natural, punchy, varied — never generic or scripted. No preamble.`
 
     try {
       const res = await fetch(ANTHROPIC_URL, {

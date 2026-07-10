@@ -174,7 +174,11 @@ function getSystemPrompt(catalogue: DiagnosticMuscle[]): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ANTHROPIC_URL  = 'https://api.anthropic.com/v1/messages'
-const MODEL_ID       = 'claude-haiku-4-5-20251001'   // fast + cheap; ideal for 1-2 sentence triage replies
+// Opus 4.8 — conversational quality is the product here (the reply is spoken
+// aloud), and Haiku's clipped, template-y phrasing read as robotic. Opus does
+// not accept temperature/top_p/top_k; omitting `thinking` runs without
+// thinking, which keeps voice-loop latency low.
+const MODEL_ID       = 'claude-opus-4-8'
 
 interface AnthropicContentBlockText { type: 'text'; text: string }
 interface AnthropicContentBlockToolUse {
@@ -208,8 +212,11 @@ export async function chatTriage(
     // Short replies + the structured tool payload (zones/reasoning/red_flags
     // arrays). 220 was tight enough that a verbose differential could get
     // budget-cut mid-JSON, losing the whole tool call for that turn.
-    max_tokens: 400,
-    system,
+    max_tokens: 600,
+    // The system prompt embeds the full 52-muscle catalogue and never changes
+    // within a session — cache it so every turn after the first reads it at
+    // ~0.1x price and lower latency instead of reprocessing it.
+    system:     [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
     tools:      [PRESENT_DIFFERENTIAL_TOOL],
     messages,
   }, apiKey)

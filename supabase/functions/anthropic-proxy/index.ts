@@ -25,7 +25,9 @@ const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 // stolen-URL caller can spend: only the cheap model the app actually uses, a
 // max_tokens ceiling matching the app's largest request (personalProgram: 4000),
 // and a body-size cap sized for one camera frame (bodyVision base64 images).
-const ALLOWED_MODELS = new Set(['claude-haiku-4-5-20251001'])
+// Haiku serves the vision/program endpoints; Opus 4.8 serves the conversational
+// triage chat + spoken workout cues (small max_tokens keeps those calls cheap).
+const ALLOWED_MODELS = new Set(['claude-haiku-4-5-20251001', 'claude-opus-4-8'])
 const MAX_TOKENS_CAP = 4096
 const MAX_BODY_BYTES = 10 * 1024 * 1024 // 10 MB
 
