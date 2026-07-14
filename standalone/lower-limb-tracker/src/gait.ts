@@ -1,11 +1,10 @@
 /**
  * gait.ts
  *
- * Dynamic-ankle (walking) analysis — the engine behind the "Ankle Dynamics"
- * panel.  Unlike the static ROM tests in movements.ts (single peak hold), this
- * captures a *time series* while the user walks toward / away from the camera
- * and derives the metrics that matter for a sagittal-plane ankle exo such as
- * the Dephy device:
+ * Dynamic-ankle (walking) analysis engine. Unlike a single peak-hold ROM
+ * test, this captures a *time series* while the subject walks toward/away
+ * from the camera and derives the metrics that matter for lower-limb
+ * monitoring (e.g. a sagittal-plane ankle exoskeleton):
  *
  *   • Left + right ankle angle (shank↔foot) over the whole walk
  *   • Min / max / excursion (total sagittal ROM) per foot
@@ -16,6 +15,7 @@
  *
  * Everything here is pure / DOM-light so it is easy to reason about and test:
  *   - measureGaitFrame(lms)      → per-frame angles (both feet) + step signals
+ *   - GaitGapFiller              → per-channel short-gap interpolation
  *   - GaitStepMachine            → per-foot gait finite-state step counter
  *   - summariseGait(samples,…)   → headline metrics
  *   - buildGaitCsv(...)          → CSV string (summary header + per-frame rows)
@@ -23,28 +23,27 @@
  *
  * Ankle angle convention  (IMPORTANT — accuracy)
  * ──────────────────────────────────────────────
- * The walking test is meant to be filmed roughly SIDE-ON (phone on the floor,
- * person in profile), so the camera's image plane is close to the sagittal
- * plane. But a real walker drifts: they angle slightly toward/away from the
- * camera, turn around for the "back" leg of a there-and-back walk, or a
- * remote-call client simply isn't framed perfectly. A PURE 2-D image-space
- * angle foreshortens ASYMMETRICALLY in that case — whichever leg is
- * momentarily nearer/rotated toward the camera projects differently than the
- * one farther/rotated away — which reads as the two feet's angles drifting
- * apart in opposite directions over the course of a walk.
+ * The walking test is meant to be filmed roughly SIDE-ON (camera at ground
+ * level, subject in profile), so the camera's image plane is close to the
+ * sagittal plane. But a real walker drifts: they angle slightly toward/away
+ * from the camera, turn around for the "back" leg of a there-and-back walk,
+ * or simply isn't framed perfectly. A PURE 2-D image-space angle
+ * foreshortens ASYMMETRICALLY in that case — whichever leg is momentarily
+ * nearer/rotated toward the camera projects differently than the one
+ * farther/rotated away — which reads as the two feet's angles drifting apart
+ * in opposite directions over the course of a walk.
  *
  * So the ankle angle is a DEPTH-TRUST-CAPPED BLEND of the 2-D image-plane
  * angle and MediaPipe's world-space (3-D) angle, via `adaptiveVertexAngle` +
- * `depthReliability` (anatomicalFrame.ts) — the same pattern already proven
- * for the static-hold ankle ROM test in muscleJointMap.ts. When the subject
- * really is side-on, world-z spread across knee/ankle/toe is ~0, trust → 0,
- * and the blend collapses to the exact old 2-D reading (no regression for
- * the case that already worked). When they drift off-axis, the
- * rotation-invariant 3-D component pulls the reading back toward the true
- * angle, independently per leg — exactly what corrects opposite-signed
- * left/right drift. Trust is capped at ANKLE_DEPTH_TRUST_CAP (0.5) because
- * the foot's z is still MediaPipe's noisiest channel; full 3-D would
- * occasionally jump during dynamic gait.
+ * `depthReliability` (anatomicalFrame.ts). When the subject really is
+ * side-on, world-z spread across knee/ankle/toe is ~0, trust → 0, and the
+ * blend collapses to the exact plain 2-D reading (no regression for the case
+ * that already works). When they drift off-axis, the rotation-invariant 3-D
+ * component pulls the reading back toward the true angle, independently per
+ * leg — exactly what corrects opposite-signed left/right drift. Trust is
+ * capped at ANKLE_DEPTH_TRUST_CAP (0.5) because the foot's z is still
+ * MediaPipe's noisiest channel; full 3-D would occasionally jump during
+ * dynamic gait.
  *
  * Convention (IMPORTANT — sign). A clinician measures shank line
  * (KNEE → ANKLE) vs. foot line (ANKLE → TOE), which INCREASES with
@@ -53,8 +52,8 @@
  * ANKLE → KNEE and ANKLE → TOE) — the geometric SUPPLEMENT of the
  * clinician's convention, which DECREASES with dorsiflexion. `ankleVertexAngle`
  * below takes `180 - adaptiveVertexAngle(...)` specifically to preserve this
- * module's original convention — don't drop that complement when touching
- * this code, or every dorsi/plantarflexion reading silently inverts sign.
+ * module's convention — don't drop that complement when touching this code,
+ * or every dorsi/plantarflexion reading silently inverts sign.
  *
  * We then subtract the neutral standing value captured during calibration, so
  * the reported angle is relative to neutral:  + = DORSIFLEXION (toes up), − =
@@ -66,14 +65,14 @@ import type { LandmarkSet } from './landmarks'
 import { LM } from './landmarks'
 import { worldVec, depthReliability, adaptiveVertexAngle } from './anatomicalFrame'
 
-// Visibility floor for a foot to count this frame.  Very lenient because at a
-// wide FOV with the phone on the floor the subject is small/far and the
-// far-side leg is partly occluded — the heavy model still localises the joints
-// usefully well below the 0.5 floor used for the close-up still ROM tests.
+// Visibility floor for a foot to count this frame.  Lenient because at a
+// wide FOV the subject may be small/far and the far-side leg partly
+// occluded — the heavy model still localises joints usefully well below the
+// 0.5 floor used for close-up still ROM tests.
 const FOOT_MIN_VIS = 0.25
 
 export interface GaitFrameMetrics {
-  /** Left ankle angle (deg, image-plane shank↔foot) or null when untrackable. */
+  /** Left ankle angle (deg, depth-blended shank↔foot) or null when untrackable. */
   leftAnkle:  number | null
   rightAnkle: number | null
   /** Shank inclination from vertical (deg, image plane). */
@@ -132,8 +131,8 @@ export interface AnkleStats {
 /** Max trust (0..1) given to the 3-D world-coord component of the ankle
  *  angle blend. Capped well below 1 because the foot's world-z is still
  *  MediaPipe's noisiest channel (see the module docstring above). Exported
- *  so the standalone package and RemoteAssessmentCall's confidence badge
- *  can reuse the identical constant instead of re-hardcoding it. */
+ *  so callers (e.g. a confidence badge) can reuse the identical constant
+ *  instead of re-hardcoding it. */
 export const ANKLE_DEPTH_TRUST_CAP = 0.5
 
 /**
@@ -216,9 +215,9 @@ export function measureGaitFrame(lms: LandmarkSet): GaitFrameMetrics {
 //
 //  measureGaitFrame returns null for a foot whenever its landmarks drop below
 //  the visibility floor (occlusion, motion blur, briefly stepping out of
-//  frame). Left alone that reads as a blank/frozen number in the live UI and
-//  a hole in the recorded time series. GaitGapFiller bridges SHORT gaps by
-//  holding the last known value and extrapolating from its recent angular
+//  frame). Left alone that reads as a blank/frozen number in a live readout
+//  and a hole in the recorded time series. GaitGapFiller bridges SHORT gaps
+//  by holding the last known value and extrapolating from its recent angular
 //  velocity — but only for the first VELOCITY_MS of a gap. Gait angle is
 //  periodic and reverses direction right around heel-strike/toe-off, which is
 //  also exactly when tracking is likeliest to drop (self-occlusion + motion
@@ -472,7 +471,7 @@ export function fillInstantaneousSpeed(samples: GaitSample[], stepLengthM: numbe
 export function buildGaitCsv(samples: GaitSample[], summary: GaitSummary): string {
   const fmt = (v: number | null) => (v == null ? '' : String(Math.round(v * 100) / 100))
   const lines: string[] = []
-  lines.push('# Dephy Ankle Dynamics — walking assessment')
+  lines.push('# Lower-Limb Ankle Dynamics — walking assessment')
   lines.push(`# generated,${new Date().toISOString()}`)
   lines.push('# angles are RELATIVE TO STANDING NEUTRAL (deg): + = dorsiflexion, - = plantarflexion')
   lines.push('#')

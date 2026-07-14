@@ -30,9 +30,14 @@ import { LM, jointAngleDeg } from '../../lib/movement/landmarks'
 import type { LandmarkSet } from '../../lib/movement/landmarks'
 import {
   measureGaitFrame, summariseGait, fillInstantaneousSpeed, buildGaitCsv,
-  GaitStepMachine, downloadText, type GaitSample, type GaitSummary,
+  GaitStepMachine, GaitGapFiller, ANKLE_DEPTH_TRUST_CAP, downloadText,
+  type GaitSample, type GaitSummary, type GapFillResult,
 } from '../../lib/movement/gait'
 import { saveGaitSession } from '../../lib/movement/gaitHistory'
+import { createLandmarkFilter, type LandmarkFilter } from '../../lib/movement/signalFilter'
+import { BaselineCollector, baselineKey } from '../../lib/movement/calibration'
+import { measurementConfidence, confidenceBand } from '../../lib/movement/constraints'
+import { depthReliability } from '../../lib/movement/anatomicalFrame'
 import { createSignaling, getIceServers, turnConfigured, loadTurnConfig, saveTurnConfig, probeIce, randomId, type Signaling, type SignalMsg, type IceProbe } from '../../lib/call/signaling'
 import { buildAssessmentPdf, chartDataUrl, downloadDataUrl, type StaticCapture } from '../../lib/call/report'
 
@@ -110,10 +115,63 @@ function drawGuideLines(ctx: CanvasRenderingContext2D, w: number, h: number) {
   }
 }
 
-const median = (a: number[]) => {
-  if (!a.length) return 0
-  const s = [...a].sort((x, y) => x - y)
-  return s[Math.floor(s.length / 2)]
+// Synthetic catalog keys for the shared BaselineCollector (lib/movement/calibration) —
+// this call has no ROM catalog entry, so we mint our own stable key names.
+const KEY_ANKLE_L = baselineKey('gaitAnkle', 'L')
+const KEY_ANKLE_R = baselineKey('gaitAnkle', 'R')
+const KEY_SHANK_L = baselineKey('gaitShank', 'L')
+const KEY_SHANK_R = baselineKey('gaitShank', 'R')
+
+const BASELINE_WINDOW_MS = 300     // typical convergence — the first frame already reads ~0
+const BASELINE_HARD_CAP_MS = 2000  // give up waiting on a channel that's occluded at press-time
+const BASELINE_MIN_SAMPLES = 3
+
+/** raw − offset, WITHOUT clamping to zero — dorsi/plantarflexion is a signed
+ *  delta from neutral in both directions. (calibration.ts's own `applyBaseline`
+ *  clamps to >=0, which is correct for its ROM-excursion use case but would
+ *  silently clip every plantarflexion reading to 0 here — not reused.) */
+function zeroSigned(v: number | null, off: Record<string, number> | null, key: string): number | null {
+  if (v == null || off == null) return v
+  const o = off[key]
+  return o == null ? v : v - o
+}
+
+/** What's actually displayed/burned-in for one channel this frame: gap-filled
+ *  always, additionally zeroed to the recording's neutral baseline once one
+ *  exists. Kept in one place so the live panel, the burned-in overlay, and
+ *  "Capture static posture" can never disagree about the same instant. */
+interface ChannelReading extends GapFillResult {
+  display: number | null
+}
+
+interface LastReading {
+  m:  ReturnType<typeof measureGaitFrame> | null
+  la: ChannelReading; ra: ChannelReading; ls: ChannelReading; rs: ChannelReading
+}
+
+/** Small "L −8°" / "R 6°" labels burned in next to each ankle — on the live
+ *  overlay AND the recorded composite canvas, so the saved clip is
+ *  self-documenting. Solid text for a genuine reading, dim "~"-prefixed for a
+ *  gap-filled (interpolated) one, "—" for a genuine tracking-lost null. */
+function drawAnkleLabels(ctx: CanvasRenderingContext2D, lms: LandmarkSet, w: number, h: number, reading: LastReading) {
+  const fontPx = Math.max(12, w * 0.016)
+  ctx.font = `bold ${fontPx}px ui-sans-serif, system-ui, sans-serif`
+  ctx.textAlign = 'left'
+  const label = (v: number | null, interpolated: boolean) =>
+    v == null ? '—' : `${interpolated ? '~' : ''}${v > 0 ? '+' : ''}${Math.round(v)}°`
+  const draw = (idx: number, text: string, color: string, dim: boolean, dx: number) => {
+    const p = lms[idx]
+    if (!p) return
+    const x = p.x * w + dx, y = p.y * h
+    ctx.globalAlpha = dim ? 0.55 : 0.95
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = Math.max(2, w * 0.003)
+    ctx.strokeText(text, x, y)
+    ctx.fillStyle = color
+    ctx.fillText(text, x, y)
+    ctx.globalAlpha = 1
+  }
+  draw(LM.L_ANKLE, label(reading.la.display, reading.la.interpolated), '#fb923c', reading.la.interpolated, -fontPx * 2.6)
+  draw(LM.R_ANKLE, label(reading.ra.display, reading.ra.interpolated), '#22d3ee', reading.ra.interpolated, fontPx * 0.5)
 }
 
 // ── Full-body live joint readout ─────────────────────────────────────────────
@@ -125,6 +183,9 @@ export interface JointReadout {
   /** joint key → { l, r } degrees, null when the landmarks were occluded. */
   [joint: string]: { l: number | null; r: number | null }
 }
+
+/** Tracking-confidence band for the ankle-row badge (see ConfidenceDot). */
+type ConfBand = 'strong' | 'fair' | 'weak'
 
 const JOINT_ROWS: Array<{ key: string; label: string }> = [
   { key: 'shoulder', label: 'Shoulder elev.' },
@@ -180,6 +241,10 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
   // Host live readout — every primary joint, both sides.
   const [liveJoints, setLiveJoints] = useState<JointReadout | null>(null)
   const lastJointPushRef = useRef(0)
+  // Per-side tracking-confidence badge for the ankle row specifically (fused
+  // from visibility + depth reliability + gap-fill stability — see the
+  // detection loop below).
+  const [ankleConfidence, setAnkleConfidence] = useState<{ l: ConfBand; r: ConfBand } | null>(null)
   const [recording, setRecording] = useState(false)
   const [summary, setSummary] = useState<GaitSummary | null>(null)
   const [staticCaps, setStaticCaps] = useState<Array<StaticCapture & { joints?: JointReadout }>>([])
@@ -221,7 +286,19 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
   const hipVelEma     = useRef(0)
   const walkDir       = useRef(1)
   const lastSamples   = useRef<GaitSample[]>([])
-  const lastMetrics   = useRef<ReturnType<typeof measureGaitFrame> | null>(null)
+  const lastReading   = useRef<LastReading | null>(null)
+  // One-Euro landmark smoothing (previously skipped by this call entirely —
+  // every other camera flow in the app applies this via CameraView.tsx).
+  const filterRef     = useRef<LandmarkFilter | null>(null)
+  // Per-channel short-gap interpolation (§ ankle/shank drift + missed frames).
+  const gapFillers    = useRef({ la: new GaitGapFiller(), ra: new GaitGapFiller(), ls: new GaitGapFiller(), rs: new GaitGapFiller() })
+  // Live "zero on record" baseline — captured from the first ~300ms after
+  // "Start recording" is pressed, reused for both the live readout and the
+  // final CSV/summary (see startRecording/stopRecording below).
+  const baselineCollector    = useRef(new BaselineCollector())
+  const baselineOffsets      = useRef<Record<string, number> | null>(null)
+  const baselineCollecting   = useRef(false)
+  const baselineWindowStart  = useRef(0)
   const remoteStream  = useRef<MediaStream | null>(null)
   const mediaRec      = useRef<MediaRecorder | null>(null)
   const recChunks     = useRef<Blob[]>([])
@@ -403,6 +480,13 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
     let cancelled = false
     let detector: Awaited<ReturnType<typeof ensureDetector>> | null = null
 
+    // Fresh smoothing / gap-fill / baseline state for this connection.
+    filterRef.current = createLandmarkFilter()
+    gapFillers.current = { la: new GaitGapFiller(), ra: new GaitGapFiller(), ls: new GaitGapFiller(), rs: new GaitGapFiller() }
+    baselineCollector.current.reset()
+    baselineOffsets.current = null
+    baselineCollecting.current = false
+
     ;(async () => {
       try { detector = await ensureDetector() } catch (e) { console.error('[call] detector', e); return }
       const loop = () => {
@@ -412,22 +496,71 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
         if (v && c && v.readyState >= 2 && v.videoWidth) {
           if (c.width !== v.videoWidth || c.height !== v.videoHeight) { c.width = v.videoWidth; c.height = v.videoHeight }
           try {
-            const lms = detectVideoFrame(detector!, v, performance.now())
+            const nowMs = performance.now()
+            const raw = detectVideoFrame(detector!, v, nowMs)
+            // One-Euro smoothing + teleport rejection — the same filter every
+            // other camera flow in the app runs (CameraView.tsx); previously
+            // skipped entirely here.
+            const lms = raw ? filterRef.current!.push(raw, nowMs) : null
             const ctx = c.getContext('2d')!
             ctx.clearRect(0, 0, c.width, c.height)
             drawGuideLines(ctx, c.width, c.height)
-            if (lms) {
+
+            // Gap-fill runs every frame, unconditionally, so each channel's
+            // hold/velocity state stays continuous whether or not a pose was
+            // detected and whether or not recording is active.
+            const m = lms ? measureGaitFrame(lms) : null
+            const gf = gapFillers.current
+            const la = gf.la.push(m?.leftAnkle ?? null, nowMs)
+            const ra = gf.ra.push(m?.rightAnkle ?? null, nowMs)
+            const ls = gf.ls.push(m?.leftShank ?? null, nowMs)
+            const rs = gf.rs.push(m?.rightShank ?? null, nowMs)
+
+            if (recRef.current) {
+              // Feed the baseline collector from GENUINE (non-interpolated)
+              // samples only, so a held/extrapolated guess never pollutes the
+              // neutral-standing median.
+              if (!la.interpolated && la.value != null) baselineCollector.current.addSample(KEY_ANKLE_L, la.value)
+              if (!ra.interpolated && ra.value != null) baselineCollector.current.addSample(KEY_ANKLE_R, ra.value)
+              if (!ls.interpolated && ls.value != null) baselineCollector.current.addSample(KEY_SHANK_L, ls.value)
+              if (!rs.interpolated && rs.value != null) baselineCollector.current.addSample(KEY_SHANK_R, rs.value)
+              if (baselineCollecting.current) {
+                // Recompute the running median every frame — the very first
+                // frame's own reading becomes its own baseline (so the
+                // display reads ~0 immediately), refining over a short window.
+                baselineOffsets.current = baselineCollector.current.finalize().offsets
+                const elapsed = nowMs - baselineWindowStart.current
+                const settled = elapsed >= BASELINE_WINDOW_MS && baselineCollector.current.ready(BASELINE_MIN_SAMPLES)
+                if (settled || elapsed >= BASELINE_HARD_CAP_MS) baselineCollecting.current = false
+              }
+            }
+
+            const off = recRef.current ? baselineOffsets.current : null
+            const reading: LastReading = {
+              m,
+              la: { ...la, display: zeroSigned(la.value, off, KEY_ANKLE_L) },
+              ra: { ...ra, display: zeroSigned(ra.value, off, KEY_ANKLE_R) },
+              ls: { ...ls, display: zeroSigned(ls.value, off, KEY_SHANK_L) },
+              rs: { ...rs, display: zeroSigned(rs.value, off, KEY_SHANK_R) },
+            }
+            lastReading.current = reading
+
+            if (lms && m) {
               drawSkeleton(ctx, lms, c.width, c.height)
-              const m = measureGaitFrame(lms)
-              lastMetrics.current = m
+              drawAnkleLabels(ctx, lms, c.width, c.height, reading)
               // Full-body readout, throttled to ~8 Hz so ten live numbers
               // don't re-render the dashboard on every camera frame.
-              const nowMs = performance.now()
               if (nowMs - lastJointPushRef.current > 120) {
                 lastJointPushRef.current = nowMs
-                setLiveJoints(measureAllJoints(lms, { l: m.leftAnkle, r: m.rightAnkle }))
+                setLiveJoints(measureAllJoints(lms, { l: reading.la.display, r: reading.ra.display }))
+                const laDr = Math.min(ANKLE_DEPTH_TRUST_CAP, depthReliability(lms, LM.L_KNEE, LM.L_ANKLE, LM.L_FOOT_IDX))
+                const raDr = Math.min(ANKLE_DEPTH_TRUST_CAP, depthReliability(lms, LM.R_KNEE, LM.R_ANKLE, LM.R_FOOT_IDX))
+                setAnkleConfidence({
+                  l: confidenceBand(measurementConfidence({ visibility: m.leftVis, depthReliability: laDr, stability: la.interpolated ? 0.3 : 0.85 })),
+                  r: confidenceBand(measurementConfidence({ visibility: m.rightVis, depthReliability: raDr, stability: ra.interpolated ? 0.3 : 0.85 })),
+                })
               }
-              if (recRef.current) recordFrame(lms, m)
+              if (recRef.current) recordFrame(reading, nowMs)
             }
             // Composite (raw video + guide lines + skeleton) onto an offscreen
             // canvas — this is what we screenshot and record, so the saved
@@ -437,7 +570,7 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
             const rctx = rc.getContext('2d')!
             rctx.drawImage(v, 0, 0, rc.width, rc.height)
             drawGuideLines(rctx, rc.width, rc.height)
-            if (lms) drawSkeleton(rctx, lms, rc.width, rc.height)
+            if (lms) { drawSkeleton(rctx, lms, rc.width, rc.height); drawAnkleLabels(rctx, lms, rc.width, rc.height, reading) }
           } catch (e) { /* per-frame */ }
         }
         rafRef.current = requestAnimationFrame(loop)
@@ -450,9 +583,13 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
   }, [role, hasRemote])
 
   // ── Recording (host) ────────────────────────────────────────────────────────
-  function recordFrame(lms: LandmarkSet, m: ReturnType<typeof measureGaitFrame>) {
-    const t = (performance.now() - recStart.current) / 1000
-    rawSamples.current.push({ t, la: m.leftAnkle, ra: m.rightAnkle, ls: m.leftShank, rs: m.rightShank })
+  function recordFrame(reading: LastReading, nowMs: number) {
+    const m = reading.m
+    if (!m) return
+    const t = (nowMs - recStart.current) / 1000
+    // Gap-filled (not yet zeroed) values — the neutral baseline is applied
+    // once, retroactively, to the whole buffer in stopRecording() below.
+    rawSamples.current.push({ t, la: reading.la.value, ra: reading.ra.value, ls: reading.ls.value, rs: reading.rs.value })
     // Walking direction from hip horizontal velocity (un-mirrored remote view).
     const hx = m.hipX
     if (prevHipX.current != null) hipVelEma.current = 0.3 * (hx - prevHipX.current) + 0.7 * hipVelEma.current
@@ -463,14 +600,16 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
   }
 
   /** Static posture capture — snapshot the FULL joint readout AND a screenshot
-   *  of the person with the pose overlay burned in. */
+   *  of the person with the pose overlay burned in. Reads the same `display`
+   *  values as the live panel and the burned-in overlay, so a capture taken
+   *  mid-recording can never show a different number than what's on screen. */
   function capturePosture() {
-    const m = lastMetrics.current
-    if (!m) return
+    const r = lastReading.current
+    if (!r) return
     let image: string | undefined
     try { image = recCanvas.current?.toDataURL('image/png') } catch { /* */ }
     setStaticCaps((prev) => [
-      { ts: Date.now(), leftAnkle: m.leftAnkle, rightAnkle: m.rightAnkle, leftShank: m.leftShank, rightShank: m.rightShank, image, joints: liveJoints ?? undefined },
+      { ts: Date.now(), leftAnkle: r.la.display, rightAnkle: r.ra.display, leftShank: r.ls.display, rightShank: r.rs.display, image, joints: liveJoints ?? undefined },
       ...prev,
     ].slice(0, 12))
   }
@@ -496,6 +635,13 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
     stepMachine.current = new GaitStepMachine()
     prevHipX.current = null; hipVelEma.current = 0; walkDir.current = 1
     recStart.current = performance.now()
+    // Zero the live ankle/shank readout to THIS instant's pose — every value
+    // shown/recorded from here on is a delta from true neutral (the detection
+    // loop above feeds this collector and refreshes baselineOffsets live).
+    baselineCollector.current.reset()
+    baselineOffsets.current = null
+    baselineCollecting.current = true
+    baselineWindowStart.current = performance.now()
     setSummary(null); setStepCount(0); setRecSecs(0)
     if (videoUrl) { URL.revokeObjectURL(videoUrl); setVideoUrl(null) }
     // Record the COMPOSITE canvas (video + pose overlay burned in) plus the
@@ -534,21 +680,21 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
     if (recTimer.current) { clearInterval(recTimer.current); recTimer.current = null }
     try { mediaRec.current?.stop() } catch { /* */ }
     mediaRec.current = null
+    baselineCollecting.current = false
     const raw = rawSamples.current
-    if (raw.length < 5) { setSummary(null); return }
-    // Neutral baseline = median of the first ~1.2 s per foot, so angles are
-    // reported relative to standing neutral (+ dorsi / − plantar).
-    const early = raw.filter((s) => s.t <= 1.2)
-    const baseLA = median(early.map((s) => s.la).filter((v): v is number => v != null))
-    const baseRA = median(early.map((s) => s.ra).filter((v): v is number => v != null))
-    const baseLS = median(early.map((s) => s.ls).filter((v): v is number => v != null))
-    const baseRS = median(early.map((s) => s.rs).filter((v): v is number => v != null))
+    if (raw.length < 5) { setSummary(null); baselineOffsets.current = null; return }
+    // Same neutral baseline captured live at "Start recording" (see the
+    // detection loop above) — applied once, retroactively, to every stored
+    // sample (including the handful collected before it finished converging)
+    // so the exported CSV/summary exactly matches what was shown live, with
+    // no discontinuity partway through.
+    const off = baselineOffsets.current
     const samples: GaitSample[] = raw.map((s) => ({
       t: s.t, leg: 'out',
-      leftAnkle:  s.la != null ? s.la - baseLA : null,
-      rightAnkle: s.ra != null ? s.ra - baseRA : null,
-      leftShank:  s.ls != null ? s.ls - baseLS : null,
-      rightShank: s.rs != null ? s.rs - baseRS : null,
+      leftAnkle:  zeroSigned(s.la, off, KEY_ANKLE_L),
+      rightAnkle: zeroSigned(s.ra, off, KEY_ANKLE_R),
+      leftShank:  zeroSigned(s.ls, off, KEY_SHANK_L),
+      rightShank: zeroSigned(s.rs, off, KEY_SHANK_R),
       speed: null,
     }))
     const stepLen = stepMachine.current.medianStepLength()
@@ -556,6 +702,7 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
     const sum = summariseGait(samples, stepMachine.current.count(), stepLen)
     lastSamples.current = samples
     setSummary(sum)
+    baselineOffsets.current = null
     try { saveGaitSession(sum, samples) } catch { /* */ }
   }
 
@@ -689,11 +836,16 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
                   </div>
                   {JOINT_ROWS.map(({ key, label }) => {
                     const j = liveJoints?.[key]
+                    const conf = key === 'ankle' ? ankleConfidence : null
                     return (
                       <div key={key} className="grid grid-cols-[1fr_3rem_3rem] items-center gap-1 rounded bg-slate-950/50 px-1.5 py-1 text-[11px]">
                         <span className="truncate text-slate-300">{label}</span>
-                        <span className="text-right font-semibold tabular-nums text-orange-300">{j?.l == null ? '—' : `${j.l}°`}</span>
-                        <span className="text-right font-semibold tabular-nums text-cyan-300">{j?.r == null ? '—' : `${j.r}°`}</span>
+                        <span className="flex items-center justify-end gap-1 text-right font-semibold tabular-nums text-orange-300">
+                          {conf && <ConfidenceDot band={conf.l} />}{j?.l == null ? '—' : `${j.l}°`}
+                        </span>
+                        <span className="flex items-center justify-end gap-1 text-right font-semibold tabular-nums text-cyan-300">
+                          {conf && <ConfidenceDot band={conf.r} />}{j?.r == null ? '—' : `${j.r}°`}
+                        </span>
                       </div>
                     )
                   })}
@@ -703,7 +855,10 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
                 <Metric label="Steps" value={String(stepCount)} tone="slate" />
                 <Metric label="Joints tracked" value={liveJoints ? String(Object.values(liveJoints).reduce((n, j) => n + (j.l != null ? 1 : 0) + (j.r != null ? 1 : 0), 0)) : '—'} tone="cyan" />
               </div>
-              <div className="text-[10px] text-slate-500">Angles are flexion from straight (shoulder = elevation). Ankle = raw shank↔foot, side view.</div>
+              <div className="text-[10px] text-slate-500">
+                Angles are flexion from straight (shoulder = elevation). Ankle is depth-corrected shank↔foot
+                and zeroes to neutral the instant you press "Start recording walk" — the dot shows live tracking confidence.
+              </div>
 
               {/* Tools */}
               <div className="space-y-2 rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
@@ -911,6 +1066,12 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
       </div>
     </div>
   )
+}
+
+/** Small strong/fair/weak dot — live tracking-confidence badge (ankle row). */
+function ConfidenceDot({ band }: { band: ConfBand }) {
+  const color = band === 'strong' ? 'bg-emerald-400' : band === 'fair' ? 'bg-amber-400' : 'bg-red-400'
+  return <span className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${color}`} title={`${band} tracking confidence`} />
 }
 
 function Metric({ label, value, tone }: { label: string; value: string; tone: 'orange' | 'cyan' | 'slate' }) {

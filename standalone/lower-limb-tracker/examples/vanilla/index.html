@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Lower-Limb Tracker — vanilla JS example</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  body { margin: 0; background: #0b1120; color: #e2e8f0; font: 14px ui-sans-serif, system-ui, sans-serif; }
+  .wrap { max-width: 900px; margin: 24px auto; padding: 0 16px; }
+  .stage { position: relative; width: 100%; background: #000; border-radius: 8px; overflow: hidden; }
+  video, canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  canvas { pointer-events: none; }
+  .controls { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+  button { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 8px 14px; cursor: pointer; font-weight: 600; }
+  button:hover { background: #334155; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .readout { display: flex; gap: 24px; font-variant-numeric: tabular-nums; margin-top: 8px; }
+  .readout b { font-size: 22px; }
+  .left { color: #fb923c; } .right { color: #22d3ee; }
+  a.dl { color: #22d3ee; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Lower-Limb Tracker — vanilla JS example</h1>
+  <p>No build step, no framework — this page imports the prebuilt ESM bundle directly.
+     Run <code>npm run build</code> in the package root first so <code>dist/lower-limb-tracker.esm.js</code> exists.</p>
+
+  <div class="stage" style="aspect-ratio: 4 / 3;">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+  </div>
+
+  <div class="controls">
+    <button id="startCam">1. Start camera + tracking</button>
+    <button id="zero" disabled>2. Zero to current pose</button>
+    <button id="record" disabled>3. Start recording</button>
+    <button id="stopRecord" disabled>Stop &amp; save</button>
+  </div>
+
+  <div class="readout">
+    <div class="left">L ankle <b id="la">—</b></div>
+    <div class="right">R ankle <b id="ra">—</b></div>
+  </div>
+  <p id="download"></p>
+</div>
+
+<script type="module">
+  import { LowerLimbTracker } from '../../dist/lower-limb-tracker.esm.js'
+
+  const video = document.getElementById('video')
+  const overlay = document.getElementById('overlay')
+  const laEl = document.getElementById('la')
+  const raEl = document.getElementById('ra')
+  const startCamBtn = document.getElementById('startCam')
+  const zeroBtn = document.getElementById('zero')
+  const recordBtn = document.getElementById('record')
+  const stopBtn = document.getElementById('stopRecord')
+
+  let tracker = null
+
+  startCamBtn.addEventListener('click', async () => {
+    startCamBtn.disabled = true
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } })
+    video.srcObject = stream
+    await video.play()
+
+    // Point the tracker at the <video> element + an overlay <canvas> for the
+    // live skeleton/angle labels. Recording works regardless of whether you
+    // pass overlayCanvas — it always composites onto its own private canvas.
+    tracker = new LowerLimbTracker(video, { overlayCanvas: overlay })
+    tracker.onFrame((f) => {
+      laEl.textContent = f.leftAnkleDeg == null ? '—' : `${Math.round(f.leftAnkleDeg)}°`
+      raEl.textContent = f.rightAnkleDeg == null ? '—' : `${Math.round(f.rightAnkleDeg)}°`
+    })
+    await tracker.start()
+
+    zeroBtn.disabled = false
+    recordBtn.disabled = false
+  })
+
+  zeroBtn.addEventListener('click', () => tracker?.zero())
+
+  recordBtn.addEventListener('click', () => {
+    tracker.startRecording()   // zeroes to this instant by default
+    recordBtn.disabled = true
+    stopBtn.disabled = false
+  })
+
+  stopBtn.addEventListener('click', async () => {
+    stopBtn.disabled = true
+    const blob = await tracker.stopRecording()
+    const url = URL.createObjectURL(blob)
+    const ext = blob.type.includes('mp4') ? 'mp4' : 'webm'
+    document.getElementById('download').innerHTML =
+      `<a class="dl" href="${url}" download="walk-recording.${ext}">Download recorded clip (.${ext})</a>` +
+      ` — summary: ${JSON.stringify(tracker.getSummary())}`
+    recordBtn.disabled = false
+  })
+</script>
+</body>
+</html>
