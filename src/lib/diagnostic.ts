@@ -118,6 +118,7 @@ export const MUSCLE_GROUP_MAP: Record<string, string> = {
   palmaris_longus:                'Forearm Flexors',
   // Deep neck extensors
   splenius_capitis:               'Neck Extensors',
+  splenius_cervicis:              'Neck Extensors',
   semispinalis_capitis:           'Neck Extensors',
 }
 
@@ -376,8 +377,16 @@ export const DIAGNOSTIC_TO_MESH_IDS: Record<string, string[]> = {
   gracilis:                       ['MUSC_GRACILIS_R', 'MUSC_GRACILIS_L'],
   adductor_longus:                ['MUSC_ADDUCTOR_LONGUS_R', 'MUSC_ADDUCTOR_LONGUS_L'],
   splenius_capitis:               ['MUSC_SPLENIUS_CAPITIS_R', 'MUSC_SPLENIUS_CAPITIS_L'],
+  // Splenius cervicis has no dedicated GLB mesh — it shares the splenius
+  // capitis mesh for 3D selection (same precedent as the three deltoid heads
+  // sharing MUSC_DELTOID). Its referral zones are what distinguish it.
+  splenius_cervicis:              ['MUSC_SPLENIUS_CAPITIS_R', 'MUSC_SPLENIUS_CAPITIS_L'],
   semispinalis_capitis:           ['MUSC_SEMISPINALIS_CAPITIS_R', 'MUSC_SEMISPINALIS_CAPITIS_L'],
   sternocleidomastoid:            ['MUSC_STERNOCLEIDOMASTOID_R', 'MUSC_STERNOCLEIDOMASTOID_L'],
+  // Erector spinae split into its two functionally distinct columns; both
+  // share the single erector spinae mesh pair for 3D selection.
+  iliocostalis_thoracis:          ['MUSC_ERECTOR_SPINAE_R', 'MUSC_ERECTOR_SPINAE_L'],
+  longissimus_thoracis:           ['MUSC_ERECTOR_SPINAE_R', 'MUSC_ERECTOR_SPINAE_L'],
   erector_spinae:                 ['MUSC_ERECTOR_SPINAE_R', 'MUSC_ERECTOR_SPINAE_L'],
   multifidus:                     ['MUSC_MULTIFIDUS'],
   quadratus_lumborum:             ['MUSC_QUADRATUS_LUMBORUM_R', 'MUSC_QUADRATUS_LUMBORUM_L'],

@@ -18,7 +18,14 @@ export interface PainPatternEntry {
   common_name:                string
   primary_pain_zone:          string[]
   referred_pain_zones:        string[]
-  search_query_verification:  string
+  /** Legacy provenance marker on search-inferred entries. Corrected,
+   *  primary-source-verified entries drop this in favour of `source`. */
+  search_query_verification?: string
+  /** Evidence grade — present on entries verified against a Travell & Simons
+   *  chapter citation plus peer-reviewed corroboration. */
+  confidence?:                'HIGH' | 'MODERATE' | 'LOW'
+  /** Primary-source citation for verified entries. */
+  source?:                    string
 }
 
 // ── Raw JSON database ─────────────────────────────────────────────────────────
@@ -167,9 +174,10 @@ export const JSON_PAIN_DB: PainPatternEntry[] = [
   {
     muscle_id: 'gastrocnemius',
     common_name: 'Gastrocnemius (Medial and Lateral Heads)',
-    primary_pain_zone: ['calf (posterior lower leg)'],
-    referred_pain_zones: ['posterior knee', 'calf', 'heel or sole of foot', 'lateral ankle'],
-    search_query_verification: 'Gastrocnemius referred pain pattern',
+    primary_pain_zone: ['calf (posterior lower leg)', 'back of the knee (popliteal fossa)'],
+    referred_pain_zones: ['posteromedial calf', 'dorsum of foot', 'medial ankle'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 2 (2019 consolidated 3rd ed.), Ch. 65',
   },
   {
     muscle_id: 'infraspinatus',
@@ -251,23 +259,26 @@ export const JSON_PAIN_DB: PainPatternEntry[] = [
   {
     muscle_id: 'biceps_femoris',
     common_name: 'Biceps Femoris (Long Head)',
-    primary_pain_zone: ['posterior lateral thigh'],
-    referred_pain_zones: ['posterior knee', 'lateral calf', 'lateral lower leg'],
-    search_query_verification: 'Biceps femoris referred pain pattern',
+    primary_pain_zone: ['posterior lateral thigh', 'back of the knee (popliteal fossa)'],
+    referred_pain_zones: ['lateral calf', 'lateral lower leg'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 2 (2019 consolidated 3rd ed.), Ch. 60',
   },
   {
     muscle_id: 'semitendinosus',
     common_name: 'Semitendinosus',
-    primary_pain_zone: ['posterior medial thigh'],
-    referred_pain_zones: ['posteromedial knee', 'medial calf'],
-    search_query_verification: 'Semitendinosus referred pain pattern',
+    primary_pain_zone: ['buttock'],
+    referred_pain_zones: ['posterior medial thigh', 'posteromedial knee', 'medial calf'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 2 (2019 consolidated 3rd ed.), Ch. 60',
   },
   {
     muscle_id: 'semimembranosus',
     common_name: 'Semimembranosus',
-    primary_pain_zone: ['deep posterior medial thigh'],
-    referred_pain_zones: ['posteromedial knee', 'posterior leg'],
-    search_query_verification: 'Semimembranosus referred pain pattern',
+    primary_pain_zone: ['buttock'],
+    referred_pain_zones: ['deep posterior medial thigh', 'posteromedial knee', 'posterior leg'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 2 (2019 consolidated 3rd ed.), Ch. 60',
   },
   {
     muscle_id: 'gracilis',
@@ -287,22 +298,33 @@ export const JSON_PAIN_DB: PainPatternEntry[] = [
     muscle_id: 'splenius_capitis',
     common_name: 'Splenius Capitis',
     primary_pain_zone: ['back of neck', 'upper thoracic spine'],
-    referred_pain_zones: ['top of head', 'back of head', 'behind the eye'],
-    search_query_verification: 'Splenius capitis referred pain pattern',
+    referred_pain_zones: ['top of head'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 1 (1999), Ch. 15',
+  },
+  {
+    muscle_id: 'splenius_cervicis',
+    common_name: 'Splenius Cervicis',
+    primary_pain_zone: ['back of neck', 'side and back of neck'],
+    referred_pain_zones: ['behind the eye', 'temple'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 1 (1999), Ch. 15',
   },
   {
     muscle_id: 'semispinalis_capitis',
     common_name: 'Semispinalis Capitis',
     primary_pain_zone: ['deep posterior neck'],
-    referred_pain_zones: ['posterior head', 'upper neck'],
-    search_query_verification: 'Semispinalis capitis referred pain pattern',
+    referred_pain_zones: ['posterior head', 'upper neck', 'forehead', 'behind the eye'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 1 (1999), Ch. 16',
   },
   {
     muscle_id: 'sternocleidomastoid',
-    common_name: 'Sternocleidomastoid (Deep Head)',
-    primary_pain_zone: ['front and side of neck'],
-    referred_pain_zones: ['forehead', 'temple', 'ear and behind ear', 'jaw and cheek', 'top of head'],
-    search_query_verification: 'Sternocleidomastoid referred pain pattern',
+    common_name: 'Sternocleidomastoid',
+    primary_pain_zone: ['forehead', 'temple', 'behind the eye', 'top of head'],
+    referred_pain_zones: ['ear and behind ear', 'jaw and cheek', 'back of head', 'front and side of neck'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 1 (1999), Ch. 7',
   },
   {
     muscle_id: 'supraspinatus',
@@ -319,11 +341,20 @@ export const JSON_PAIN_DB: PainPatternEntry[] = [
     search_query_verification: 'Subscapularis referred pain pattern',
   },
   {
-    muscle_id: 'erector_spinae',
-    common_name: 'Erector Spinae (Iliocostalis, Longissimus, Spinalis)',
-    primary_pain_zone: ['spine from neck to lumbar region'],
-    referred_pain_zones: ['paraspinal areas', 'low back', 'buttocks', 'posterior thigh'],
-    search_query_verification: 'Erector spinae referred pain pattern',
+    muscle_id: 'iliocostalis_thoracis',
+    common_name: 'Iliocostalis Thoracis',
+    primary_pain_zone: ['mid-back', 'lower thoracic spine'],
+    referred_pain_zones: ['anterior chest', 'anterior abdominal wall', 'scapular area', 'buttock'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 2 (2019 consolidated 3rd ed.), Ch. 48',
+  },
+  {
+    muscle_id: 'longissimus_thoracis',
+    common_name: 'Longissimus Thoracis',
+    primary_pain_zone: ['mid-thoracic back', 'low back'],
+    referred_pain_zones: ['buttock', 'iliac crest', 'sacrum'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 2 (2019 consolidated 3rd ed.), Ch. 48',
   },
   {
     muscle_id: 'multifidus',
@@ -384,9 +415,10 @@ export const JSON_PAIN_DB: PainPatternEntry[] = [
   {
     muscle_id: 'soleus',
     common_name: 'Soleus',
-    primary_pain_zone: ['deep posterior calf'],
-    referred_pain_zones: ['heel', 'plantar aspect of foot', 'mid-calf'],
-    search_query_verification: 'Soleus referred pain pattern',
+    primary_pain_zone: ['heel', 'plantar aspect of foot'],
+    referred_pain_zones: ['mid-calf', 'sacral region'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 2 (2019 consolidated 3rd ed.), Ch. 66',
   },
 ]
 
@@ -435,11 +467,13 @@ export const JSON_TO_MUSC_IDS: Record<string, string[]> = {
   gracilis:                          ['MUSC_GRACILIS_R',             'MUSC_GRACILIS_L'],
   adductor_longus:                   ['MUSC_ADDUCTOR_LONGUS_R',      'MUSC_ADDUCTOR_LONGUS_L'],
   splenius_capitis:                  ['MUSC_SPLENIUS_CAPITIS_R',     'MUSC_SPLENIUS_CAPITIS_L'],
+  splenius_cervicis:                 ['MUSC_SPLENIUS_CAPITIS_R',     'MUSC_SPLENIUS_CAPITIS_L'],
   semispinalis_capitis:              ['MUSC_SEMISPINALIS_CAPITIS_R', 'MUSC_SEMISPINALIS_CAPITIS_L'],
   sternocleidomastoid:               ['MUSC_STERNOCLEIDOMASTOID_R',  'MUSC_STERNOCLEIDOMASTOID_L'],
   supraspinatus:                     ['MUSC_SUPRASPINATUS_R',        'MUSC_SUPRASPINATUS_L'],
   subscapularis:                     ['MUSC_SUBSCAPULARIS_R',        'MUSC_SUBSCAPULARIS_L'],
-  erector_spinae:                    ['MUSC_ERECTOR_SPINAE_R',       'MUSC_ERECTOR_SPINAE_L'],
+  iliocostalis_thoracis:             ['MUSC_ERECTOR_SPINAE_R',       'MUSC_ERECTOR_SPINAE_L'],
+  longissimus_thoracis:              ['MUSC_ERECTOR_SPINAE_R',       'MUSC_ERECTOR_SPINAE_L'],
   multifidus:                        ['MUSC_MULTIFIDUS_R',           'MUSC_MULTIFIDUS_L'],
   quadratus_lumborum:                ['MUSC_QUADRATUS_LUMBORUM_R',   'MUSC_QUADRATUS_LUMBORUM_L'],
   gluteus_minimus:                   ['MUSC_GLUTEUS_MINIMUS_R',      'MUSC_GLUTEUS_MINIMUS_L'],

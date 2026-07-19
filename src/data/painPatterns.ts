@@ -19,6 +19,12 @@ export interface ZoneDef {
 export interface PainPattern {
   description: string
   zones: string[]
+  /** Evidence grade for the referral map. Present on entries that have been
+   *  verified against a primary-source chapter citation plus peer-reviewed
+   *  corroboration (see `source`). Absent entries are search-inferred. */
+  confidence?: 'HIGH' | 'MODERATE' | 'LOW'
+  /** Primary-source citation (Travell & Simons chapter) for verified entries. */
+  source?: string
 }
 
 // ── Body zone geometry ────────────────────────────────────────────────────────
@@ -154,13 +160,17 @@ export const PAIN_PATTERNS: Record<string, PainPattern> = {
   // ── HEAD / NECK ─────────────────────────────────────────────────────────────
 
   MUSC_STERNOCLEIDOMASTOID_R: {
-    description: 'Primary pain in the front and side of the right neck. Referred pain to the forehead, temple, ear and behind the ear, jaw and cheek, and top of the head. The sternal head refers to the vertex, cheek and over the eye; the clavicular head refers to the frontal region and ear. Autonomic symptoms (lacrimation, sinus congestion) may occur.',
-    zones: ['neck_r', 'throat', 'head_forehead', 'head_temple_r', 'head_ear_r', 'head_jaw_r', 'head_cheek_r', 'head_vertex'],
+    description: 'The sternocleidomastoid characteristically produces little pain at its own location and instead refers widely to the face and head. Sternal (superficial) division: the vertex, occiput, cheek, over the eye, throat and sternum, often with autonomic features (tearing, reddening of the eye, drooping eyelid, blurred vision, maxillary sinus congestion, runny nose, reduced hearing). Clavicular (deep) division: frontal/forehead pain (bilateral when severe), the ipsilateral ear and behind the ear, occasionally the upper molars, and postural dizziness or imbalance. Because it does not refer to its own site, it should not be treated as a source of local front-of-neck pain.',
+    zones: ['head_vertex', 'head_occiput', 'head_cheek_r', 'head_eye_r', 'throat', 'sternum', 'head_forehead', 'head_ear_r', 'head_teeth_r', 'head_temple_r'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 1 (1999), Ch. 7',
   },
 
   MUSC_STERNOCLEIDOMASTOID_L: {
-    description: 'Left SCM mirrors the right. Primary pain in the front and side of the left neck. Referred pain to the forehead, temple, ear and behind the ear, jaw and cheek, and top of the head.',
-    zones: ['neck_l', 'throat', 'head_forehead', 'head_temple_l', 'head_ear_l', 'head_jaw_l', 'head_cheek_l', 'head_vertex'],
+    description: 'Left SCM mirrors the right, referring to the face and head rather than the neck itself. Sternal (superficial) division: vertex, occiput, cheek, over the eye, throat and sternum, with autonomic features (tearing, eye reddening, drooping eyelid, blurred vision, sinus congestion, runny nose, reduced hearing). Clavicular (deep) division: forehead (bilateral when severe), ipsilateral ear and behind the ear, occasionally the upper molars, and postural dizziness or imbalance.',
+    zones: ['head_vertex', 'head_occiput', 'head_cheek_l', 'head_eye_l', 'throat', 'sternum', 'head_forehead', 'head_ear_l', 'head_teeth_l', 'head_temple_l'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 1 (1999), Ch. 7',
   },
 
   MUSC_MASSETER_R: {
@@ -246,13 +256,17 @@ export const PAIN_PATTERNS: Record<string, PainPattern> = {
   },
 
   MUSC_ERECTOR_SPINAE_R: {
-    description: 'Trigger points produce deep, aching pain along the thoracic or lumbar spine, with referral across the back or into the right buttock. Pain may mimic disc or facet joint pathology.',
-    zones: ['upper_back', 'mid_back', 'lower_back', 'buttock_r'],
+    description: 'The erector spinae comprises two functionally distinct columns with different referral. Iliocostalis (lateral column): trigger points refer upward and, notably, anteriorly around the trunk toward the chest and abdomen — the upper part can mimic anginal chest pain and the lower part visceral/abdominal disease — as well as toward the shoulder blade and, at lower levels, the buttock. Longissimus (intermediate column): trigger points refer downward to the lower back, buttock and iliac-crest/sacroiliac region, without the anterior chest/abdominal referral. Both can overlap at the buttock.',
+    zones: ['upper_back', 'mid_back', 'lower_back', 'buttock_r', 'scapula_r', 'chest_r', 'abdomen_upper'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 2 (2019 consolidated 3rd ed.), Ch. 48',
   },
 
   MUSC_ERECTOR_SPINAE_L: {
-    description: 'Mirrors the right side. Deep aching pain along the spine with referral to the lower back and left buttock. Pain may mimic disc or facet joint pathology.',
-    zones: ['upper_back', 'mid_back', 'lower_back', 'buttock_l'],
+    description: 'Mirrors the right. Two distinct columns: iliocostalis (lateral) refers upward and anteriorly around the trunk to the chest and abdomen (upper part mimics anginal chest pain, lower part visceral/abdominal disease), plus the shoulder blade and buttock; longissimus (intermediate) refers downward to the lower back, buttock and iliac-crest/sacroiliac region, without the anterior referral. Both can overlap at the buttock.',
+    zones: ['upper_back', 'mid_back', 'lower_back', 'buttock_l', 'scapula_l', 'chest_l', 'abdomen_upper'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 2 (2019 consolidated 3rd ed.), Ch. 48',
   },
 
   // ── UPPER LIMB ────────────────────────────────────────────────────────────────
@@ -370,33 +384,45 @@ export const PAIN_PATTERNS: Record<string, PainPattern> = {
   },
 
   MUSC_BICEPS_FEMORIS_R: {
-    description: 'Primary pain in the posterior lateral thigh. Referred pain to the posterior knee, lateral calf and lateral lower leg. May mimic lateral knee tendon problems or popliteal issues.',
-    zones: ['thigh_post_r', 'thigh_lat_r', 'knee_post_r', 'knee_lat_r', 'calf_r', 'shin_r'],
+    description: 'Biceps femoris (lateral hamstring) differs from the medial hamstrings: its trigger points refer most strongly to the back of the knee (posterior knee crease), with pain also up the posterolateral thigh and into the upper lateral calf. Its primary zone is the posterior knee, not the gluteal fold.',
+    zones: ['knee_post_r', 'thigh_post_r', 'thigh_lat_r', 'knee_lat_r', 'calf_r'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 2 (2019 consolidated 3rd ed.), Ch. 60',
   },
 
   MUSC_BICEPS_FEMORIS_L: {
-    description: 'Same referral as the right biceps femoris. Primary posterior lateral thigh pain with referral to the posterior knee, lateral calf and lateral lower leg on the left side.',
-    zones: ['thigh_post_l', 'thigh_lat_l', 'knee_post_l', 'knee_lat_l', 'calf_l', 'shin_l'],
+    description: 'Same referral as the right biceps femoris (lateral hamstring): strongest to the back of the knee, with pain up the posterolateral thigh and into the upper lateral calf. Primary zone is the posterior knee, not the gluteal fold.',
+    zones: ['knee_post_l', 'thigh_post_l', 'thigh_lat_l', 'knee_lat_l', 'calf_l'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 2 (2019 consolidated 3rd ed.), Ch. 60',
   },
 
   MUSC_GASTROCNEMIUS_R: {
-    description: 'Primary pain in the calf (posterior lower leg). Referred pain to the posterior knee, calf, heel or sole of the foot, and lateral ankle. Pain may mimic deep vein thrombosis or plantar fasciitis.',
-    zones: ['calf_r', 'knee_post_r', 'ankle_r', 'arch_r', 'foot_r'],
+    description: 'Primary pain in the calf and behind the knee (popliteal region). Referred pain spreads to the calf and posteromedial leg and to the instep/arch (dorsal midfoot). The posterior and plantar heel is referred chiefly by the soleus, not the gastrocnemius. Gastrocnemius trigger points are classically associated with nocturnal calf cramp.',
+    zones: ['knee_post_r', 'calf_r', 'foot_r', 'ankle_r'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 2 (2019 consolidated 3rd ed.), Ch. 65',
   },
 
   MUSC_GASTROCNEMIUS_L: {
-    description: 'Same referral as the right gastrocnemius. Primary calf pain with referral to the posterior knee, heel, sole and lateral ankle on the left side.',
-    zones: ['calf_l', 'knee_post_l', 'ankle_l', 'arch_l', 'foot_l'],
+    description: 'Same referral as the right gastrocnemius. Primary pain in the calf and behind the knee (popliteal region), spreading to the calf, posteromedial leg and the instep/arch of the foot. The heel/plantar surface is a soleus referral, not gastrocnemius.',
+    zones: ['knee_post_l', 'calf_l', 'foot_l', 'ankle_l'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 2 (2019 consolidated 3rd ed.), Ch. 65',
   },
 
   MUSC_SOLEUS_R: {
-    description: 'Trigger points refer pain to the lower calf, heel and sometimes the arch of the foot. Deep calf pain that may present like Achilles tendinopathy or plantar fasciitis.',
-    zones: ['calf_r', 'ankle_r', 'arch_r'],
+    description: 'The soleus is the primary source of heel referral (the "jogger\'s heel" muscle). Its most common trigger point (proximal-medial) refers to the posterior and plantar heel and distal Achilles tendon. A second trigger point refers locally to the upper calf. A third, uncommon trigger point can refer to the ipsilateral sacroiliac joint; a jaw referral is documented but very rare (a small number of reported cases).',
+    zones: ['arch_r', 'foot_r', 'ankle_r', 'calf_r', 'sacrum'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 2 (2019 consolidated 3rd ed.), Ch. 66',
   },
 
   MUSC_SOLEUS_L: {
-    description: 'Same referral as the right soleus. Lower calf, heel and arch pain on the left side.',
-    zones: ['calf_l', 'ankle_l', 'arch_l'],
+    description: 'Same referral as the right soleus — the primary heel referrer. Posterior/plantar heel and distal Achilles from the main (proximal-medial) trigger point, with a local upper-calf zone and an uncommon ipsilateral sacroiliac referral. The jaw referral is documented but very rare.',
+    zones: ['arch_l', 'foot_l', 'ankle_l', 'calf_l', 'sacrum'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 2 (2019 consolidated 3rd ed.), Ch. 66',
   },
 
   MUSC_TIBIALIS_ANTERIOR_R: {
@@ -499,21 +525,29 @@ export const PAIN_PATTERNS: Record<string, PainPattern> = {
   // ── POSTERIOR NECK ────────────────────────────────────────────────────────────
 
   MUSC_SPLENIUS_CAPITIS_R: {
-    description: 'Splenius capitis trigger points refer pain to the top and back of the head and can produce a sensation "behind the eye" on the ipsilateral side. Associated with cervicogenic headache.',
-    zones: ['neck_post', 'upper_back', 'head_vertex', 'head_occiput', 'head_eye_r'],
+    description: 'Splenius capitis has a single trigger point that refers pain to the vertex — the crown of the head — a small zone at the top of the skull on the same side. The "behind-the-eye" and blurred-vision pattern belongs to splenius cervicis, not capitis.',
+    zones: ['neck_post', 'head_vertex'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 1 (1999), Ch. 15',
   },
   MUSC_SPLENIUS_CAPITIS_L: {
-    description: 'Same referral as the right splenius capitis. Pain to the top and back of the head and behind the left eye.',
-    zones: ['neck_post', 'upper_back', 'head_vertex', 'head_occiput', 'head_eye_l'],
+    description: 'Same referral as the right splenius capitis: a single trigger point referring to the vertex (crown) of the head. The behind-the-eye pattern belongs to splenius cervicis, not capitis.',
+    zones: ['neck_post', 'head_vertex'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 1 (1999), Ch. 15',
   },
 
   MUSC_SEMISPINALIS_CAPITIS_R: {
-    description: 'Semispinalis capitis trigger points cause a band-like headache across the occiput and upper neck. Pain is deep and diffuse, often confused with tension headache.',
-    zones: ['neck_post', 'head_occiput', 'head_vertex'],
+    description: 'Semispinalis capitis has two distinct patterns. The upper trigger point produces a band-like "headband" pain that encircles the head with a focus over the occiput and temple. A separate lower trigger point refers forward to the forehead and over/around the eye — associated with entrapment of the greater occipital nerve as it pierces the muscle.',
+    zones: ['neck_post', 'head_occiput', 'head_vertex', 'head_forehead', 'head_eye_r'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 1 (1999), Ch. 16',
   },
   MUSC_SEMISPINALIS_CAPITIS_L: {
-    description: 'Same referral as the right semispinalis capitis, mirrored to the left side.',
-    zones: ['neck_post', 'head_occiput', 'head_vertex'],
+    description: 'Same two-pattern referral as the right semispinalis capitis: an upper trigger point giving a band-like "headband" over the occiput and temple, and a distinct lower trigger point referring forward to the forehead and over/around the eye (greater occipital nerve entrapment).',
+    zones: ['neck_post', 'head_occiput', 'head_vertex', 'head_forehead', 'head_eye_l'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 1 (1999), Ch. 16',
   },
 
   // ── FOREARM EXTENSORS ─────────────────────────────────────────────────────────
@@ -559,21 +593,29 @@ export const PAIN_PATTERNS: Record<string, PainPattern> = {
   // ── HAMSTRINGS ────────────────────────────────────────────────────────────────
 
   MUSC_SEMITENDINOSUS_R: {
-    description: 'Semitendinosus trigger points refer pain to the posterior medial thigh and into the posteromedial knee and medial calf. Pain can mimic medial knee ligament injury.',
-    zones: ['thigh_post_r', 'thigh_med_r', 'knee_post_r', 'knee_med_r', 'calf_r'],
+    description: 'Semitendinosus and semimembranosus (the medial hamstrings) refer their strongest pain to the lower gluteal fold / ischial tuberosity — a broad zone at the buttock crease ("high hamstring" pain). Lesser, diffuse referral runs down the posteromedial thigh toward the back of the knee and into the upper/medial calf, occasionally toward the Achilles area. The gluteal-fold zone is primary, not the calf.',
+    zones: ['buttock_r', 'thigh_post_r', 'thigh_med_r', 'knee_post_r', 'calf_r'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 2 (2019 consolidated 3rd ed.), Ch. 60',
   },
   MUSC_SEMITENDINOSUS_L: {
-    description: 'Same referral as the right semitendinosus, mirrored to the left side.',
-    zones: ['thigh_post_l', 'thigh_med_l', 'knee_post_l', 'knee_med_l', 'calf_l'],
+    description: 'Same referral as the right semitendinosus: strongest at the lower gluteal fold / ischial tuberosity (buttock crease), with lesser diffuse referral down the posteromedial thigh to the back of the knee and upper/medial calf. Gluteal fold is primary, not the calf.',
+    zones: ['buttock_l', 'thigh_post_l', 'thigh_med_l', 'knee_post_l', 'calf_l'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 2 (2019 consolidated 3rd ed.), Ch. 60',
   },
 
   MUSC_SEMIMEMBRANOSUS_R: {
-    description: 'Semimembranosus trigger points refer pain to the deep posterior medial thigh, the posteromedial knee, and down the posterior leg. Often co-active with semitendinosus.',
-    zones: ['thigh_post_r', 'thigh_med_r', 'knee_post_r', 'calf_r'],
+    description: 'Semimembranosus shares the medial-hamstring pattern: its strongest referral is to the lower gluteal fold / ischial tuberosity (buttock crease), with lesser referral down the deep posteromedial thigh toward the back of the knee and into the calf. Often co-active with semitendinosus. The gluteal-fold zone is primary, not the calf.',
+    zones: ['buttock_r', 'thigh_post_r', 'thigh_med_r', 'knee_post_r', 'calf_r'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 2 (2019 consolidated 3rd ed.), Ch. 60',
   },
   MUSC_SEMIMEMBRANOSUS_L: {
-    description: 'Same referral as the right semimembranosus, mirrored to the left side.',
-    zones: ['thigh_post_l', 'thigh_med_l', 'knee_post_l', 'calf_l'],
+    description: 'Same referral as the right semimembranosus: strongest at the lower gluteal fold / ischial tuberosity, with lesser referral down the deep posteromedial thigh toward the back of the knee and calf. Gluteal fold is primary, not the calf.',
+    zones: ['buttock_l', 'thigh_post_l', 'thigh_med_l', 'knee_post_l', 'calf_l'],
+    confidence: 'HIGH',
+    source: 'Travell & Simons, Trigger Point Manual, Vol. 2 (2019 consolidated 3rd ed.), Ch. 60',
   },
 
   // ── MEDIAL THIGH ─────────────────────────────────────────────────────────────

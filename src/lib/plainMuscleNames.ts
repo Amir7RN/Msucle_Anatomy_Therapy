@@ -75,9 +75,12 @@ export const PLAIN_MUSCLE_NAMES: Record<string, string> = {
 
   // ── Neck / spine ─────────────────────────────────────────────────────────
   splenius_capitis:               'Back of Neck',
+  splenius_cervicis:              'Side of Neck',
   semispinalis_capitis:           'Deep Neck',
   sternocleidomastoid:            'Front of Neck',
   erector_spinae:                 'Lower Back',
+  iliocostalis_thoracis:          'Mid-Back (outer)',
+  longissimus_thoracis:           'Mid-Back (inner)',
   multifidus:                     'Deep Spine',
   quadratus_lumborum:             'Side Lower Back',
 }
