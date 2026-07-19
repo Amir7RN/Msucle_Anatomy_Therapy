@@ -26,6 +26,7 @@ import {
   MUSCLE_GROUP_MAP,
   pickSideFromClick,
 } from '../../lib/diagnostic'
+import { muscleLabelParts } from '../../lib/plainMuscleNames'
 import { useSchematicStore, type SchematicMarker } from './schematicStore'
 
 const MIN_DISPLAY_PROBABILITY = 0.10   // hide anything below 10%
@@ -80,7 +81,7 @@ function SchematicOverlayInner({ className = '' }: { className?: string }) {
   const markersMap       = useSchematicStore((s) => s.markers)
   const diagnosticResult = useAtlasStore((s) => s.diagnosticResult)
   const setHovered       = useAtlasStore((s) => s.setHovered)
-  const setSelected      = useAtlasStore((s) => s.setSelected)
+  const isolateMuscle    = useAtlasStore((s) => s.isolateMuscle)
   const hoveredId        = useAtlasStore((s) => s.hoveredId)
 
   const containerRef = React.useRef<HTMLDivElement>(null)
@@ -175,9 +176,11 @@ function SchematicOverlayInner({ className = '' }: { className?: string }) {
     setHovered(meshId)
   }
 
+  // One-tap: selecting a candidate immediately isolates it on the model and
+  // clears the schematic — no separate "Isolate" step.
   function handleClick(muscle_id: string) {
     const meshId = resolveCorrectMeshId(muscle_id, clickVec)
-    if (meshId) setSelected(meshId)
+    if (meshId) isolateMuscle(meshId)
   }
 
   function isMuscleHovered(muscle_id: string): boolean {
@@ -227,6 +230,7 @@ function SchematicOverlayInner({ className = '' }: { className?: string }) {
           <div className="flex gap-2 overflow-x-auto px-3 scrollbar-none">
             {pillData.map((pill) => {
               const accent = pill.type === 'primary' ? ACCENT_PRI : ACCENT_REF
+              const { primary, secondary } = muscleLabelParts(pill.id, pill.name)
               return (
                 <button
                   key={pill.id}
@@ -245,10 +249,11 @@ function SchematicOverlayInner({ className = '' }: { className?: string }) {
                   <div className="w-[3px] self-stretch rounded-full" style={{ backgroundColor: accent }} />
                   <div className="min-w-0">
                     <div className="text-[11px] font-semibold text-slate-100 whitespace-nowrap">
-                      {pill.name}
+                      {primary}
                     </div>
-                    <div className="text-[9px] uppercase tracking-wider text-slate-500">
-                      {pill.type} zone
+                    {/* Anatomical name kept as small secondary text */}
+                    <div className="text-[9px] tracking-wide text-slate-400 whitespace-nowrap">
+                      {secondary ?? `${pill.type} zone`}
                     </div>
                   </div>
                   <span className="text-sm font-bold tabular-nums text-orange-300 ml-1">
@@ -331,6 +336,7 @@ function SchematicOverlayInner({ className = '' }: { className?: string }) {
       {placed.map(({ marker, labelX, labelY, side: cardSide }) => {
         const hovered = isMuscleHovered(marker.muscle_id)
         const accent  = marker.matchType === 'primary' ? ACCENT_PRI : ACCENT_REF
+        const { primary, secondary } = muscleLabelParts(marker.muscle_id, marker.common_name)
         return (
           <div
             key={marker.muscle_id}
@@ -358,15 +364,19 @@ function SchematicOverlayInner({ className = '' }: { className?: string }) {
             <div className="flex flex-1 flex-col justify-center px-2.5 py-1.5 min-w-0">
               <div className="flex items-center justify-between gap-1.5">
                 <span className="truncate text-[11px] font-semibold leading-tight text-slate-100">
-                  {marker.common_name}
+                  {primary}
                 </span>
                 <span className="shrink-0 text-[12px] font-bold tabular-nums text-orange-300">
                   {Math.round(marker.probability * 100)}%
                 </span>
               </div>
-              <div className="mt-1 flex items-center gap-1 text-[9px] uppercase tracking-wider">
+              {/* Anatomical name kept small + secondary; falls back to the
+                  zone type when the plain and anatomical names are the same. */}
+              <div className="mt-1 flex items-center gap-1 text-[9px] tracking-wide">
                 <span style={{ color: accent }}>●</span>
-                <span className="text-slate-500">{marker.matchType} zone</span>
+                <span className="truncate text-slate-400">
+                  {secondary ?? `${marker.matchType} zone`}
+                </span>
               </div>
             </div>
           </div>

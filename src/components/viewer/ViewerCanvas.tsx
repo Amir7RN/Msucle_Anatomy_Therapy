@@ -1,5 +1,6 @@
 import React, { useCallback, useRef } from 'react'
 import { Canvas } from '@react-three/fiber'
+import { X } from 'lucide-react'
 import * as THREE from 'three'
 import { Lights } from './Lights'
 import { CameraController } from './CameraController'
@@ -80,6 +81,8 @@ function InteractionHint() {
 // ── Screenshot button ─────────────────────────────────────────────────────────
 
 function ScreenshotButton({ glRef }: { glRef: React.MutableRefObject<THREE.WebGLRenderer | null> }) {
+  // Slide down out of the way when the Exit-isolated button owns the corner.
+  const isolateMode = useAtlasStore((s) => s.isolateMode)
   const handleScreenshot = useCallback(() => {
     const gl = glRef.current
     if (!gl) return
@@ -96,13 +99,36 @@ function ScreenshotButton({ glRef }: { glRef: React.MutableRefObject<THREE.WebGL
     <button
       onClick={handleScreenshot}
       title="Export screenshot (PNG)"
-      className="flex absolute top-3 right-3 z-10 items-center gap-1.5 px-2 py-1 bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-slate-100 text-xs rounded border border-slate-600/60 transition-colors shadow-sm"
+      className={`flex absolute right-3 z-10 items-center gap-1.5 px-2 py-1 bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-slate-100 text-xs rounded border border-slate-600/60 transition-colors shadow-sm ${isolateMode ? 'top-14' : 'top-3'}`}
     >
       <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
         <circle cx="12" cy="13" r="4"/>
       </svg>
       Screenshot
+    </button>
+  )
+}
+
+// ── Exit-isolated button ──────────────────────────────────────────────────────
+//
+// Persistent, obvious control shown only while a muscle is isolated. One click
+// returns to the full, tappable body (clearing the selection and any diagnostic
+// candidates) so the user can immediately tap a new spot — no intermediate menu
+// or tab. Sits in a fixed top-right corner over the canvas.
+
+function IsolateExitButton() {
+  const isolateMode        = useAtlasStore((s) => s.isolateMode)
+  const exitIsolateToModel = useAtlasStore((s) => s.exitIsolateToModel)
+  if (!isolateMode) return null
+  return (
+    <button
+      onClick={exitIsolateToModel}
+      title="Back to the full body"
+      className="absolute right-3 top-3 z-30 flex items-center gap-1.5 rounded-md bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white shadow-lg ring-1 ring-orange-300/60 transition-colors hover:bg-orange-400"
+    >
+      <X size={14} />
+      <span className="hidden sm:inline">Back to full body</span>
     </button>
   )
 }
@@ -335,6 +361,7 @@ function ChromeGate() {
   return (
     <>
       <SchematicOverlay />
+      <IsolateExitButton />
       <ModelStatusBadge />
       <HoverTooltip />
       <InteractionHint />

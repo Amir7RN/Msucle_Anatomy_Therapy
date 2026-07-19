@@ -114,6 +114,14 @@ interface AtlasState {
   showAll:         () =>          void
   isolateSelected: () =>          void
   exitIsolate:     () =>          void
+  /** One-tap select + isolate straight from the candidate list: selects the
+   *  mesh, drops into isolate mode, and clears the diagnostic schematic in a
+   *  single action so the muscle is highlighted alone with no extra step. */
+  isolateMuscle:   (meshId: string) => void
+  /** Persistent "Exit" from the isolated view — returns to the full, tappable
+   *  body in one click: leaves isolate mode, clears the selection and any
+   *  diagnostic candidates, so the user can immediately tap a new spot. */
+  exitIsolateToModel: () => void
 
   toggleHideLayer:  (layer: LayerType) => void
   toggleGhostLayer: (layer: LayerType) => void
@@ -262,6 +270,33 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
     set((s) => ({ isolateMode: s.selectedId !== null })),
 
   exitIsolate: () => set({ isolateMode: false }),
+
+  // One-tap: pick a candidate → highlight it alone. Selection and isolation
+  // are the same action, and the diagnostic schematic is cleared so nothing
+  // else competes for attention on the model.
+  isolateMuscle: (meshId) =>
+    set({
+      selectedId:            meshId,
+      isolateMode:           true,
+      hoveredId:             null,
+      diagnosticSubMuscleId: null,
+      diagnosticResult:      null,
+      diagnosticPulseId:     null,
+      candidateMuscles:      [],
+    }),
+
+  // Back to the full tappable body in one click — keeps diagnosticMode on so
+  // the very next tap starts a fresh candidate list with no extra navigation.
+  exitIsolateToModel: () =>
+    set({
+      isolateMode:           false,
+      selectedId:            null,
+      hoveredId:             null,
+      diagnosticSubMuscleId: null,
+      diagnosticResult:      null,
+      diagnosticPulseId:     null,
+      candidateMuscles:      [],
+    }),
 
   // ── Layer visibility ──────────────────────────────────────────────────────
   toggleHideLayer: (layer) =>
