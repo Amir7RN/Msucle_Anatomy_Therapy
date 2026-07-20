@@ -56,6 +56,11 @@ interface AtlasState {
   diagnosticResult:     DiagnosticResult | null
   diagnosticPulseId:    string | null
   candidateMuscles:     string[]
+  /** The last source list the user tapped into, stashed while they view one
+   *  muscle so "Back to pain sources" can restore the exact list (and its
+   *  leader-line cards) instead of dumping them on the raw body. */
+  savedDiagnostic:      DiagnosticResult | null
+  savedCandidates:      string[]
 
   // Meshy single-mesh anatomical base
   useMeshyModel:        boolean
@@ -122,6 +127,10 @@ interface AtlasState {
    *  body in one click: leaves isolate mode, clears the selection and any
    *  diagnostic candidates, so the user can immediately tap a new spot. */
   exitIsolateToModel: () => void
+  /** Return from an isolated muscle to the source list it was picked from —
+   *  restores the stashed diagnostic result + candidates so the leader-line
+   *  cards reappear. Falls back to exitIsolateToModel when nothing is stashed. */
+  backToSources: () => void
 
   toggleHideLayer:  (layer: LayerType) => void
   toggleGhostLayer: (layer: LayerType) => void
@@ -208,6 +217,8 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   diagnosticResult:      null,
   diagnosticPulseId:     null,
   candidateMuscles:      [],
+  savedDiagnostic:       null,
+  savedCandidates:       [],
   diagnosticSubMuscleId: null,
 
   useMeshyModel:         true,    // overlay 52-mesh muscles onto male-normal.glb
@@ -275,18 +286,21 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   // are the same action, and the diagnostic schematic is cleared so nothing
   // else competes for attention on the model.
   isolateMuscle: (meshId) =>
-    set({
+    set((s) => ({
       selectedId:            meshId,
       isolateMode:           true,
       hoveredId:             null,
       diagnosticSubMuscleId: null,
+      // Stash the list we came from so it can be restored on "back".
+      savedDiagnostic:       s.diagnosticResult ?? s.savedDiagnostic,
+      savedCandidates:       s.candidateMuscles.length ? s.candidateMuscles : s.savedCandidates,
       diagnosticResult:      null,
       diagnosticPulseId:     null,
       candidateMuscles:      [],
-    }),
+    })),
 
-  // Back to the full tappable body in one click — keeps diagnosticMode on so
-  // the very next tap starts a fresh candidate list with no extra navigation.
+  // Back to the full tappable body in one click — a clean reset that also drops
+  // any stashed source list, so the very next tap starts fresh.
   exitIsolateToModel: () =>
     set({
       isolateMode:           false,
@@ -296,6 +310,34 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
       diagnosticResult:      null,
       diagnosticPulseId:     null,
       candidateMuscles:      [],
+      savedDiagnostic:       null,
+      savedCandidates:       [],
+    }),
+
+  backToSources: () =>
+    set((s) => {
+      // Nothing stashed (e.g. muscle was tapped directly, not via a list) —
+      // fall back to a plain return to the full body.
+      if (!s.savedDiagnostic) {
+        return {
+          isolateMode:           false,
+          selectedId:            null,
+          hoveredId:             null,
+          diagnosticSubMuscleId: null,
+          diagnosticResult:      null,
+          diagnosticPulseId:     null,
+          candidateMuscles:      [],
+        }
+      }
+      return {
+        isolateMode:           false,
+        selectedId:            null,
+        hoveredId:             null,
+        diagnosticSubMuscleId: null,
+        diagnosticResult:      s.savedDiagnostic,
+        candidateMuscles:      s.savedCandidates,
+        diagnosticPulseId:     null,
+      }
     }),
 
   // ── Layer visibility ──────────────────────────────────────────────────────
@@ -339,6 +381,8 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
       hiddenLayers:       new Set(),
       ghostedLayers:      new Set(),
       cameraPreset:       null,
+      savedDiagnostic:    null,
+      savedCandidates:    [],
     })),
 
   flyToPreset: (preset) => set({ cameraPreset: preset }),
@@ -385,6 +429,8 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
       diagnosticResult:  null,
       diagnosticPulseId: null,
       candidateMuscles:  [],
+      savedDiagnostic:   null,
+      savedCandidates:   [],
     })),
   setDiagnostic:      (result) => set({ diagnosticResult: result }),
   setDiagnosticPulse: (id)     => set({ diagnosticPulseId: id }),

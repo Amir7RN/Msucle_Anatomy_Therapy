@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import * as THREE from 'three'
-import { MousePointerClick, MapPin, Zap, StickyNote, Activity, Play, Mic, Square, Volume2, ChevronDown, ChevronRight, Camera } from 'lucide-react'
+import { MousePointerClick, MapPin, Zap, StickyNote, Activity, Play, Mic, Square, Volume2, ChevronDown, ChevronRight, Camera, ArrowDown, X } from 'lucide-react'
+import { getGuideSeen, markGuideSeen, subscribeGuide } from '../../lib/guideProgress'
 import { ExerciseGuidance } from '../movement/ExerciseGuidance'
 import { AssessmentView } from '../assessment/AssessmentView'
 import { loadROMHistory } from '../../lib/movement/romHistory'
@@ -706,6 +707,33 @@ function ExerciseVideos({ muscleId }: { muscleId: string }) {
   )
 }
 
+// ── Guided coach-mark: explore exercises + Guide ──────────────────────────────
+// Shown in the detail panel the first time a user lands on a muscle, pointing
+// down at the exercise list. Retires once dismissed or after they've met the
+// step elsewhere (shared with the on-canvas GuideCoach via guideProgress).
+
+function ExploreGuideHint() {
+  const seen = useSyncExternalStore(subscribeGuide, getGuideSeen)
+  if (seen.has('explore')) return null
+  return (
+    <div className="flex items-start gap-2 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-[11px] leading-snug text-cyan-200">
+      <ArrowDown size={14} className="mt-0.5 flex-shrink-0 animate-bounce text-cyan-300" />
+      <span className="flex-1">
+        Explore the exercises below — tap{' '}
+        <span className="font-semibold text-white">Guide</span> on any of them to
+        have the camera coach check your posture live.
+      </span>
+      <button
+        onClick={() => markGuideSeen('explore')}
+        title="Got it"
+        className="flex-shrink-0 rounded-full p-0.5 text-cyan-300/70 hover:bg-cyan-500/20 hover:text-white"
+      >
+        <X size={13} />
+      </button>
+    </div>
+  )
+}
+
 // ── Section row ───────────────────────────────────────────────────────────────
 
 function MetaRow({
@@ -1122,6 +1150,7 @@ export function MetadataPanel() {
         {/* Progress Assessment — between muscle name and exercises */}
         <AssessmentMount muscleName={meta?.displayName ?? null} selectedId={selectedId} />
 
+        {selectedId && <ExploreGuideHint />}
         {selectedId && <ExerciseVideos muscleId={selectedId} />}
 
         <MetaRow

@@ -1,6 +1,6 @@
 import React, { useCallback, useRef } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { X } from 'lucide-react'
+import { X, ArrowLeft } from 'lucide-react'
 import * as THREE from 'three'
 import { Lights } from './Lights'
 import { CameraController } from './CameraController'
@@ -119,17 +119,35 @@ function ScreenshotButton({ glRef }: { glRef: React.MutableRefObject<THREE.WebGL
 
 function IsolateExitButton() {
   const isolateMode        = useAtlasStore((s) => s.isolateMode)
+  const savedDiagnostic    = useAtlasStore((s) => s.savedDiagnostic)
   const exitIsolateToModel = useAtlasStore((s) => s.exitIsolateToModel)
+  const backToSources      = useAtlasStore((s) => s.backToSources)
   if (!isolateMode) return null
+
+  // When the muscle was picked from a pain-source list, "back" returns to that
+  // list (restoring its leader-line cards) rather than the raw body. A small
+  // secondary button still offers the full reset.
+  const hasSources = !!savedDiagnostic
   return (
-    <button
-      onClick={exitIsolateToModel}
-      title="Back to the full body"
-      className="absolute right-3 top-3 z-30 flex items-center gap-1.5 rounded-md bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white shadow-lg ring-1 ring-orange-300/60 transition-colors hover:bg-orange-400"
-    >
-      <X size={14} />
-      <span className="hidden sm:inline">Back to full body</span>
-    </button>
+    <div className="absolute right-3 top-3 z-30 flex items-center gap-1.5">
+      <button
+        onClick={hasSources ? backToSources : exitIsolateToModel}
+        title={hasSources ? 'Back to your pain sources' : 'Back to the full body'}
+        className="flex items-center gap-1.5 rounded-md bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white shadow-lg ring-1 ring-orange-300/60 transition-colors hover:bg-orange-400"
+      >
+        <ArrowLeft size={14} />
+        <span className="hidden sm:inline">{hasSources ? 'Back to pain sources' : 'Back to full body'}</span>
+      </button>
+      {hasSources && (
+        <button
+          onClick={exitIsolateToModel}
+          title="Back to the full body"
+          className="flex items-center rounded-md bg-slate-700/90 px-2 py-1.5 text-xs font-semibold text-slate-100 shadow-lg ring-1 ring-slate-500/50 transition-colors hover:bg-slate-600"
+        >
+          <X size={14} />
+        </button>
+      )}
+    </div>
   )
 }
 
