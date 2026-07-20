@@ -24,7 +24,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   X, Camera, Play, CheckCircle, AlertCircle, Info,
-  Mic, MicOff, Brain, Send, KeyRound,
+  Mic, MicOff, Brain, Send, KeyRound, HeartPulse, ArrowRightLeft,
 } from 'lucide-react'
 import { CameraView } from './CameraView'
 import type { LandmarkSet } from '../../lib/movement/landmarks'
@@ -63,6 +63,8 @@ import { PoseRigEngine, SEGMENT_ORDER, type BoneDirs, type SegmentId } from '../
 import { postureForExercise, movingSegmentsForExercise, type Posture } from '../../lib/movement/exercisePose'
 import { priorFor } from '../../lib/movement/activationPriors'
 import { useAtlasStore } from '../../store/atlasStore'
+import { regressionFor } from '../../lib/movement/exerciseCatalog'
+import { logPain } from '../../lib/movement/painLog'
 
 // ── Smoothing buffer ──────────────────────────────────────────────────────────
 const SMOOTH_FRAMES = 8
@@ -86,7 +88,20 @@ interface Props {
 //  Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId, onClose }: Props) {
+export function ExerciseGuidance({ exerciseId: exerciseIdProp, exerciseLabel: exerciseLabelProp, videoSrc: videoSrcProp, muscleId, onClose }: Props) {
+  // "This hurts" escape hatch — the running exercise can be swapped for a
+  // gentler regression without leaving the overlay. When a swap is active it
+  // overrides the exercise the props asked for; every downstream hook keys
+  // off the effective ids below, so the whole pipeline (biofeedback, coach,
+  // reference video) follows the swap.
+  const [swap, setSwap]         = useState<{ id: string; label: string; src: string } | null>(null)
+  const [painOpen, setPainOpen] = useState(false)
+  const exerciseId    = swap?.id    ?? exerciseIdProp
+  const exerciseLabel = swap?.label ?? exerciseLabelProp
+  const videoSrc      = swap?.src   ?? videoSrcProp
+  useEffect(() => { setSwap(null); setPainOpen(false) }, [exerciseIdProp])
+  const regression = useMemo(() => regressionFor(exerciseId), [exerciseId])
+
   // Hide the 3D canvas chrome AND make absolutely sure the AI Coach's
   // speech queue is silenced whenever the user exits this overlay.
   useEffect(() => {
@@ -381,18 +396,57 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
             </span>
           )}
         </div>
-        {/* Exit button — larger and labelled on mobile so it's easy to tap */}
-        <button
-          onClick={() => {
+        <div className="flex items-center flex-shrink-0 ml-2 gap-2">
+          {/* Escape hatch — pain is a stop signal, give the user a one-tap
+              way out that isn't "quit the whole session". */}
+          <button
+            onClick={() => {
+              window.speechSynthesis?.cancel()
+              setPainOpen(true)
+            }}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 bg-amber-700/80 hover:bg-amber-600 text-amber-50 transition-colors"
+          >
+            <HeartPulse size={15} />
+            <span className="text-xs font-semibold">This hurts</span>
+          </button>
+          {/* Exit button — larger and labelled on mobile so it's easy to tap */}
+          <button
+            onClick={() => {
+              window.speechSynthesis?.cancel()
+              onClose()
+            }}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 bg-slate-700 hover:bg-red-700 text-slate-200 hover:text-white transition-colors"
+          >
+            <X size={16} />
+            <span className="text-xs font-semibold">Exit</span>
+          </button>
+        </div>
+      </header>
+
+      {/* "This hurts" decision overlay */}
+      {painOpen && (
+        <PainEscapeOverlay
+          exerciseLabel={exerciseLabel}
+          regressionLabel={regression?.label ?? null}
+          onSwitch={() => {
+            if (!regression) return
+            logPain({ exerciseId: exerciseId ?? '', muscleId, action: 'switched', switchedTo: regression.id })
+            window.speechSynthesis?.cancel()
+            setSwap({ id: regression.id, label: regression.label, src: regression.src })
+            setPainOpen(false)
+          }}
+          onContinue={() => {
+            logPain({ exerciseId: exerciseId ?? '', muscleId, action: 'continued' })
+            setPainOpen(false)
+          }}
+          onStop={() => {
+            logPain({ exerciseId: exerciseId ?? '', muscleId, action: 'stopped' })
             window.speechSynthesis?.cancel()
             onClose()
           }}
-          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 bg-slate-700 hover:bg-red-700 text-slate-200 hover:text-white transition-colors flex-shrink-0 ml-2"
-        >
-          <X size={16} />
-          <span className="text-xs font-semibold">Exit</span>
-        </button>
-      </header>
+          onCancel={() => setPainOpen(false)}
+        />
+      )}
 
       {/* Body: top row (camera + reference video) | bottom fixed metrics grid */}
       <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
@@ -590,7 +644,7 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
             metrics. */}
         <div className="hidden md:flex w-full md:w-80 flex-col bg-slate-900 border-l border-slate-700 flex-shrink-0 overflow-y-auto md:flex-none min-h-0 text-xs">
           {def
-            ? <AiCoach def={def} snapshot={snapshot} lmsRef={lmsRef} muscleId={muscleId} repCount={repCount} repTarget={repTarget} />
+            ? <AiCoach key={exerciseId} def={def} snapshot={snapshot} lmsRef={lmsRef} muscleId={muscleId} repCount={repCount} repTarget={repTarget} />
             : (
               <div className="p-3 border-b border-slate-700 flex items-start gap-2">
                 <Info size={14} className="text-slate-400 mt-0.5 flex-shrink-0" />
@@ -603,6 +657,76 @@ export function ExerciseGuidance({ exerciseId, exerciseLabel, videoSrc, muscleId
         </div>
         </div>{/* end desktop bottom row */}
       </div>{/* end outer flex-col body */}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  PainEscapeOverlay — the "this hurts" decision sheet
+// ─────────────────────────────────────────────────────────────────────────────
+
+function PainEscapeOverlay({
+  exerciseLabel,
+  regressionLabel,
+  onSwitch,
+  onContinue,
+  onStop,
+  onCancel,
+}: {
+  exerciseLabel:   string
+  regressionLabel: string | null
+  onSwitch:        () => void
+  onContinue:      () => void
+  onStop:          () => void
+  onCancel:        () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-2xl border border-amber-600/50 bg-slate-900 p-5 shadow-2xl">
+        <div className="flex items-center gap-2 mb-2">
+          <HeartPulse size={18} className="text-amber-400" />
+          <h3 className="text-sm font-semibold text-slate-100">Feeling pain?</h3>
+        </div>
+        <p className="text-xs text-slate-300 leading-relaxed mb-4">
+          Pain is a stop signal — do not push through it. Mild stretching
+          discomfort is okay; sharp, stabbing, or radiating pain is not.
+          What would you like to do?
+        </p>
+        <div className="space-y-2">
+          {regressionLabel && (
+            <button
+              onClick={onSwitch}
+              className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white transition-colors"
+            >
+              <ArrowRightLeft size={13} />
+              Switch to a gentler option: {regressionLabel}
+            </button>
+          )}
+          <button
+            onClick={onContinue}
+            className="w-full rounded-lg px-3 py-2.5 text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-slate-100 transition-colors"
+          >
+            Continue carefully with smaller range
+          </button>
+          <button
+            onClick={onStop}
+            className="w-full rounded-lg px-3 py-2.5 text-xs font-semibold bg-red-800/80 hover:bg-red-700 text-red-50 transition-colors"
+          >
+            End the session
+          </button>
+        </div>
+        <button
+          onClick={onCancel}
+          className="mt-3 w-full text-center text-[11px] text-slate-500 hover:text-slate-300"
+        >
+          Never mind — {exerciseLabel} feels fine
+        </button>
+        <p className="mt-3 text-[10px] text-slate-500 leading-snug">
+          Your report is saved and used to adapt future sessions. If pain is
+          sharp or persists after stopping, consider checking in with a
+          healthcare professional.
+        </p>
+      </div>
     </div>
   )
 }

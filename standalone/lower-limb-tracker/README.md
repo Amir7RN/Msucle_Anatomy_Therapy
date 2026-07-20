@@ -7,8 +7,12 @@ with the skeleton + angle overlay burned in. Framework-agnostic — point it at
 any `<video>` element already playing (a local webcam, a remote peer's video
 element from your own call/WebRTC stack, or a recorded file) and it works.
 
-No WebRTC, no signaling, no backend of any kind is included or required.
-Everything runs client-side in the browser.
+The tracker itself needs no WebRTC, no signaling, no backend — everything
+runs client-side against whatever `<video>` element you hand it. If you DO
+want to build a live remote call around it (a practitioner watching a remote
+person's camera), this package also ships a small `ice.ts` helper plus a
+complete worked example (`examples/webrtc-call/`) — see "Building a live
+remote call" below.
 
 ## Install / setup
 
@@ -158,6 +162,126 @@ Chrome/Edge/Safari support natively; browsers that don't fall back to WebM
 automatically — check `blob.type` and name the saved file accordingly (the
 examples do this for you). There is no server-side transcoding step and none
 is required.
+
+## Building a live remote call (optional)
+
+`LowerLimbTracker` only ever reads frames from a `<video>` element — it
+doesn't care whether that video is a local webcam, a file, or a WebRTC peer's
+incoming stream. If your integration IS a live call (you or your staff
+watching a remote customer's camera and tracking their lower limb in real
+time), you need three things WebRTC itself doesn't provide out of the box:
+a signaling channel, a TURN relay, and the glue code connecting the incoming
+video track to the tracker. This package includes a small, framework-agnostic
+helper for the TURN part (`ice.ts`) and a **complete, runnable reference
+implementation** of all three at `examples/webrtc-call/` — read this section
+and that folder together.
+
+### 1. Signaling — how the two browsers find each other
+
+Before a peer-to-peer connection exists, the two browsers need to exchange a
+few small JSON messages (an SDP offer/answer and ICE candidates). WebRTC does
+not provide this channel — you supply it. If your product already has a
+real-time channel (a WebSocket gateway, Firebase, Pusher, Supabase Realtime,
+your own chat infrastructure), reuse it: signaling only needs "send a JSON
+message to the other peer in this room" and "receive one back." If you don't
+have one yet, `examples/webrtc-call/signaling-server.js` is a ~30-line
+WebSocket relay (`npm install ws && node signaling-server.js`) you can run
+as-is for a pilot or adapt for production (it has no auth/TLS/room-limits —
+add those before exposing it publicly).
+
+### 2. TURN — the part that makes cross-network calls actually work
+
+STUN (built into every browser, free, no setup) is enough when both peers are
+on the same friendly network. The moment your practitioner and their customer
+are on different networks — the normal case — most connections need a TURN
+relay server, or the call simply won't connect. TURN relays real media
+traffic, so unlike STUN it isn't free to run.
+
+**Getting a free TURN key from Metered.ca** (the provider this package's
+helper is pre-shaped for; a few minutes, no card required for the free tier):
+
+1. Go to **dashboard.metered.ca** and sign up (or metered.ca → "TURN Server" →
+   "Get Started Free").
+2. Create an app. Metered gives you an **app subdomain**, shown like
+   `yourapp.metered.live` — copy just that domain, not a full URL.
+3. On the same dashboard page, copy your **API key**.
+4. That's the whole credential-provisioning side — you do NOT hand out a
+   fixed TURN username/password. Metered issues short-lived, rotating
+   credentials on demand from:
+   ```
+   https://<your-app>.metered.live/api/v1/turn/credentials?apiKey=<your-api-key>
+   ```
+   which returns a JSON array of ICE servers (STUN + TURN with a temporary
+   username/credential already filled in) — exactly the shape
+   `RTCPeerConnection({ iceServers })` expects.
+5. Check the current free-tier bandwidth/usage limits on Metered's pricing
+   page before going to production — those numbers change over time and
+   aren't repeated here so this doc doesn't go stale.
+
+Wire it up with this package's `ice.ts` helper — this is the entire
+integration:
+
+```ts
+import { getIceServers, probeTurnRelay } from '@zeva/lower-limb-tracker'
+
+const iceServers = await getIceServers({
+  metered: { meteredDomain: 'yourapp.metered.live', meteredApiKey: 'YOUR_API_KEY' },
+})
+
+const pc = new RTCPeerConnection({ iceServers })
+```
+
+**Confirm it actually works** before you trust it — a wrong domain, an
+expired key, or a firewall blocking the relay port all fail silently in a
+way that looks identical to "it'll probably work":
+
+```ts
+const ok = await probeTurnRelay(iceServers)
+console.log(ok ? 'TURN relay reachable' : 'no relay candidate — check your Metered domain/API key')
+```
+
+This opens a throwaway local connection and checks whether a `relay`-type ICE
+candidate actually appears — no second peer needed, so you can run it right
+after wiring TURN in, before ever testing with a real second device.
+
+Prefer a different TURN provider, or your own self-hosted `coturn`? Pass
+`turn: { turnUrls, turnUsername, turnCredential }` (a fixed, non-rotating
+credential set) or `credentialUrl` (any REST endpoint returning the same
+`RTCIceServer[]` JSON shape Metered's does) instead of `metered` — see
+`ice.ts`'s doc comments for the full option shape.
+
+### 3. Wiring the incoming video into the tracker
+
+Once `pc.ontrack` fires with the remote peer's stream, set it as your
+`<video>` element's `srcObject` and start the tracker exactly like the local-
+camera examples — this is the one line that's actually specific to the "call"
+use case:
+
+```ts
+pc.ontrack = (e) => {
+  video.srcObject = e.streams[0]
+  const tracker = new LowerLimbTracker(video, { overlayCanvas: overlay })
+  tracker.onFrame((f) => console.log(f.leftAnkleDeg, f.rightAnkleDeg))
+  tracker.start()
+}
+```
+
+### Run the full example
+
+```bash
+npm run build                      # from the package root, if you haven't already
+cd examples/webrtc-call
+npm install                        # installs ws, for the signaling server
+node signaling-server.js           # leave running in one terminal
+```
+
+Then, with the package root served over HTTP (any static file server; the
+examples use relative paths so they must be served, not opened as `file://`),
+open `examples/webrtc-call/index.html` in two browser tabs (or two devices),
+click "Join as CLIENT" in one and "Join as HOST" in the other, using the same
+room name in both. Fill in your Metered domain/API key at the top of the
+file's `<script>` first if you want cross-network TURN relaying tested, not
+just same-network STUN.
 
 ## Self-hosting the model for production
 

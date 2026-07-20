@@ -53,6 +53,11 @@ export function FullBodyAssessmentView({ open, onClose, startInCall }: Props) {
   const [cursor, setCursor]     = useState(0)
   const [progOpen, setProgOpen] = useState(false)
   const [callRoom, setCallRoom] = useState('')
+  // 'full' for the sidebar's direct Remote card (every joint, the main
+  // analyzer); 'lowerLimb' for the chooser's "Remote Assessment (Live Call)"
+  // option, whose own copy ("watch their live pose & ankle angles") promises
+  // an ankle-focused view specifically.
+  const [callFocus, setCallFocus] = useState<'full' | 'lowerLimb'>('full')
 
   // Hide the 3D canvas chrome while this modal is open.
   useEffect(() => {
@@ -73,8 +78,10 @@ export function FullBodyAssessmentView({ open, onClose, startInCall }: Props) {
   }, [open])
 
   // Direct remote-call launch (sidebar Remote card) — skip the chooser.
+  // This entry point is the full, every-joint analyzer.
   useEffect(() => {
     if (open && startInCall) {
+      setCallFocus('full')
       setCallRoom(randomId(6))
       setPhase('call')
     }
@@ -116,7 +123,7 @@ export function FullBodyAssessmentView({ open, onClose, startInCall }: Props) {
           onClose={onClose}
           onStart={startBattery}
           onStartGait={() => setPhase('gait')}
-          onStartCall={() => { setCallRoom(randomId(6)); setPhase('call') }}
+          onStartCall={() => { setCallFocus('lowerLimb'); setCallRoom(randomId(6)); setPhase('call') }}
         />
       )}
 
@@ -132,6 +139,7 @@ export function FullBodyAssessmentView({ open, onClose, startInCall }: Props) {
           open={true}
           role="host"
           roomId={callRoom}
+          focus={callFocus}
           // When launched directly from the Remote card, closing the call
           // closes the whole modal instead of dropping into the chooser.
           onClose={() => { if (startInCall) onClose(); else setPhase('choose') }}

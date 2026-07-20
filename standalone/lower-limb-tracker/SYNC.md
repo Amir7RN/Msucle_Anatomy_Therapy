@@ -21,3 +21,13 @@ Two intentional differences from the main app's copy of `gait.ts`:
   (the app's copy names a specific Zeva demo partner; irrelevant here).
 - Nothing else — the ankle-angle math, gap-filler, and step machine are
   otherwise identical to the main app's fixed version.
+
+`src/ice.ts` is a new file, not a straight copy — it re-implements the
+TURN/Metered.ca credential-resolution logic from the main app's
+`src/lib/call/signaling.ts` (`getIceServers`/`resolveTurn`) as an explicit-config,
+env/localStorage-free function, since this package can't assume a Vite build
+or the main app's runtime-override UI. The main app's Supabase-Realtime-based
+signaling transport itself was intentionally NOT ported — see the README's
+"Building a live remote call" section for why (the partner has their own
+call/signaling infrastructure) and what a self-contained example looks like
+instead (`examples/webrtc-call/`).

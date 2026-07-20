@@ -3,6 +3,7 @@ import { AppHeader }    from './components/layout/AppHeader'
 import { LeftSidebar }  from './components/layout/LeftSidebar'
 import { RightPanel }   from './components/layout/RightPanel'
 import { ViewerCanvas } from './components/viewer/ViewerCanvas'
+import { TapHint } from './components/viewer/TapHint'
 import { MovementScreen } from './components/movement/MovementScreen'
 import { MuscleTwinView } from './components/movement/MuscleTwinView'
 import { ProfileSetup } from './components/profile/ProfileSetup'
@@ -180,6 +181,7 @@ function AtlasApp() {
         {/* Centre — 3D canvas (always in DOM, always behind overlays) */}
         <main className="flex-1 min-w-0 relative">
           <ViewerCanvas />
+          <TapHint />
           <DiagnosticModeToggle />
           {/* Feature launching moved to the LeftSidebar FeatureRail — the
               canvas stays clean for the model itself. Mobile keeps the

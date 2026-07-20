@@ -54,6 +54,13 @@ interface Props {
   role:    Role
   roomId:  string
   onClose: () => void
+  /** 'full' (default) shows every primary joint — the standalone "Remote
+   *  Assessment" sidebar card's use case. 'lowerLimb' shows ankle only and
+   *  draws just the lower-limb skeleton — the Movement Assessment chooser's
+   *  "Remote Assessment (Live Call)" option, whose own copy ("watch their
+   *  live pose & ankle angles") promises exactly this and previously didn't
+   *  actually deliver it (both entry points rendered the same full view). */
+  focus?:  'full' | 'lowerLimb'
 }
 
 /** Build the link a host shares with a client to join this room. */
@@ -62,7 +69,7 @@ export function buildCallLink(roomId: string): string {
   return `${base}?atlas=1&call=${roomId}`
 }
 
-// Skeleton edges drawn over the remote video (host side).
+// Skeleton edges drawn over the remote video (host side) — 'full' focus.
 const EDGES: Array<[number, number, string]> = [
   [LM.L_SHOULDER, LM.R_SHOULDER, '#fb923c'],
   [LM.L_SHOULDER, LM.L_HIP, '#fb923c'], [LM.R_SHOULDER, LM.R_HIP, '#fb923c'],
@@ -77,9 +84,22 @@ const JOINTS = [
   LM.L_KNEE, LM.R_KNEE, LM.L_ANKLE, LM.R_ANKLE, LM.L_ELBOW, LM.R_ELBOW,
 ]
 
-function drawSkeleton(ctx: CanvasRenderingContext2D, lms: LandmarkSet, w: number, h: number) {
+// Lower-limb-only subset — 'lowerLimb' focus. Keeps the pelvis line for
+// orientation context but drops shoulders/arms entirely so the overlay
+// visually matches what it's actually measuring.
+const LOWER_LIMB_EDGES: Array<[number, number, string]> = [
+  [LM.L_HIP, LM.R_HIP, '#fb923c'],
+  [LM.L_HIP, LM.L_KNEE, '#a3e635'], [LM.L_KNEE, LM.L_ANKLE, '#d9f99d'], [LM.L_ANKLE, LM.L_FOOT_IDX, '#d9f99d'],
+  [LM.R_HIP, LM.R_KNEE, '#fde047'], [LM.R_KNEE, LM.R_ANKLE, '#fef08a'], [LM.R_ANKLE, LM.R_FOOT_IDX, '#fef08a'],
+]
+const LOWER_LIMB_JOINTS = [LM.L_HIP, LM.R_HIP, LM.L_KNEE, LM.R_KNEE, LM.L_ANKLE, LM.R_ANKLE]
+
+function drawSkeleton(
+  ctx: CanvasRenderingContext2D, lms: LandmarkSet, w: number, h: number,
+  edges: Array<[number, number, string]>, joints: number[],
+) {
   ctx.lineCap = 'round'
-  for (const [a, b, color] of EDGES) {
+  for (const [a, b, color] of edges) {
     const pa = lms[a], pb = lms[b]
     if (!pa || !pb) continue
     if ((pa.visibility ?? 0) < 0.3 || (pb.visibility ?? 0) < 0.3) continue
@@ -88,7 +108,7 @@ function drawSkeleton(ctx: CanvasRenderingContext2D, lms: LandmarkSet, w: number
     ctx.strokeStyle = color; ctx.lineWidth = Math.max(2, w * 0.005)
     ctx.beginPath(); ctx.moveTo(pa.x * w, pa.y * h); ctx.lineTo(pb.x * w, pb.y * h); ctx.stroke()
   }
-  for (const j of JOINTS) {
+  for (const j of joints) {
     const p = lms[j]
     if (!p || (p.visibility ?? 0) < 0.3) continue
     ctx.fillStyle = '#e2e8f0'
@@ -231,7 +251,11 @@ function measureAllJoints(lms: LandmarkSet, ankles: { l: number | null; r: numbe
   }
 }
 
-export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
+export function RemoteAssessmentCall({ open, role, roomId, onClose, focus = 'full' }: Props) {
+  const lowerLimbOnly = focus === 'lowerLimb'
+  const skeletonEdges = lowerLimbOnly ? LOWER_LIMB_EDGES : EDGES
+  const skeletonJoints = lowerLimbOnly ? LOWER_LIMB_JOINTS : JOINTS
+  const jointRows = lowerLimbOnly ? JOINT_ROWS.filter((r) => r.key === 'ankle') : JOINT_ROWS
   const [conn, setConn]   = useState<ConnState>('idle')
   const [copied, setCopied] = useState(false)
   const [micOn, setMicOn] = useState(true)
@@ -546,7 +570,7 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
             lastReading.current = reading
 
             if (lms && m) {
-              drawSkeleton(ctx, lms, c.width, c.height)
+              drawSkeleton(ctx, lms, c.width, c.height, skeletonEdges, skeletonJoints)
               drawAnkleLabels(ctx, lms, c.width, c.height, reading)
               // Full-body readout, throttled to ~8 Hz so ten live numbers
               // don't re-render the dashboard on every camera frame.
@@ -570,7 +594,7 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
             const rctx = rc.getContext('2d')!
             rctx.drawImage(v, 0, 0, rc.width, rc.height)
             drawGuideLines(rctx, rc.width, rc.height)
-            if (lms) { drawSkeleton(rctx, lms, rc.width, rc.height); drawAnkleLabels(rctx, lms, rc.width, rc.height, reading) }
+            if (lms) { drawSkeleton(rctx, lms, rc.width, rc.height, skeletonEdges, skeletonJoints); drawAnkleLabels(rctx, lms, rc.width, rc.height, reading) }
           } catch (e) { /* per-frame */ }
         }
         rafRef.current = requestAnimationFrame(loop)
@@ -580,7 +604,7 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
 
     return () => { cancelled = true; if (rafRef.current) cancelAnimationFrame(rafRef.current) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role, hasRemote])
+  }, [role, hasRemote, focus])
 
   // ── Recording (host) ────────────────────────────────────────────────────────
   function recordFrame(reading: LastReading, nowMs: number) {
@@ -776,7 +800,7 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
         <div className="flex items-center gap-2">
           <Video size={15} className="text-cyan-400" />
           <span className="text-sm font-semibold tracking-wide">
-            Remote Assessment {role === 'host' ? '· Practitioner' : '· You'}
+            Remote Assessment {lowerLimbOnly ? '· Lower limb' : ''} {role === 'host' ? '· Practitioner' : '· You'}
           </span>
           {statusPill}
         </div>
@@ -819,12 +843,22 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
 
             {/* Evaluator dashboard */}
             <aside className="flex w-80 flex-shrink-0 flex-col gap-3 overflow-y-auto border-l border-slate-800 bg-slate-950 p-3">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-300">Evaluator dashboard</div>
+              <div className="flex items-center justify-between">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-300">Evaluator dashboard</div>
+                {lowerLimbOnly && (
+                  <span className="rounded bg-violet-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-violet-300">
+                    Lower-limb focus
+                  </span>
+                )}
+              </div>
 
-              {/* Live full-body joint readout */}
+              {/* Live joint readout — every joint in 'full' focus, ankle only
+                  in 'lowerLimb' focus (see the Props.focus doc comment). */}
               <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
                 <div className="mb-1.5 flex items-center justify-between">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Live joints</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                    {lowerLimbOnly ? 'Live ankle tracking' : 'Live joints'}
+                  </span>
                   <span className="flex items-center gap-1 text-[9px] text-slate-500">
                     <span className={`h-1.5 w-1.5 rounded-full ${liveJoints ? 'animate-pulse bg-emerald-400' : 'bg-slate-600'}`} />
                     {liveJoints ? 'tracking' : 'no pose'}
@@ -834,7 +868,7 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
                   <div className="grid grid-cols-[1fr_3rem_3rem] gap-1 text-[9px] uppercase tracking-wider text-slate-500">
                     <span /> <span className="text-right text-orange-300/80">Left</span> <span className="text-right text-cyan-300/80">Right</span>
                   </div>
-                  {JOINT_ROWS.map(({ key, label }) => {
+                  {jointRows.map(({ key, label }) => {
                     const j = liveJoints?.[key]
                     const conf = key === 'ankle' ? ankleConfidence : null
                     return (
@@ -853,11 +887,19 @@ export function RemoteAssessmentCall({ open, role, roomId, onClose }: Props) {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <Metric label="Steps" value={String(stepCount)} tone="slate" />
-                <Metric label="Joints tracked" value={liveJoints ? String(Object.values(liveJoints).reduce((n, j) => n + (j.l != null ? 1 : 0) + (j.r != null ? 1 : 0), 0)) : '—'} tone="cyan" />
+                <Metric
+                  label={lowerLimbOnly ? 'Ankles tracked' : 'Joints tracked'}
+                  value={liveJoints ? String(jointRows.reduce((n, { key }) => {
+                    const j = liveJoints[key]
+                    return n + (j?.l != null ? 1 : 0) + (j?.r != null ? 1 : 0)
+                  }, 0)) : '—'}
+                  tone="cyan"
+                />
               </div>
               <div className="text-[10px] text-slate-500">
-                Angles are flexion from straight (shoulder = elevation). Ankle is depth-corrected shank↔foot
-                and zeroes to neutral the instant you press "Start recording walk" — the dot shows live tracking confidence.
+                {lowerLimbOnly
+                  ? 'Ankle angle is depth-corrected shank↔foot and zeroes to neutral the instant you press "Start recording walk" — the dot shows live tracking confidence.'
+                  : 'Angles are flexion from straight (shoulder = elevation). Ankle is depth-corrected shank↔foot and zeroes to neutral the instant you press "Start recording walk" — the dot shows live tracking confidence.'}
               </div>
 
               {/* Tools */}

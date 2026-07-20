@@ -14,6 +14,9 @@ export type { LowerLimbFrame, LowerLimbTrackerOptions, ConfidenceBand } from './
 export { createPoseDetector, detectVideoFrame, disposePoseDetector } from './poseDetector'
 export type { PoseDetectorOptions } from './poseDetector'
 
+export { getIceServers, probeTurnRelay, meteredCredentialUrl } from './ice'
+export type { IceServersOptions, MeteredTurnConfig, StaticTurnConfig } from './ice'
+
 export { createLandmarkFilter } from './signalFilter'
 export type { LandmarkFilter, FilterCalibration } from './signalFilter'
 

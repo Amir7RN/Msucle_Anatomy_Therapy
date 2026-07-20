@@ -6,59 +6,20 @@
  * show exercises with a "Start session" button per exercise.
  */
 
-import React, { useEffect, useMemo, useState } from 'react'
-import { X, Sparkles, Loader2, AlertCircle, Play, Calendar, ChevronDown } from 'lucide-react'
+import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { X, Sparkles, Loader2, AlertCircle, Play, Calendar, ChevronDown, Clock, Dumbbell, Repeat, Crosshair } from 'lucide-react'
 import {
   generatePersonalProgram,
   loadPersonalProgram,
   type PersonalProgram,
   type ProgramExercise,
+  type ProgramSession,
 } from '../../lib/insights/personalProgram'
 import { ExerciseGuidance } from '../movement/ExerciseGuidance'
 import { useAtlasStore } from '../../store/atlasStore'
-
-// Map of exerciseId -> { label, videoSrc } so we can launch the existing
-// ExerciseGuidance component. Pulled from MetadataPanel's EXERCISE_MAP via a
-// thin lookup table to avoid coupling.
-const EXERCISE_RESOLVER: Record<string, { label: string; src: string }> = (() => {
-  // Shoulder/deltoid + glute/hamstring videos live in public/videos/ (flat).
-  const base = import.meta.env.BASE_URL
-  const V = (n: string) => `${base}videos/${n}`
-  // Bicep & Quad videos live OUTSIDE public/ as Vite asset-pipeline imports
-  // (../../../Videos/...) - we re-use the same paths MetadataPanel resolves
-  // via new URL(...) so the build hashes them and copies them into /assets.
-  const VB = (n: string) => new URL(`../../../Videos/Bicep/${n}`, import.meta.url).href
-  const VQ = (n: string) => new URL(`../../../Videos/QuadRecipts/${n}`, import.meta.url).href
-  return {
-    // Shoulder / Deltoid (public/videos)
-    doorway_stretch:        { label: 'Doorway Stretch',          src: V('DoorWay_Stretch.mp4') },
-    seated_cross_arm:       { label: 'Seated Cross-Arm Stretch', src: V('Seated_Cross_Arm_Stretch.mp4') },
-    standing_sleeper:       { label: 'Standing Sleeper Stretch', src: V('Standing_Sleeper_Stretch.mp4') },
-    hand_behind_back:       { label: 'Hand Behind Back Stretch', src: V('Hand_Behind_Back_Stretch.mp4') },
-    standing_chest:         { label: 'Standing Chest Stretch',   src: V('Standing_Chest_Stretch.mp4') },
-    crab_press:             { label: 'Crab Press',               src: V('Crab_Press.mp4') },
-    side_lying_er:          { label: 'Side-Lying ER',            src: V('Side_Lying_External_Rotation.mp4') },
-    post_shoulder:          { label: 'Posterior Shoulder',       src: V('Posterior_Shoulder_Stretch.mp4') },
-    wand_rotation:          { label: 'Wand Rotation',            src: V('Wand_Rotation.mp4') },
-    // Biceps / elbow (Videos/Bicep)
-    bb_flex_ext:            { label: 'Biceps Flex / Extend',     src: VB('Flexion and Extension.mp4') },
-    bb_shoulder_flex:       { label: 'Shoulder Flexion',         src: VB('Single Shoulder Flexion.mp4') },
-    bb_wall_stretch:        { label: 'Wall Biceps Stretch',      src: VB('Biceps Stretch.mp4') },
-    bb_ext_rotation:        { label: 'External Rotation',        src: VB('Reclining External Rotation.mp4') },
-    bb_sleeper_stretch:     { label: 'Sleeper Stretch',          src: VB('Sleeper Stretch.mp4') },
-    // Glute / hip / hamstring (public/videos)
-    glute_bridge:           { label: 'Glute Bridge',             src: V('Glute_Bridge_Exercise.mp4') },
-    hip_hinge:              { label: 'Hip Hinge',                src: V('Hip_Hinge_Exercise.mp4') },
-    side_clamshell:         { label: 'Side Clamshell',           src: V('Glute_Bridge_Exercise.mp4') },
-    hamstring_squeeze:      { label: 'Hamstring Squeeze',        src: V('Hamstring_Squeeze.mp4') },
-    // Quad (Videos/QuadRecipts)
-    qd_wall_squat:          { label: 'Wall Squat',                src: VQ('Wall Squat.mp4') },
-    qd_stiff_deadlift:      { label: 'Stiff-Leg Deadlift',        src: VQ('Stiff-legged Deadlift.mp4') },
-    qd_quad_stretch_stand:  { label: 'Standing Quad Stretch',     src: VQ('Quad stretch (standing).mp4') },
-    qd_quad_stretch_side:   { label: 'Side-Lying Quad Stretch',   src: VQ('Quad stretch (lying on side).mp4') },
-    qd_hamstring_supine:    { label: 'Supine Hamstring Stretch',  src: VQ('Hamstring stretch (lying down).mp4') },
-  }
-})()
+import { resolveExercise } from '../../lib/movement/exerciseCatalog'
+import { worstDeficitFor } from '../../lib/insights/deficits'
+import { subscribeROM, getROMVersion } from '../../lib/movement/romHistory'
 
 interface Props {
   open:    boolean
@@ -249,9 +210,10 @@ export function PersonalProgramView({ open, onClose }: Props) {
                           <span className="text-slate-200">{session.title}</span>
                           <span className="text-slate-500">~{session.durationMin} min</span>
                         </div>
+                        <SessionSummary session={session} />
                         {session.exercises.map((ex, ei) => (
                           <ExerciseRow key={ei} ex={ex} onStart={() => {
-                            const resolved = ex.exerciseId ? EXERCISE_RESOLVER[ex.exerciseId] : undefined
+                            const resolved = resolveExercise(ex.exerciseId)
                             if (resolved) {
                               setRunning({
                                 exerciseId: ex.exerciseId!,
@@ -286,14 +248,59 @@ export function PersonalProgramView({ open, onClose }: Props) {
   )
 }
 
+/** "3 sets of 30-second hold" → 3. Defaults to 2 when unparseable. */
+function parseSetCount(prescription: string): number {
+  const m = prescription.match(/(\d+)\s*sets?/i)
+  return m ? Number(m[1]) : 2
+}
+
+/**
+ * Pre-session commitment strip: time, equipment, volume — everything the
+ * user needs to decide "can I do this now" before the first rep.
+ */
+function SessionSummary({ session }: { session: ProgramSession }) {
+  const totalSets = session.exercises.reduce((n, ex) => n + parseSetCount(ex.prescription), 0)
+  const equipment = Array.from(new Set(
+    session.exercises
+      .map((ex) => resolveExercise(ex.exerciseId)?.equipment)
+      .filter((e): e is string => !!e),
+  ))
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded border border-slate-700/70 bg-slate-900/50 px-2.5 py-1.5 text-[10px] text-slate-300">
+      <span className="flex items-center gap-1">
+        <Clock size={10} className="text-cyan-400" />
+        ~{session.durationMin} min
+      </span>
+      <span className="flex items-center gap-1">
+        <Repeat size={10} className="text-cyan-400" />
+        {session.exercises.length} exercises · {totalSets} sets
+      </span>
+      <span className="flex items-center gap-1 min-w-0">
+        <Dumbbell size={10} className="text-cyan-400" />
+        <span className="truncate">{equipment.length > 0 ? equipment.join(' · ') : 'No equipment'}</span>
+      </span>
+    </div>
+  )
+}
+
 function ExerciseRow({ ex, onStart }: { ex: ProgramExercise; onStart: () => void }) {
-  const startable = !!ex.exerciseId && !!EXERCISE_RESOLVER[ex.exerciseId]
+  const startable = !!resolveExercise(ex.exerciseId)
+  // "Why this exercise" — the user's own measured deficit, when one exists.
+  // Re-computed when ROM history changes (new assessment, sign-in hydration).
+  const romV = useSyncExternalStore(subscribeROM, getROMVersion)
+  const deficit = useMemo(() => worstDeficitFor(ex.muscleId), [ex.muscleId, romV])
   return (
     <div className="rounded border border-slate-700 bg-slate-900/70 p-2.5">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="text-xs font-semibold text-slate-100">{ex.name}</div>
           <div className="text-[10px] text-cyan-300 mt-0.5">{ex.prescription}</div>
+          {deficit && (
+            <div className="mt-1 flex items-start gap-1 text-[10px] text-amber-300 leading-snug">
+              <Crosshair size={10} className="mt-0.5 flex-shrink-0" />
+              <span>{deficit.line}</span>
+            </div>
+          )}
           <div className="text-[10px] text-slate-400 mt-1 leading-snug">{ex.rationale}</div>
         </div>
         <button

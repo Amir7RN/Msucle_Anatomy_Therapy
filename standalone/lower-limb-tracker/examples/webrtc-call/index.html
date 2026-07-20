@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Lower-Limb Tracker — live remote call example</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  body { margin: 0; background: #0b1120; color: #e2e8f0; font: 14px ui-sans-serif, system-ui, sans-serif; }
+  .wrap { max-width: 900px; margin: 24px auto; padding: 0 16px; }
+  .stage { position: relative; width: 100%; background: #000; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; }
+  video, canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  canvas { pointer-events: none; }
+  .row { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; align-items: center; }
+  button { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 8px 14px; cursor: pointer; font-weight: 600; }
+  button:hover { background: #334155; }
+  input { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; border-radius: 6px; padding: 6px 10px; flex: 1; min-width: 200px; }
+  .readout { display: flex; gap: 24px; font-variant-numeric: tabular-nums; margin-top: 8px; }
+  .left { color: #fb923c; } .right { color: #22d3ee; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .ok { background: #064e3b; color: #6ee7b7; } .bad { background: #450a0a; color: #fca5a5; } .warn { background: #451a03; color: #fdba74; }
+  a { color: #22d3ee; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Live remote call example (WebRTC + TURN + LowerLimbTracker)</h1>
+  <p>
+    Full reference integration: two browsers connect peer-to-peer over WebRTC (TURN-relayed when needed),
+    and the HOST runs <code>LowerLimbTracker</code> against the CLIENT's incoming video. Read this file's
+    &lt;script&gt; and the README's "Building a live remote call" section together — this page is the
+    concrete version of that walkthrough. Requires <code>node signaling-server.js</code> running
+    (see this folder's package.json) and <code>npm run build</code> having produced
+    <code>dist/lower-limb-tracker.esm.js</code> in the package root.
+  </p>
+
+  <div class="row">
+    <label>Room: <input id="room" value="demo-room" /></label>
+    <button id="hostBtn">Join as HOST (practitioner)</button>
+    <button id="clientBtn">Join as CLIENT (tracked person)</button>
+  </div>
+  <div class="row">
+    <span>TURN relay: <span id="turnStatus" class="pill warn">not tested</span></span>
+    <button id="testTurn">Test TURN relay</button>
+  </div>
+
+  <div class="stage">
+    <video id="video" autoplay playsinline></video>
+    <canvas id="overlay"></canvas>
+  </div>
+
+  <div class="readout" id="hostReadout" style="display:none">
+    <div class="left">L ankle <b id="la">—</b></div>
+    <div class="right">R ankle <b id="ra">—</b></div>
+  </div>
+</div>
+
+<script type="module">
+  import { LowerLimbTracker, getIceServers, probeTurnRelay } from '../../dist/lower-limb-tracker.esm.js'
+
+  // ── 1. TURN configuration — see README "Getting a free TURN key from
+  //    Metered.ca" for exactly how to obtain these two values. Leave them
+  //    blank to test STUN-only (works same-network only). ──────────────────
+  const METERED_DOMAIN = ''   // e.g. 'myapp.metered.live'
+  const METERED_API_KEY = ''  // from dashboard.metered.ca
+
+  function iceOptions() {
+    return METERED_DOMAIN && METERED_API_KEY
+      ? { metered: { meteredDomain: METERED_DOMAIN, meteredApiKey: METERED_API_KEY } }
+      : {}
+  }
+
+  document.getElementById('testTurn').addEventListener('click', async () => {
+    const pill = document.getElementById('turnStatus')
+    pill.textContent = 'testing…'; pill.className = 'pill warn'
+    const servers = await getIceServers(iceOptions())
+    const ok = await probeTurnRelay(servers)
+    pill.textContent = ok ? 'relay OK' : 'no relay (check TURN config)'
+    pill.className = 'pill ' + (ok ? 'ok' : 'bad')
+  })
+
+  // ── 2. Signaling — a plain WebSocket relay (signaling-server.js). Swap
+  //    this whole section for your own real-time channel if you have one;
+  //    everything else (steps 3-4) only needs `send(msg)` / `onMessage(msg)`. ─
+  function connectSignaling(room, onMessage) {
+    const ws = new WebSocket(`ws://localhost:8080?room=${encodeURIComponent(room)}`)
+    const ready = new Promise((resolve) => ws.addEventListener('open', () => resolve()))
+    ws.addEventListener('message', (e) => onMessage(JSON.parse(e.data)))
+    return { ready, send: (msg) => ws.send(JSON.stringify(msg)), close: () => ws.close() }
+  }
+
+  // ── 3. WebRTC plumbing — identical shape for host and client, just which
+  //    side calls createOffer() differs (the client always offers here). ────
+  async function startCall(role) {
+    const room = document.getElementById('room').value.trim() || 'demo-room'
+    const iceServers = await getIceServers(iceOptions())
+    const pc = new RTCPeerConnection({ iceServers })
+    const video = document.getElementById('video')
+
+    let sig
+    pc.onicecandidate = (e) => { if (e.candidate) sig.send({ kind: 'ice', data: e.candidate }) }
+    pc.ontrack = (e) => {
+      video.srcObject = e.streams[0]
+      if (role === 'host') void attachTracker(video)
+    }
+
+    sig = connectSignaling(room, async (msg) => {
+      if (msg.kind === 'offer') {
+        await pc.setRemoteDescription(msg.data)
+        const answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
+        sig.send({ kind: 'answer', data: answer })
+      } else if (msg.kind === 'answer') {
+        await pc.setRemoteDescription(msg.data)
+      } else if (msg.kind === 'ice') {
+        try { await pc.addIceCandidate(msg.data) } catch { /* ignore */ }
+      }
+    })
+    await sig.ready
+
+    if (role === 'client') {
+      // The tracked person's own camera goes out to the host.
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 }, audio: true })
+      stream.getTracks().forEach((t) => pc.addTrack(t, stream))
+      video.muted = true // avoid hearing your own mic locally
+      const offer = await pc.createOffer()
+      await pc.setLocalDescription(offer)
+      sig.send({ kind: 'offer', data: offer })
+    } else {
+      // Host: audio only, for talking the client through the assessment.
+      try {
+        const mic = await navigator.mediaDevices.getUserMedia({ audio: true })
+        mic.getTracks().forEach((t) => pc.addTrack(t, mic))
+      } catch { /* host can still receive video without a mic */ }
+      document.getElementById('hostReadout').style.display = 'flex'
+    }
+  }
+
+  // ── 4. Once the host's <video> has the client's stream, point
+  //    LowerLimbTracker at it exactly like the vanilla example does. ────────
+  async function attachTracker(video) {
+    const overlay = document.getElementById('overlay')
+    const tracker = new LowerLimbTracker(video, { overlayCanvas: overlay })
+    tracker.onFrame((f) => {
+      document.getElementById('la').textContent = f.leftAnkleDeg == null ? '—' : `${Math.round(f.leftAnkleDeg)}°`
+      document.getElementById('ra').textContent = f.rightAnkleDeg == null ? '—' : `${Math.round(f.rightAnkleDeg)}°`
+    })
+    await tracker.start()
+  }
+
+  document.getElementById('hostBtn').addEventListener('click', () => startCall('host'))
+  document.getElementById('clientBtn').addEventListener('click', () => startCall('client'))
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "webrtc-call-example-signaling-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Throwaway local signaling relay for the webrtc-call example — not for production use.",
+  "scripts": {
+    "start": "node signaling-server.js"
+  },
+  "dependencies": {
+    "ws": "^8.17.0"
+  }
+}
