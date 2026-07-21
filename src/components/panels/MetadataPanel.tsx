@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import * as THREE from 'three'
-import { MousePointerClick, MapPin, Zap, StickyNote, Activity, Play, Mic, Square, Volume2, ChevronDown, ChevronRight, Camera, ArrowDown, X } from 'lucide-react'
+import { MousePointerClick, MapPin, Zap, StickyNote, Activity, Play, Mic, Square, Volume2, ChevronDown, ChevronRight, Camera, ArrowDown, X, Info } from 'lucide-react'
 import { getGuideSeen, markGuideSeen, subscribeGuide } from '../../lib/guideProgress'
 import { ExerciseGuidance } from '../movement/ExerciseGuidance'
 import { AssessmentView } from '../assessment/AssessmentView'
@@ -717,10 +717,10 @@ function ExploreGuideHint() {
   if (seen.has('explore')) return null
   return (
     <div className="flex items-start gap-2 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-[11px] leading-snug text-cyan-200">
-      <ArrowDown size={14} className="mt-0.5 flex-shrink-0 animate-bounce text-cyan-300" />
+      <ArrowDown size={22} strokeWidth={2.5} className="mt-0.5 flex-shrink-0 animate-bounce text-cyan-300" />
       <span className="flex-1">
-        Explore the exercises below — tap{' '}
-        <span className="font-semibold text-white">Guide</span> on any of them to
+        <span className="font-semibold text-white">Your exercises are below.</span>{' '}
+        Tap <span className="font-semibold text-white">Guide</span> on any of them to
         have the camera coach check your posture live.
       </span>
       <button
@@ -1085,6 +1085,9 @@ export function MetadataPanel() {
   const showPainOverlay  = useAtlasStore((s) => s.showPainOverlay)
   const togglePainOverlay = useAtlasStore((s) => s.togglePainOverlay)
   const [speaking, setSpeaking] = useState(false)
+  // Researcher-grade anatomy/pain reference is collapsed by default so it never
+  // buries the primary flow (exercises + progress).
+  const [detailsOpen, setDetailsOpen] = useState(false)
 
   const meta = selectedId ? sceneIndex.metadataById.get(selectedId) : undefined
   const pain = selectedId ? PAIN_PATTERNS[selectedId] : undefined
@@ -1145,57 +1148,69 @@ export function MetadataPanel() {
         </Button>
       </div>
 
-      {/* Scrollable detail rows */}
+      {/* Scrollable detail rows — action-first. The exercises + progress lead;
+          the anatomy/pain reference is tucked into a collapsible block so it
+          never buries what the user actually came to do. */}
       <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-3">
-        {/* Progress Assessment — between muscle name and exercises */}
-        <AssessmentMount muscleName={meta?.displayName ?? null} selectedId={selectedId} />
-
         {selectedId && <ExploreGuideHint />}
         {selectedId && <ExerciseVideos muscleId={selectedId} />}
 
-        <MetaRow
-          icon={<Activity size={10} />}
-          label="Pain Referral Pattern"
-          value={pain?.description}
-        />
-        {pain && (
-          <div className="mb-2 -mt-2 flex items-center justify-end gap-2">
+        {/* Progress Assessment */}
+        <AssessmentMount muscleName={meta?.displayName ?? null} selectedId={selectedId} />
+
+        {/* Collapsible anatomy + pain reference (formerly always-on rows) */}
+        {(pain || meta?.origin || meta?.action || meta?.notes) && (
+          <div className="rounded-lg border border-slate-200 dark:border-slate-700/60">
             <button
-              onClick={speaking ? stopPainPattern : speakPainPattern}
-              className="inline-flex items-center gap-1 rounded border border-slate-300 px-2 py-0.5 text-[10px] text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
-              title="Read pain referral pattern aloud"
+              onClick={() => setDetailsOpen((v) => !v)}
+              className="flex w-full items-center justify-between px-3 py-2 text-left"
+              aria-expanded={detailsOpen}
             >
-              {speaking ? <Square size={10} /> : <Mic size={10} />}
-              {speaking ? 'Stop voice' : 'Voice'}
+              <span className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                <Info size={12} />
+                Anatomy &amp; pain details
+              </span>
+              {detailsOpen
+                ? <ChevronDown size={14} className="text-slate-400" />
+                : <ChevronRight size={14} className="text-slate-400" />}
             </button>
-            <button
-              onClick={togglePainOverlay}
-              className={[
-                'text-[10px] px-2 py-0.5 rounded border font-medium transition-colors',
-                showPainOverlay
-                  ? 'border-red-300 text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 dark:border-red-700'
-                  : 'border-slate-200 text-slate-400 bg-transparent dark:border-slate-600',
-              ].join(' ')}
-            >
-              {showPainOverlay ? '● On' : '○ Off'}
-            </button>
+            {detailsOpen && (
+              <div className="px-3 pb-2">
+                <MetaRow
+                  icon={<Activity size={10} />}
+                  label="Pain Referral Pattern"
+                  value={pain?.description}
+                />
+                {pain && (
+                  <div className="mb-2 -mt-1 flex items-center justify-end gap-2">
+                    <button
+                      onClick={speaking ? stopPainPattern : speakPainPattern}
+                      className="inline-flex items-center gap-1 rounded border border-slate-300 px-2 py-0.5 text-[10px] text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                      title="Read pain referral pattern aloud"
+                    >
+                      {speaking ? <Square size={10} /> : <Mic size={10} />}
+                      {speaking ? 'Stop voice' : 'Voice'}
+                    </button>
+                    <button
+                      onClick={togglePainOverlay}
+                      className={[
+                        'text-[10px] px-2 py-0.5 rounded border font-medium transition-colors',
+                        showPainOverlay
+                          ? 'border-red-300 text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 dark:border-red-700'
+                          : 'border-slate-200 text-slate-400 bg-transparent dark:border-slate-600',
+                      ].join(' ')}
+                    >
+                      {showPainOverlay ? '● Pain map On' : '○ Pain map Off'}
+                    </button>
+                  </div>
+                )}
+                <MetaRow icon={<MapPin size={10} />}     label="Origin"       value={meta?.origin} />
+                <MetaRow icon={<Zap size={10} />}        label="Action"       value={meta?.action} />
+                <MetaRow icon={<StickyNote size={10} />} label="Intervention" value={meta?.notes} />
+              </div>
+            )}
           </div>
         )}
-        <MetaRow
-          icon={<MapPin size={10} />}
-          label="Origin"
-          value={meta?.origin}
-        />
-        <MetaRow
-          icon={<Zap size={10} />}
-          label="Action"
-          value={meta?.action}
-        />
-        <MetaRow
-          icon={<StickyNote size={10} />}
-          label="Intervention"
-          value={meta?.notes}
-        />
       </div>
     </div>
   )
