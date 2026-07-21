@@ -56,6 +56,18 @@ function AtlasApp() {
       if (!state.diagnosticMode) state.toggleDiagnosticMode()
       state.setTriageOpen(true)
     }
+    // Deep-link a feature open from the landing-page cards, e.g.
+    // ?atlas=1&feature=twin. Profile/Twin have their own open flags; the rest
+    // route through featureModalToOpen (consumed by AppHeader).
+    const feature = params.get('feature')
+    if (feature) {
+      const state = useAtlasStore.getState()
+      if (feature === 'twin')         state.setTwinOpen(true)
+      else if (feature === 'profile') state.setProfileOpen(true)
+      else if (feature === 'battery' || feature === 'remote' || feature === 'program' || feature === 'symmetry' || feature === 'health') {
+        state.setFeatureModalToOpen(feature)
+      }
+    }
   }, [])
 
   // ── URL hash sync for selected muscle ──────────────────────────────────────
