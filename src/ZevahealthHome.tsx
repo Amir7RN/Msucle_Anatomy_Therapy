@@ -3,6 +3,7 @@ import {
   Activity,
   ArrowRight,
   Bot,
+  CalendarCheck,
   Camera,
   ChevronRight,
   Gauge,
@@ -12,10 +13,14 @@ import {
   MessageSquare,
   Mic,
   MousePointerClick,
+  Move3d,
   PlayCircle,
+  Radar,
+  Scale,
   ScanSearch,
   ShieldCheck,
   Sparkles,
+  Video,
   Zap,
 } from 'lucide-react'
 import { useAuth } from './lib/auth/authContext'
@@ -287,6 +292,92 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
         <AICoachPanel />
       </FeatureSplit>
 
+      {/* ── Explore the platform — capture tools → results ──────────────────── */}
+      <section id="platform" className="relative z-10 mx-auto max-w-6xl px-5 py-14 sm:px-8 lg:py-20">
+        <Reveal>
+          <PanelHeader
+            eyebrow="Explore the platform"
+            icon={<Radar className="h-3.5 w-3.5" />}
+            title="See how your body really moves."
+            subtitle="Three ways to capture how you move — then two reports the platform builds for you, automatically."
+            hue="cyan"
+          />
+        </Reveal>
+
+        {/* Group 1 — capture & analyse */}
+        <Reveal>
+          <div className="mb-5 flex items-center gap-3">
+            <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">
+              Capture &amp; analyze
+            </span>
+            <span className="h-px flex-1 bg-slate-900/5" />
+          </div>
+        </Reveal>
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {ANALYZE_TOOLS.map((t, i) => (
+            <Reveal key={t.title} delay={i * 80}>
+              <div
+                className={`zh-shine group relative h-full rounded-3xl border bg-white p-7 shadow-[0_24px_60px_-35px_rgba(15,23,42,0.3)] transition hover:-translate-y-1 hover:shadow-[0_30px_70px_-30px_rgba(15,23,42,0.4)] ${
+                  t.featured ? 'border-violet-200' : 'border-slate-900/5'
+                }`}
+              >
+                {t.featured && (
+                  <span className="absolute right-5 top-5 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-500">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-500" /> live
+                  </span>
+                )}
+                <span className={`mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl ${t.tile} transition group-hover:scale-110`}>
+                  {t.icon}
+                </span>
+                <h3 className="text-lg font-bold text-slate-900">{t.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-500">{t.body}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+
+        {/* Connector — the results flow out of the tools above */}
+        <div className="my-8 flex items-center justify-center gap-3">
+          <span className="h-px w-10 bg-slate-900/10 sm:w-16" />
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+            <ArrowRight className="h-3.5 w-3.5" /> Your results, automatically
+          </span>
+          <span className="h-px w-10 bg-slate-900/10 sm:w-16" />
+        </div>
+
+        {/* Group 2 — results, derived from an assessment */}
+        <div className="mx-auto grid max-w-3xl gap-5 sm:grid-cols-2">
+          {RESULT_TOOLS.map((t, i) => (
+            <Reveal key={t.title} delay={i * 80}>
+              <div className="zh-shine group h-full rounded-3xl border border-slate-900/5 bg-white p-7 shadow-[0_24px_60px_-35px_rgba(15,23,42,0.3)] transition hover:-translate-y-1 hover:shadow-[0_30px_70px_-30px_rgba(15,23,42,0.4)]">
+                <div className="flex items-start justify-between gap-3">
+                  <span className={`inline-flex h-12 w-12 items-center justify-center rounded-2xl ${t.tile} transition group-hover:scale-110`}>
+                    {t.icon}
+                  </span>
+                  <span className="rounded-full border border-slate-900/10 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                    From your assessment
+                  </span>
+                </div>
+                <h3 className="mt-5 text-lg font-bold text-slate-900">{t.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-500">{t.body}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+
+        {/* CTA into the app */}
+        <Reveal>
+          <div className="mt-10 text-center">
+            <a
+              href={atlasUrl}
+              className="group inline-flex items-center justify-center gap-2 rounded-full bg-slate-900 px-7 py-3.5 text-sm font-semibold text-white shadow-[0_18px_45px_-18px_rgba(15,23,42,0.6)] transition hover:-translate-y-0.5"
+            >
+              Try it on your body <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+            </a>
+          </div>
+        </Reveal>
+      </section>
+
       {/* ── Why Zevahealth — benefits grid ──────────────────────────────────── */}
       <section id="why" className="relative z-10 mx-auto max-w-6xl px-5 py-14 sm:px-8 lg:py-20">
         <Reveal>
@@ -444,6 +535,57 @@ const BENEFITS: { title: string; body: string; icon: React.ReactNode; tile: stri
     title: 'Movement assessment',
     body: 'Measure your range of motion and symmetry over time — a full movement assessment with no wearables needed.',
     icon: <Zap className="h-6 w-6" />,
+    tile: 'bg-teal-100 text-teal-600',
+  },
+]
+
+/* ── Platform section data ───────────────────────────────────────────────────
+   Two groups, mirroring how the tools actually relate: three ways to CAPTURE /
+   analyse movement, and two RESULTS the platform builds from them. Colours match
+   the in-app toolkit rail (twin=violet, assessment=cyan, remote=rose,
+   program=orange, symmetry=teal) so the landing and the app read as one system. */
+type PlatformTool = {
+  title: string
+  body: string
+  icon: React.ReactNode
+  tile: string
+  /** Emphasise the flagship card with a live-dot ring. */
+  featured?: boolean
+}
+
+const ANALYZE_TOOLS: PlatformTool[] = [
+  {
+    title: 'Live Muscle Twin',
+    body: 'Real-time motion analysis: watch muscle effort and fatigue build live as you move — a motion analyzer for any workout or activity.',
+    icon: <Radar className="h-6 w-6" />,
+    tile: 'bg-violet-100 text-violet-600',
+    featured: true,
+  },
+  {
+    title: 'Movement Assessment',
+    body: "Checks every body segment's mobility and range of motion, measured by camera — no wearables to strap on.",
+    icon: <Move3d className="h-6 w-6" />,
+    tile: 'bg-cyan-100 text-cyan-600',
+  },
+  {
+    title: 'Remote Assessment',
+    body: 'The same live motion analysis as your Muscle Twin, run together over a video call.',
+    icon: <Video className="h-6 w-6" />,
+    tile: 'bg-rose-100 text-rose-500',
+  },
+]
+
+const RESULT_TOOLS: PlatformTool[] = [
+  {
+    title: 'My AI Program',
+    body: 'A personalized 4-week plan, generated automatically from your movement assessment results.',
+    icon: <CalendarCheck className="h-6 w-6" />,
+    tile: 'bg-orange-100 text-orange-500',
+  },
+  {
+    title: 'Symmetry Report',
+    body: 'Left-vs-right balance, side by side — drawn straight from your assessment.',
+    icon: <Scale className="h-6 w-6" />,
     tile: 'bg-teal-100 text-teal-600',
   },
 ]
