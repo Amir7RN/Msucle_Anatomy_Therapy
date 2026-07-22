@@ -24,7 +24,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArrowRight, Sparkles, Copy, RotateCcw, Check } from 'lucide-react'
 
-const mainVideoUrl = new URL('../../../MainVideoLanding.mp4', import.meta.url).href
+// Hero video is the cinematic "golf → shoulder → open Zeva" story clip. The
+// old MainVideoLanding demo + its data callout boxes moved into the platform
+// section (see ZevahealthHome MovementShowcase).
+const mainVideoUrl = new URL('../../../FireFlyZevaHealthAI.mp4', import.meta.url).href
 
 // Design coordinate space. All layout numbers below are in these units. The
 // canvas is scaled to fit the column width, so the whole arrangement stays intact
@@ -61,6 +64,10 @@ const DEFAULT_LAYOUT: HeroLayout = {
 }
 
 const ITEM_IDS: (keyof HeroLayout)[] = ['badge', 'headline', 'copy', 'cta', 'video', 'twin', 'engagement', 'balance', 'rom']
+// The data callout boxes now live in the platform section, so the hero renders
+// only the copy groups + the video. (Layout/types for the boxes are kept so any
+// saved editor JSON stays valid.)
+const HERO_RENDER_IDS: (keyof HeroLayout)[] = ['badge', 'headline', 'copy', 'cta', 'video']
 const ITEM_LABEL: Record<keyof HeroLayout, string> = {
   badge: 'Badge', headline: 'Headline', copy: 'Paragraph', cta: 'Buttons',
   video: 'Video frame', twin: 'Digital Twin',
@@ -313,13 +320,6 @@ export function HeroStage({ atlasUrl, diagnosticUrl }: { atlasUrl: string; diagn
         </div>
         <div className="mt-8">
           <VideoFrame />
-          {/* Data boxes are hidden on phones (< sm) per request; tablet (sm–lg)
-              keeps the original 2-up grid, desktop uses the canvas below. */}
-          <div className="mt-3 hidden gap-3 sm:grid sm:grid-cols-2">
-            {(['engagement', 'balance', 'rom'] as const).map((id) => (
-              <div key={id}>{itemContent(id, live, urls)}</div>
-            ))}
-          </div>
         </div>
       </div>
 
@@ -329,7 +329,7 @@ export function HeroStage({ atlasUrl, diagnosticUrl }: { atlasUrl: string; diagn
           className="absolute left-0 top-0"
           style={{ width: DESIGN_W, height: DESIGN_H, transform: `scale(${scale})`, transformOrigin: 'top left' }}
         >
-          {ITEM_IDS.map((id) => {
+          {HERO_RENDER_IDS.map((id) => {
             const it = layout[id]
             return (
               <div

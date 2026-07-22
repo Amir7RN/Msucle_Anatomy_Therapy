@@ -9,6 +9,7 @@ import { SymmetryReport } from '../insights/SymmetryReport'
 import { PersonalProgramView } from '../insights/PersonalProgramView'
 import { FullBodyAssessmentView } from '../assessment/FullBodyAssessmentView'
 import { HealthImportView } from '../health/HealthImportView'
+import { returnToLandingIfDeepLinked } from '../../lib/returnToLanding'
 
 export function AppHeader() {
   const modelStatus = useAtlasStore((s) => s.modelStatus)
@@ -146,9 +147,9 @@ export function AppHeader() {
       )}
 
       <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
-      <SymmetryReport       open={symOpen}  onClose={() => setSymOpen(false)} />
-      <PersonalProgramView open={progOpen} onClose={() => setProgOpen(false)} />
-      <FullBodyAssessmentView open={batteryOpen} startInCall={batteryInCall} onClose={() => { setBatteryOpen(false); setBatteryInCall(false) }} />
+      <SymmetryReport       open={symOpen}  onClose={() => { if (returnToLandingIfDeepLinked()) return; setSymOpen(false) }} />
+      <PersonalProgramView open={progOpen} onClose={() => { if (returnToLandingIfDeepLinked()) return; setProgOpen(false) }} />
+      <FullBodyAssessmentView open={batteryOpen} startInCall={batteryInCall} onClose={() => { if (returnToLandingIfDeepLinked()) return; setBatteryOpen(false); setBatteryInCall(false) }} />
       <HealthImportView open={healthOpen} onClose={() => setHealthOpen(false)} />
     </header>
   )

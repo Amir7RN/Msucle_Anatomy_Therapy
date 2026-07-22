@@ -263,6 +263,19 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
         </div>
       </Reveal>
 
+      {/* ── Section header for the three product-video features ──────────────── */}
+      <section className="relative z-10 mx-auto max-w-6xl px-5 pt-12 sm:px-8 lg:pt-16">
+        <Reveal>
+          <PanelHeader
+            eyebrow="How it works"
+            icon={<MousePointerClick className="h-3.5 w-3.5" />}
+            title="Diagnose, ask, and train."
+            subtitle="Pinpoint the sore muscle on a 3D model, talk it through with the AI, then train with a coach that checks every rep."
+            hue="orange"
+          />
+        </Reveal>
+      </section>
+
       {/* ── Feature 1 — Pinpoint the muscle ─────────────────────────────────── */}
       <FeatureSplit
         id="pinpoint"
@@ -521,13 +534,88 @@ const RESULT_TOOLS: PlatformTool[] = [
   },
 ]
 
+/* Dark data-callout used around the movement showcase video (matches the
+   original hero boxes: Digital Twin, Muscle Engagement, Left/Right, ROM). */
+function ShowcaseCallout({ title, sub, children }: { title: string; sub: string; children: React.ReactNode }) {
+  return (
+    <div className="w-full rounded-2xl border border-white/12 bg-slate-900/90 px-4 py-3 shadow-[0_18px_40px_-18px_rgba(0,0,0,0.6)] backdrop-blur">
+      <div className="text-[15px] font-bold leading-tight text-white">{title}</div>
+      <div className="mt-0.5 text-[11px] font-medium leading-snug text-slate-400">{sub}</div>
+      <div className="mt-2.5">{children}</div>
+    </div>
+  )
+}
+
+/* The demo video (formerly the hero) + its four live-data callout boxes, kept
+   in the same relative arrangement: Digital Twin overlaid top-left of the
+   video, and Muscle Engagement / Left-Right / Range-of-Motion stacked to the
+   right. Lives in the platform section now. */
+function MovementShowcase() {
+  const [spark, setSpark] = useState<number[]>(() => Array.from({ length: 20 }, (_, i) => 45 + Math.round(26 * Math.sin(i / 2.2))))
+  const [bal, setBal] = useState(55)
+  const [rom, setRom] = useState(72)
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setSpark((s) => [...s.slice(1), clamp(s[s.length - 1] + Math.round((Math.random() - 0.5) * 36), 12, 94)])
+      setBal((b) => clamp(b + Math.round((Math.random() - 0.5) * 6), 44, 64))
+      setRom((r) => clamp(r + Math.round((Math.random() - 0.5) * 14), 32, 96))
+    }, 1100)
+    return () => window.clearInterval(id)
+  }, [])
+
+  return (
+    <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
+      {/* Video + Digital Twin overlay */}
+      <div className="relative min-w-0 flex-1">
+        <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-slate-900/10 bg-[radial-gradient(circle_at_50%_35%,#111b34,#070b16)] shadow-[0_40px_90px_-45px_rgba(15,23,42,0.6)]">
+          <video src={mainVideoUrl} className="pointer-events-none h-full w-full object-cover" autoPlay muted loop playsInline />
+          <div className="pointer-events-none absolute inset-0 overflow-hidden">
+            <div className="zh-scan absolute left-[4%] right-[4%] h-px bg-gradient-to-r from-transparent via-cyan-400/70 to-transparent shadow-[0_0_14px_2px_rgba(34,211,238,0.45)]" />
+          </div>
+        </div>
+        <div className="absolute left-3 top-3 w-40 sm:w-44">
+          <ShowcaseCallout title="Digital Twin" sub="Live motion & muscle tracking">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-400" />
+            </span>
+          </ShowcaseCallout>
+        </div>
+      </div>
+
+      {/* Right column: three live-data boxes */}
+      <div className="flex flex-col gap-3 lg:w-56">
+        <ShowcaseCallout title="Muscle Engagement" sub="What's firing, in real time">
+          <LiveSparkline data={spark} gradId="ms-eng" />
+        </ShowcaseCallout>
+        <ShowcaseCallout title="Left / Right Balance" sub="Load symmetry across muscles">
+          <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-slate-700/60">
+            <div className="h-full bg-cyan-400 transition-all duration-700" style={{ width: `${bal}%` }} />
+            <div className="h-full bg-amber-400 transition-all duration-700" style={{ width: `${100 - bal}%` }} />
+          </div>
+          <div className="mt-1.5 flex justify-between text-[11px] font-semibold tabular-nums">
+            <span className="text-cyan-300">L {bal}%</span>
+            <span className="text-amber-300">R {100 - bal}%</span>
+          </div>
+        </ShowcaseCallout>
+        <ShowcaseCallout title="Range of Motion" sub="Every joint, as you move">
+          <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-700/60">
+            <div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-emerald-300 transition-all duration-700" style={{ width: `${rom}%` }} />
+          </div>
+          <div className="mt-1.5 text-right text-[11px] font-semibold tabular-nums text-emerald-300">{rom}% of range</div>
+        </ShowcaseCallout>
+      </div>
+    </div>
+  )
+}
+
 /* Explore-the-platform section — clickable feature cards that deep-link into
-   the app. Two groups mirror how the tools relate: three capture/analyse tools
-   flowing into two auto-built results. */
+   the app. Capture tools (left) sit beside the live movement showcase (right);
+   the two auto-built results run below. */
 function PlatformSection({ atlasUrl }: { atlasUrl: string }) {
   const href = (feature: string) => `${atlasUrl}&feature=${feature}`
   const cardBase =
-    'zh-shine group relative flex h-full flex-col rounded-3xl bg-white p-7 shadow-[0_24px_60px_-35px_rgba(15,23,42,0.3)] transition hover:-translate-y-1 hover:shadow-[0_30px_70px_-30px_rgba(15,23,42,0.4)]'
+    'zh-shine group relative flex h-full flex-col rounded-3xl bg-white p-6 shadow-[0_24px_60px_-35px_rgba(15,23,42,0.3)] transition hover:-translate-y-1 hover:shadow-[0_30px_70px_-30px_rgba(15,23,42,0.4)]'
 
   return (
     <section id="platform" className="relative z-10 mx-auto max-w-6xl px-5 pt-4 pb-6 sm:px-8 lg:pt-8">
@@ -541,7 +629,6 @@ function PlatformSection({ atlasUrl }: { atlasUrl: string }) {
         />
       </Reveal>
 
-      {/* Group 1 — capture & analyse */}
       <Reveal>
         <div className="mb-5 flex items-center gap-3">
           <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">
@@ -550,29 +637,37 @@ function PlatformSection({ atlasUrl }: { atlasUrl: string }) {
           <span className="h-px flex-1 bg-slate-900/5" />
         </div>
       </Reveal>
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {ANALYZE_TOOLS.map((t, i) => (
-          <Reveal key={t.title} delay={i * 80}>
-            <a
-              href={href(t.feature)}
-              className={`${cardBase} border ${t.featured ? 'border-violet-200' : 'border-slate-900/5'}`}
-            >
-              {t.featured && (
-                <span className="absolute right-5 top-5 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-500">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-500" /> live
+
+      {/* Capture cards (left, vertical) beside the movement showcase (right) */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,300px)_1fr] lg:items-start">
+        <div className="flex flex-col gap-4">
+          {ANALYZE_TOOLS.map((t, i) => (
+            <Reveal key={t.title} delay={i * 80}>
+              <a
+                href={href(t.feature)}
+                className={`${cardBase} border ${t.featured ? 'border-violet-200' : 'border-slate-900/5'}`}
+              >
+                {t.featured && (
+                  <span className="absolute right-5 top-5 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-500">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-500" /> live
+                  </span>
+                )}
+                <span className={`mb-4 inline-flex h-11 w-11 items-center justify-center rounded-2xl ${t.tile} transition group-hover:scale-110`}>
+                  {t.icon}
                 </span>
-              )}
-              <span className={`mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl ${t.tile} transition group-hover:scale-110`}>
-                {t.icon}
-              </span>
-              <h3 className="text-lg font-bold text-slate-900">{t.title}</h3>
-              <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-500">{t.body}</p>
-              <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-cyan-600 transition group-hover:gap-2">
-                Open <ArrowRight className="h-3.5 w-3.5" />
-              </span>
-            </a>
-          </Reveal>
-        ))}
+                <h3 className="text-base font-bold text-slate-900">{t.title}</h3>
+                <p className="mt-1.5 flex-1 text-sm leading-relaxed text-slate-500">{t.body}</p>
+                <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-cyan-600 transition group-hover:gap-2">
+                  Open <ArrowRight className="h-3.5 w-3.5" />
+                </span>
+              </a>
+            </Reveal>
+          ))}
+        </div>
+
+        <Reveal delay={120}>
+          <MovementShowcase />
+        </Reveal>
       </div>
 
       {/* Connector — the results flow out of the tools above */}
@@ -584,7 +679,7 @@ function PlatformSection({ atlasUrl }: { atlasUrl: string }) {
         <span className="h-px w-10 bg-slate-900/10 sm:w-16" />
       </div>
 
-      {/* Group 2 — results, derived from an assessment */}
+      {/* Results (below the showcase), derived from an assessment */}
       <div className="mx-auto grid max-w-3xl gap-5 sm:grid-cols-2">
         {RESULT_TOOLS.map((t, i) => (
           <Reveal key={t.title} delay={i * 80}>

@@ -8,6 +8,7 @@ import { MovementScreen } from './components/movement/MovementScreen'
 import { MuscleTwinView } from './components/movement/MuscleTwinView'
 import { ProfileSetup } from './components/profile/ProfileSetup'
 import { useAtlasStore } from './store/atlasStore'
+import { returnToLandingIfDeepLinked } from './lib/returnToLanding'
 import type { CameraPresetKey } from './lib/cameraUtils'
 import { Activity, MessageCircle, Box, Info, X, Sparkles, Scan } from 'lucide-react'
 import { MoveMateLanding } from './components/landing/MoveMateLanding'
@@ -354,7 +355,7 @@ function MuscleTwinLauncher() {
 function MuscleTwinMount() {
   const twinOpen    = useAtlasStore((s) => s.twinOpen)
   const setTwinOpen = useAtlasStore((s) => s.setTwinOpen)
-  return <MuscleTwinView open={twinOpen} onClose={() => setTwinOpen(false)} />
+  return <MuscleTwinView open={twinOpen} onClose={() => { if (returnToLandingIfDeepLinked()) return; setTwinOpen(false) }} />
 }
 
 // ── Personal profile + body-scan mount ───────────────────────────────────────
