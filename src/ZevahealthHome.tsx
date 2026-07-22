@@ -27,6 +27,7 @@ import { useAuth } from './lib/auth/authContext'
 import { AuthModal } from './components/auth/AuthModal'
 import { MoveMateTrainNavLink, MoveMateTrainHeroCard } from './components/landing/MoveMateTrainPromo'
 import { HeroStage } from './components/landing/HeroStage'
+import { ReplayableVideo } from './components/landing/ReplayableVideo'
 
 // MoveMate Train (the gym-training platform) isn't ready to launch, so its promo
 // entry points are hidden on the published landing page. The content is preserved
@@ -564,16 +565,16 @@ function MovementShowcase() {
   }, [])
 
   return (
-    <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
-      {/* Video + Digital Twin overlay */}
-      <div className="relative min-w-0 flex-1">
+    <div className="flex flex-col gap-4">
+      {/* Big video (plays once, replayable) + Digital Twin overlay */}
+      <div className="relative">
         <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-slate-900/10 bg-[radial-gradient(circle_at_50%_35%,#111b34,#070b16)] shadow-[0_40px_90px_-45px_rgba(15,23,42,0.6)]">
-          <video src={mainVideoUrl} className="pointer-events-none h-full w-full object-cover" autoPlay muted loop playsInline />
+          <ReplayableVideo src={mainVideoUrl} className="pointer-events-none h-full w-full object-cover" />
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
             <div className="zh-scan absolute left-[4%] right-[4%] h-px bg-gradient-to-r from-transparent via-cyan-400/70 to-transparent shadow-[0_0_14px_2px_rgba(34,211,238,0.45)]" />
           </div>
         </div>
-        <div className="absolute left-3 top-3 w-40 sm:w-44">
+        <div className="absolute left-3 top-3 w-40 sm:w-52">
           <ShowcaseCallout title="Digital Twin" sub="Live motion & muscle tracking">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75" />
@@ -583,8 +584,8 @@ function MovementShowcase() {
         </div>
       </div>
 
-      {/* Right column: three live-data boxes */}
-      <div className="flex flex-col gap-3 lg:w-56">
+      {/* Three live-data boxes in a row beneath the enlarged video */}
+      <div className="grid gap-3 sm:grid-cols-3">
         <ShowcaseCallout title="Muscle Engagement" sub="What's firing, in real time">
           <LiveSparkline data={spark} gradId="ms-eng" />
         </ShowcaseCallout>
@@ -618,7 +619,7 @@ function PlatformSection({ atlasUrl }: { atlasUrl: string }) {
     'zh-shine group relative flex h-full flex-col rounded-3xl bg-white p-6 shadow-[0_24px_60px_-35px_rgba(15,23,42,0.3)] transition hover:-translate-y-1 hover:shadow-[0_30px_70px_-30px_rgba(15,23,42,0.4)]'
 
   return (
-    <section id="platform" className="relative z-10 mx-auto max-w-6xl px-5 pt-4 pb-6 sm:px-8 lg:pt-8">
+    <section id="platform" className="relative z-10 mx-auto max-w-7xl px-5 pt-4 pb-6 sm:px-8 lg:pt-8">
       <Reveal>
         <PanelHeader
           eyebrow="Explore the platform"
@@ -638,8 +639,9 @@ function PlatformSection({ atlasUrl }: { atlasUrl: string }) {
         </div>
       </Reveal>
 
-      {/* Capture cards (left, vertical) beside the movement showcase (right) */}
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,300px)_1fr] lg:items-start">
+      {/* Capture cards (left, vertical, flush to the page gutter) beside the
+          enlarged movement showcase (right) */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,270px)_1fr] lg:items-start">
         <div className="flex flex-col gap-4">
           {ANALYZE_TOOLS.map((t, i) => (
             <Reveal key={t.title} delay={i * 80}>
