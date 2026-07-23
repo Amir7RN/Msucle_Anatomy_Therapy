@@ -133,8 +133,8 @@ export function PlatformStage({ atlasUrl }: { atlasUrl: string }) {
           ))}
         </div>
 
-        {/* Center — large video with the Digital Twin overlay */}
-        <div className="relative">
+        {/* Center — video at 0.7 of the column width, centered */}
+        <div className="relative mx-auto w-full lg:w-[70%]">
           <div className="relative aspect-video w-full overflow-hidden rounded-3xl border border-slate-900/10 bg-[radial-gradient(circle_at_50%_35%,#111b34,#070b16)] shadow-[0_40px_90px_-45px_rgba(15,23,42,0.6)]">
             <ReplayableVideo src={mainVideoUrl} className="pointer-events-none h-full w-full object-cover" />
             <div className="pointer-events-none absolute inset-0 overflow-hidden">
