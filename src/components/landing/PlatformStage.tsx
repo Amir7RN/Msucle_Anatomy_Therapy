@@ -25,7 +25,7 @@ function LiveSparkline({ data, gradId }: { data: number[]; gradId: string }) {
   const line = data.map((v, i) => `${((i / (data.length - 1)) * W).toFixed(1)},${(H - (v / 100) * H).toFixed(1)}`).join(' ')
   const area = `0,${H} ${line} ${W},${H}`
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="h-12 w-full overflow-visible">
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="h-9 w-full overflow-visible">
       <defs>
         <linearGradient id={`${gradId}-line`} x1="0" y1="0" x2="1" y2="0">
           <stop offset="0%" stopColor="#06b6d4" /><stop offset="100%" stopColor="#f97316" />
@@ -40,12 +40,14 @@ function LiveSparkline({ data, gradId }: { data: number[]; gradId: string }) {
   )
 }
 
+// Box text is deliberately ~0.7 of the card text so the boxes stay compact and
+// leave more width for the enlarged video.
 function ShowcaseCallout({ title, sub, children }: { title: string; sub: string; children: React.ReactNode }) {
   return (
-    <div className="w-full rounded-2xl border border-white/12 bg-slate-900/90 px-5 py-4 shadow-[0_18px_40px_-18px_rgba(0,0,0,0.6)] backdrop-blur">
-      <div className="text-lg font-bold leading-tight text-white">{title}</div>
-      <div className="mt-1 text-xs font-medium leading-snug text-slate-400">{sub}</div>
-      <div className="mt-3">{children}</div>
+    <div className="w-full rounded-2xl border border-white/12 bg-slate-900/90 px-3.5 py-3 shadow-[0_18px_40px_-18px_rgba(0,0,0,0.6)] backdrop-blur">
+      <div className="text-[13px] font-bold leading-tight text-white">{title}</div>
+      <div className="mt-0.5 text-[9px] font-medium leading-snug text-slate-400">{sub}</div>
+      <div className="mt-2">{children}</div>
     </div>
   )
 }
@@ -122,10 +124,10 @@ export function PlatformStage({ atlasUrl }: { atlasUrl: string }) {
         <span className="h-px flex-1 bg-slate-900/5" />
       </div>
 
-      {/* Main row: capture cards · big video · data boxes */}
-      <div className="grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)_320px] lg:items-start">
+      {/* Main row: capture cards (far left) · big video · compact data boxes (far right) */}
+      <div className="grid gap-4 lg:grid-cols-[250px_minmax(0,1fr)_200px] lg:items-start">
         {/* Left — three capture cards */}
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-4">
           {CAPTURE_CARDS.map((c) => (
             <FeatureCard key={c.feature} def={c} href={href(c.feature)} />
           ))}
@@ -139,7 +141,7 @@ export function PlatformStage({ atlasUrl }: { atlasUrl: string }) {
               <div className="zh-scan absolute left-[4%] right-[4%] h-px bg-gradient-to-r from-transparent via-cyan-400/70 to-transparent shadow-[0_0_14px_2px_rgba(34,211,238,0.45)]" />
             </div>
           </div>
-          <div className="absolute left-4 top-4 w-52">
+          <div className="absolute left-4 top-4 w-44">
             <ShowcaseCallout title="Digital Twin" sub="Live motion & muscle tracking">
               <span className="relative flex h-2.5 w-2.5">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75" />
@@ -149,26 +151,26 @@ export function PlatformStage({ atlasUrl }: { atlasUrl: string }) {
           </div>
         </div>
 
-        {/* Right — three live-data boxes */}
-        <div className="flex flex-col gap-5">
+        {/* Right — three compact live-data boxes */}
+        <div className="flex flex-col gap-4">
           <ShowcaseCallout title="Muscle Engagement" sub="What's firing, in real time">
             <LiveSparkline data={spark} gradId="ps-eng" />
           </ShowcaseCallout>
           <ShowcaseCallout title="Left / Right Balance" sub="Load symmetry across muscles">
-            <div className="flex h-3 w-full overflow-hidden rounded-full bg-slate-700/60">
+            <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-slate-700/60">
               <div className="h-full bg-cyan-400 transition-all duration-700" style={{ width: `${bal}%` }} />
               <div className="h-full bg-amber-400 transition-all duration-700" style={{ width: `${100 - bal}%` }} />
             </div>
-            <div className="mt-2 flex justify-between text-xs font-semibold tabular-nums">
+            <div className="mt-1.5 flex justify-between text-[10px] font-semibold tabular-nums">
               <span className="text-cyan-300">L {bal}%</span>
               <span className="text-amber-300">R {100 - bal}%</span>
             </div>
           </ShowcaseCallout>
           <ShowcaseCallout title="Range of Motion" sub="Every joint, as you move">
-            <div className="h-3 w-full overflow-hidden rounded-full bg-slate-700/60">
+            <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-700/60">
               <div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-emerald-300 transition-all duration-700" style={{ width: `${rom}%` }} />
             </div>
-            <div className="mt-2 text-right text-xs font-semibold tabular-nums text-emerald-300">{rom}% of range</div>
+            <div className="mt-1.5 text-right text-[10px] font-semibold tabular-nums text-emerald-300">{rom}% of range</div>
           </ShowcaseCallout>
         </div>
       </div>
