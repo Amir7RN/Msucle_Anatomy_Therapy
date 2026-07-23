@@ -616,7 +616,7 @@ function MovementShowcase() {
    boxes, and the five feature cards, all deep-linking into the app. */
 function PlatformSection({ atlasUrl }: { atlasUrl: string }) {
   return (
-    <section id="platform" className="relative z-10 mx-auto max-w-7xl px-5 pt-4 pb-6 sm:px-8 lg:pt-8">
+    <section id="platform" className="relative z-10 mx-auto max-w-[1600px] px-5 pt-4 pb-12 sm:px-8 lg:pt-8">
       <Reveal>
         <PanelHeader
           eyebrow="Explore the platform"
