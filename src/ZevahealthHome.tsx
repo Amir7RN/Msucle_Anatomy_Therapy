@@ -28,6 +28,7 @@ import { AuthModal } from './components/auth/AuthModal'
 import { MoveMateTrainNavLink, MoveMateTrainHeroCard } from './components/landing/MoveMateTrainPromo'
 import { HeroStage } from './components/landing/HeroStage'
 import { ReplayableVideo } from './components/landing/ReplayableVideo'
+import { PlatformStage } from './components/landing/PlatformStage'
 
 // MoveMate Train (the gym-training platform) isn't ready to launch, so its promo
 // entry points are hidden on the published landing page. The content is preserved
@@ -610,14 +611,10 @@ function MovementShowcase() {
   )
 }
 
-/* Explore-the-platform section — clickable feature cards that deep-link into
-   the app. Capture tools (left) sit beside the live movement showcase (right);
-   the two auto-built results run below. */
+/* Explore-the-platform section — a PowerPoint-style editable stage (open the
+   page with ?editp=1 to drag/resize) holding the movement video, its live-data
+   boxes, and the five feature cards, all deep-linking into the app. */
 function PlatformSection({ atlasUrl }: { atlasUrl: string }) {
-  const href = (feature: string) => `${atlasUrl}&feature=${feature}`
-  const cardBase =
-    'zh-shine group relative flex h-full flex-col rounded-3xl bg-white p-6 shadow-[0_24px_60px_-35px_rgba(15,23,42,0.3)] transition hover:-translate-y-1 hover:shadow-[0_30px_70px_-30px_rgba(15,23,42,0.4)]'
-
   return (
     <section id="platform" className="relative z-10 mx-auto max-w-7xl px-5 pt-4 pb-6 sm:px-8 lg:pt-8">
       <Reveal>
@@ -629,80 +626,7 @@ function PlatformSection({ atlasUrl }: { atlasUrl: string }) {
           hue="cyan"
         />
       </Reveal>
-
-      <Reveal>
-        <div className="mb-5 flex items-center gap-3">
-          <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">
-            Capture &amp; analyze
-          </span>
-          <span className="h-px flex-1 bg-slate-900/5" />
-        </div>
-      </Reveal>
-
-      {/* Capture cards (left, vertical, flush to the page gutter) beside the
-          enlarged movement showcase (right) */}
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,270px)_1fr] lg:items-start">
-        <div className="flex flex-col gap-4">
-          {ANALYZE_TOOLS.map((t, i) => (
-            <Reveal key={t.title} delay={i * 80}>
-              <a
-                href={href(t.feature)}
-                className={`${cardBase} border ${t.featured ? 'border-violet-200' : 'border-slate-900/5'}`}
-              >
-                {t.featured && (
-                  <span className="absolute right-5 top-5 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-500">
-                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-500" /> live
-                  </span>
-                )}
-                <span className={`mb-4 inline-flex h-11 w-11 items-center justify-center rounded-2xl ${t.tile} transition group-hover:scale-110`}>
-                  {t.icon}
-                </span>
-                <h3 className="text-base font-bold text-slate-900">{t.title}</h3>
-                <p className="mt-1.5 flex-1 text-sm leading-relaxed text-slate-500">{t.body}</p>
-                <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-cyan-600 transition group-hover:gap-2">
-                  Open <ArrowRight className="h-3.5 w-3.5" />
-                </span>
-              </a>
-            </Reveal>
-          ))}
-        </div>
-
-        <Reveal delay={120}>
-          <MovementShowcase />
-        </Reveal>
-      </div>
-
-      {/* Connector — the results flow out of the tools above */}
-      <div className="my-8 flex items-center justify-center gap-3">
-        <span className="h-px w-10 bg-slate-900/10 sm:w-16" />
-        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
-          <ArrowRight className="h-3.5 w-3.5" /> Your results, automatically
-        </span>
-        <span className="h-px w-10 bg-slate-900/10 sm:w-16" />
-      </div>
-
-      {/* Results (below the showcase), derived from an assessment */}
-      <div className="mx-auto grid max-w-3xl gap-5 sm:grid-cols-2">
-        {RESULT_TOOLS.map((t, i) => (
-          <Reveal key={t.title} delay={i * 80}>
-            <a href={href(t.feature)} className={`${cardBase} border border-slate-900/5`}>
-              <div className="flex items-start justify-between gap-3">
-                <span className={`inline-flex h-12 w-12 items-center justify-center rounded-2xl ${t.tile} transition group-hover:scale-110`}>
-                  {t.icon}
-                </span>
-                <span className="rounded-full border border-slate-900/10 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                  From your assessment
-                </span>
-              </div>
-              <h3 className="mt-5 text-lg font-bold text-slate-900">{t.title}</h3>
-              <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-500">{t.body}</p>
-              <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-cyan-600 transition group-hover:gap-2">
-                Open <ArrowRight className="h-3.5 w-3.5" />
-              </span>
-            </a>
-          </Reveal>
-        ))}
-      </div>
+      <PlatformStage atlasUrl={atlasUrl} />
     </section>
   )
 }
