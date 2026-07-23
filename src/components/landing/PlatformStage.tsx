@@ -22,9 +22,12 @@ import { ReplayableVideo } from './ReplayableVideo'
 
 const mainVideoUrl = new URL('../../../MainVideoLanding.mp4', import.meta.url).href
 
-const DESIGN_W = 1800
-const DESIGN_H = 980
-const LS_KEY = 'mm.platform.layout.v1'
+// Design space sized to the finalized arrangement below (normalized from the
+// editor export: the whole composition shifted into positive coords and the
+// canvas widened so the far-left cards and far-right boxes both fit).
+const DESIGN_W = 2360
+const DESIGN_H = 1180
+const LS_KEY = 'mm.platform.layout.v2'
 
 type Box = { x: number; y: number; w: number }
 type ItemId =
@@ -43,18 +46,18 @@ const ITEM_LABEL: Record<ItemId, string> = {
   programCard: 'Card · AI Program', symmetryCard: 'Card · Symmetry',
 }
 
-// Starting arrangement — you'll drag this into its final shape.
+// Finalized arrangement (normalized from the in-page editor export).
 const DEFAULT_LAYOUT: Layout = {
-  twinCard:     { x: 24,   y: 70,  w: 300 },
-  movementCard: { x: 24,   y: 340, w: 300 },
-  remoteCard:   { x: 24,   y: 590, w: 300 },
-  video:        { x: 360,  y: 70,  w: 1080 },
-  boxTwin:      { x: 380,  y: 90,  w: 220 },
-  boxEngagement:{ x: 1460, y: 70,  w: 320 },
-  boxBalance:   { x: 1460, y: 290, w: 320 },
-  boxRom:       { x: 1460, y: 500, w: 320 },
-  programCard:  { x: 360,  y: 720, w: 520 },
-  symmetryCard: { x: 920,  y: 720, w: 520 },
+  twinCard:      { x: 6,    y: 16,  w: 300 },
+  movementCard:  { x: 1,    y: 329, w: 300 },
+  remoteCard:    { x: 2,    y: 634, w: 300 },
+  video:         { x: 447,  y: 1,   w: 1574 },
+  boxTwin:       { x: 449,  y: 4,   w: 241 },
+  boxEngagement: { x: 2028, y: 6,   w: 320 },
+  boxBalance:    { x: 2029, y: 344, w: 320 },
+  boxRom:        { x: 2029, y: 680, w: 320 },
+  programCard:   { x: 654,  y: 903, w: 520 },
+  symmetryCard:  { x: 1238, y: 907, w: 520 },
 }
 
 function clamp(n: number, min: number, max: number) { return Math.max(min, Math.min(max, n)) }
