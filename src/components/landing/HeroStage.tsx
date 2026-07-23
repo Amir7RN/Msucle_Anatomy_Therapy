@@ -25,10 +25,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArrowRight, Sparkles, Copy, RotateCcw, Check } from 'lucide-react'
 import { ReplayableVideo } from './ReplayableVideo'
 
-// Hero video is the cinematic "golf → shoulder → open Zeva" story clip. The
-// old MainVideoLanding demo + its data callout boxes moved into the platform
-// section (see ZevahealthHome MovementShowcase).
-const mainVideoUrl = new URL('../../../FireFlyZevaHealthAI.mp4', import.meta.url).href
+// Hero video is the two cinematic story clips played back-to-back, then looped.
+const heroClip1 = new URL('../../../FireFlyZevaHealthAI.mp4', import.meta.url).href
+const heroClip2 = new URL('../../../FireFlyZevaHealthAI2.mp4', import.meta.url).href
 
 // Design coordinate space. All layout numbers below are in these units. The
 // canvas is scaled to fit the column width, so the whole arrangement stays intact
@@ -154,7 +153,7 @@ function CtaGroup({ diagnosticUrl }: { diagnosticUrl: string }) {
 function VideoFrame() {
   return (
     <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-slate-900/10 bg-[radial-gradient(circle_at_50%_35%,#111b34,#070b16)] shadow-[0_40px_90px_-45px_rgba(15,23,42,0.6)]">
-      <ReplayableVideo src={mainVideoUrl} className="pointer-events-none h-full w-full object-cover" />
+      <ReplayableVideo srcs={[heroClip1, heroClip2]} className="pointer-events-none h-full w-full object-cover" />
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="zh-scan absolute left-[4%] right-[4%] h-px bg-gradient-to-r from-transparent via-cyan-400/70 to-transparent shadow-[0_0_14px_2px_rgba(34,211,238,0.45)]" />
       </div>

@@ -1,49 +1,50 @@
 /**
  * ReplayableVideo.tsx
  *
- * A muted video that autoplays once, pauses on its final frame, and then shows
- * a "Replay" button so the viewer can watch it again on demand (instead of the
- * old loop-forever behaviour). Meant to sit inside a `relative` container that
- * clips it — the replay overlay fills that container.
+ * Muted, auto-looping video. Accepts a single `src` or a list of `srcs`:
+ *   - one source  → loops that clip forever.
+ *   - many sources → plays them back-to-back (stitched), then loops the sequence.
+ *
+ * Auto-replays with no button. Sits inside a `relative` container that clips it.
  */
 
-import { useRef, useState } from 'react'
-import { RotateCcw } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
-export function ReplayableVideo({ src, className = '' }: { src: string; className?: string }) {
+export function ReplayableVideo({
+  src,
+  srcs,
+  className = '',
+}: {
+  src?: string
+  srcs?: string[]
+  className?: string
+}) {
+  const list = srcs && srcs.length ? srcs : src ? [src] : []
   const ref = useRef<HTMLVideoElement>(null)
-  const [ended, setEnded] = useState(false)
+  const [idx, setIdx] = useState(0)
+  const multi = list.length > 1
 
-  const replay = () => {
+  // On advancing to the next clip in a sequence, load + play it.
+  useEffect(() => {
+    if (!multi) return
     const v = ref.current
     if (!v) return
-    v.currentTime = 0
-    setEnded(false)
-    void v.play()
-  }
+    v.load()
+    void v.play().catch(() => {})
+  }, [idx, multi])
+
+  if (list.length === 0) return null
 
   return (
-    <>
-      <video
-        ref={ref}
-        src={src}
-        className={className}
-        autoPlay
-        muted
-        playsInline
-        onEnded={() => setEnded(true)}
-      />
-      {ended && (
-        <button
-          onClick={replay}
-          className="absolute inset-0 z-10 flex items-center justify-center bg-slate-950/45 backdrop-blur-[1px] transition hover:bg-slate-950/55"
-          aria-label="Replay video"
-        >
-          <span className="inline-flex items-center gap-2 rounded-full bg-white/95 px-5 py-2.5 text-sm font-semibold text-slate-900 shadow-lg">
-            <RotateCcw className="h-4 w-4" /> Replay
-          </span>
-        </button>
-      )}
-    </>
+    <video
+      ref={ref}
+      src={list[idx]}
+      className={className}
+      autoPlay
+      muted
+      loop={!multi}
+      playsInline
+      onEnded={multi ? () => setIdx((i) => (i + 1) % list.length) : undefined}
+    />
   )
 }
