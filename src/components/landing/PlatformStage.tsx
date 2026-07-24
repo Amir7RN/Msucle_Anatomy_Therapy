@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowRight, Copy, RotateCcw, Check, Radar, Move3d, Video, CalendarCheck, Scale } from 'lucide-react'
+import { ArrowRight, Copy, RotateCcw, Check, Radar, Move3d, Video, CalendarCheck, Scale, MousePointerClick } from 'lucide-react'
 import { ReplayableVideo } from './ReplayableVideo'
 import { Tilt3D } from './Tilt3D'
 
@@ -47,9 +47,9 @@ const DEFAULT_LAYOUT: Layout = {
   remoteCard:    { x: -214, y: 600, w: 300 },
   video:         { x: 246,  y: 8,   w: 1268 },
   boxTwin:       { x: 250,  y: 24,  w: 200 },
-  boxEngagement: { x: 741,  y: 35,  w: 300 },
-  boxBalance:    { x: 743,  y: 294, w: 300 },
-  boxRom:        { x: 743,  y: 607, w: 300 },
+  boxEngagement: { x: 858,  y: 43,  w: 306 },
+  boxBalance:    { x: 863,  y: 295, w: 300 },
+  boxRom:        { x: 862,  y: 619, w: 300 },
   programCard:   { x: 314,  y: 762, w: 370 },
   symmetryCard:  { x: 787,  y: 768, w: 370 },
 }
@@ -136,8 +136,54 @@ function FeatureCard({ def, href }: { def: CardDef; href: string }) {
         <span className="zh-pop-sm mt-4 inline-flex items-center gap-1 text-sm font-semibold text-cyan-600 transition group-hover:gap-2">
           Open <ArrowRight className="h-4 w-4" />
         </span>
+
+        {/* Teaches the whole grid in one gesture: a ghost cursor taps the
+            flagship card's own "Open" link a few times, then retires. Only the
+            featured card carries it — one demonstration reads as an invitation,
+            five would read as noise. */}
+        {def.featured && <ClickHint />}
       </a>
     </Tilt3D>
+  )
+}
+
+/** Animated "these are buttons" cue — pointer-events-none, purely decorative. */
+function ClickHint() {
+  const ref = useRef<HTMLSpanElement>(null)
+  const [running, setRunning] = useState(false)
+
+  // Start on arrival, not on page load — this section is a long way down.
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setRunning(true)
+          io.disconnect()
+        }
+      },
+      { threshold: 0.9 },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+
+  return (
+    <span
+      ref={ref}
+      className={`zh-hint pointer-events-none absolute bottom-4 left-[5.5rem] flex items-center gap-2 ${running ? 'is-running' : ''}`}
+      aria-hidden
+    >
+      <span className="relative flex h-6 w-6 items-center justify-center">
+        <span className="zh-hint-ripple absolute inset-0 rounded-full bg-cyan-400/60" />
+        <MousePointerClick className="zh-hint-cursor h-5 w-5 text-cyan-600 drop-shadow-sm" />
+      </span>
+      <span className="zh-hint-cursor whitespace-nowrap rounded-full border border-cyan-200 bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-cyan-700 shadow-sm">
+        <span className="hidden lg:inline">Click to open</span>
+        <span className="lg:hidden">Tap to open</span>
+      </span>
+    </span>
   )
 }
 

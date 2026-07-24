@@ -390,6 +390,32 @@
     animation: zh-drift-z 16s ease-in-out infinite;
   }
 
+  /* ── "these cards are clickable" cue ─────────────────────────────────────
+     A ghost cursor drifts onto the flagship feature card, presses, and leaves,
+     with a ripple under it. Runs four times and then stops for good (the `both`
+     fill leaves it on the final, invisible keyframe) so it invites rather than
+     nags. */
+  @keyframes zh-hint-cursor {
+    0%        { opacity: 0; transform: translate(20px, 16px) scale(1); }
+    10%       { opacity: 1; transform: translate(8px, 7px) scale(1); }
+    22%       { opacity: 1; transform: translate(0, 0) scale(0.8); }
+    30%       { opacity: 1; transform: translate(0, 0) scale(1); }
+    64%       { opacity: 1; transform: translate(0, 0) scale(1); }
+    80%, 100% { opacity: 0; transform: translate(0, -8px) scale(1); }
+  }
+  @keyframes zh-hint-ripple {
+    0%, 20%   { opacity: 0; transform: scale(0.35); }
+    26%       { opacity: 0.6; transform: scale(0.65); }
+    56%, 100% { opacity: 0; transform: scale(2); }
+  }
+  /* Held at rest until the card scrolls into view (.is-running is toggled by an
+     IntersectionObserver) — the section sits far below the fold, and a hint that
+     played on page load would be over before anyone got there. */
+  .zh-hint .zh-hint-cursor,
+  .zh-hint .zh-hint-ripple { opacity: 0; }
+  .zh-hint.is-running .zh-hint-cursor { animation: zh-hint-cursor 4.6s ease-in-out 0.5s 4 both; }
+  .zh-hint.is-running .zh-hint-ripple { animation: zh-hint-ripple 4.6s ease-out     0.5s 4 both; }
+
   /* Section headings lifted off the page with a soft extruded edge. */
   .zh-text-depth {
     text-shadow:
@@ -405,6 +431,10 @@
     .zh-glow-frame::before, .zh-cta-breathe, .zh-underline::after { animation: none; }
     .zh-shine::after { display: none; }
     .zh-floor, .zh-slab { animation: none; }
+    /* Cursor + label stay put as a static "Click to open" chip; the ripple has
+       nothing to say without motion. */
+    .zh-hint .zh-hint-cursor { animation: none; opacity: 1; }
+    .zh-hint .zh-hint-ripple { display: none; }
     .zh-tilt { transform: none !important; }
     .zh-stack::before, .zh-stack::after { display: none; }
   }
