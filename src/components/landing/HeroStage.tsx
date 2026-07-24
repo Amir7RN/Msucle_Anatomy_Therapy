@@ -24,6 +24,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArrowRight, Sparkles, Copy, RotateCcw, Check } from 'lucide-react'
 import { ReplayableVideo } from './ReplayableVideo'
+import { Tilt3D } from './Tilt3D'
 
 // Hero video is the two cinematic story clips played back-to-back, then looped.
 const heroClip1 = new URL('../../../FireFlyZevaHealthAI.mp4', import.meta.url).href
@@ -151,13 +152,18 @@ function CtaGroup({ diagnosticUrl }: { diagnosticUrl: string }) {
 }
 
 function VideoFrame() {
+  // Tilts toward the pointer so the hero clip reads as a screen standing in
+  // space. In edit mode the stage sets pointer-events:none on item content, so
+  // the tilt can never fight a drag.
   return (
-    <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-slate-900/10 bg-[radial-gradient(circle_at_50%_35%,#111b34,#070b16)] shadow-[0_40px_90px_-45px_rgba(15,23,42,0.6)]">
-      <ReplayableVideo srcs={[heroClip1, heroClip2]} className="pointer-events-none h-full w-full object-cover" />
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="zh-scan absolute left-[4%] right-[4%] h-px bg-gradient-to-r from-transparent via-cyan-400/70 to-transparent shadow-[0_0_14px_2px_rgba(34,211,238,0.45)]" />
+    <Tilt3D className="rounded-2xl" max={6} lift={24} perspective={1400}>
+      <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-slate-900/10 bg-[radial-gradient(circle_at_50%_35%,#111b34,#070b16)] shadow-[0_40px_90px_-45px_rgba(15,23,42,0.6)]">
+        <ReplayableVideo srcs={[heroClip1, heroClip2]} className="pointer-events-none h-full w-full object-cover" />
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="zh-scan absolute left-[4%] right-[4%] h-px bg-gradient-to-r from-transparent via-cyan-400/70 to-transparent shadow-[0_0_14px_2px_rgba(34,211,238,0.45)]" />
+        </div>
       </div>
-    </div>
+    </Tilt3D>
   )
 }
 

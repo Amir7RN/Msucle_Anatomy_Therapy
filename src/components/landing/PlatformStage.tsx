@@ -16,6 +16,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArrowRight, Copy, RotateCcw, Check, Radar, Move3d, Video, CalendarCheck, Scale } from 'lucide-react'
 import { ReplayableVideo } from './ReplayableVideo'
+import { Tilt3D } from './Tilt3D'
 
 const mainVideoUrl = new URL('../../../MainVideoLanding.mp4', import.meta.url).href
 const LS_KEY = 'mm.platform.layout.v3'
@@ -77,11 +78,13 @@ function LiveSparkline({ data, gradId }: { data: number[]; gradId: string }) {
 
 function ShowcaseCallout({ title, sub, children }: { title: string; sub: string; children: React.ReactNode }) {
   return (
-    <div className="w-full rounded-2xl border border-white/12 bg-slate-900/90 px-4 py-3 shadow-[0_18px_40px_-18px_rgba(0,0,0,0.6)] backdrop-blur">
-      <div className="text-[15px] font-bold leading-tight text-white">{title}</div>
-      <div className="mt-0.5 text-[11px] font-medium leading-snug text-slate-400">{sub}</div>
-      <div className="mt-2.5">{children}</div>
-    </div>
+    <Tilt3D className="w-full rounded-2xl" max={12} lift={22} perspective={900}>
+      <div className="zh-3d-card w-full rounded-2xl border border-white/12 bg-slate-900/90 px-4 py-3 shadow-[0_18px_40px_-18px_rgba(0,0,0,0.6)] backdrop-blur">
+        <div className="zh-pop-sm text-[15px] font-bold leading-tight text-white">{title}</div>
+        <div className="mt-0.5 text-[11px] font-medium leading-snug text-slate-400">{sub}</div>
+        <div className="mt-2.5">{children}</div>
+      </div>
+    </Tilt3D>
   )
 }
 
@@ -95,43 +98,50 @@ const CARDS: Record<'twinCard' | 'movementCard' | 'remoteCard' | 'programCard' |
 }
 
 function FeatureCard({ def, href }: { def: CardDef; href: string }) {
+  // .zh-shine is dropped in favour of Tilt3D's pointer-tracking glare: the
+  // shine sweep needs overflow-hidden, which would flatten the card's 3D
+  // subtree and kill the icon/title lift.
   return (
-    <a
-      href={href}
-      className={`zh-shine group relative flex h-full flex-col rounded-3xl bg-white p-6 shadow-[0_24px_60px_-35px_rgba(15,23,42,0.3)] transition hover:-translate-y-1 hover:shadow-[0_30px_70px_-30px_rgba(15,23,42,0.4)] border ${def.featured ? 'border-violet-200' : 'border-slate-900/5'}`}
-    >
-      {def.featured && (
-        <span className="absolute right-5 top-5 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-500">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-500" /> live
-        </span>
-      )}
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <span className={`inline-flex h-12 w-12 items-center justify-center rounded-2xl ${def.tile} transition group-hover:scale-110`}>
-          {def.icon}
-        </span>
-        {def.result && (
-          <span className="rounded-full border border-slate-900/10 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-            From your assessment
+    <Tilt3D className="h-full rounded-3xl" max={9} lift={30}>
+      <a
+        href={href}
+        className={`zh-3d-card group relative flex h-full flex-col rounded-3xl bg-white p-6 shadow-[0_24px_60px_-35px_rgba(15,23,42,0.3)] transition hover:shadow-[0_40px_80px_-30px_rgba(15,23,42,0.45)] border ${def.featured ? 'border-violet-200' : 'border-slate-900/5'}`}
+      >
+        {def.featured && (
+          <span className="zh-pop absolute right-5 top-5 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-500">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-500" /> live
           </span>
         )}
-      </div>
-      <h3 className="text-lg font-bold text-slate-900">{def.title}</h3>
-      <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-500">{def.body}</p>
-      <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-cyan-600 transition group-hover:gap-2">
-        Open <ArrowRight className="h-4 w-4" />
-      </span>
-    </a>
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <span className={`zh-pop inline-flex h-12 w-12 items-center justify-center rounded-2xl ${def.tile} shadow-lg shadow-slate-900/10 transition group-hover:scale-110`}>
+            {def.icon}
+          </span>
+          {def.result && (
+            <span className="rounded-full border border-slate-900/10 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+              From your assessment
+            </span>
+          )}
+        </div>
+        <h3 className="zh-pop-sm text-lg font-bold text-slate-900">{def.title}</h3>
+        <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-500">{def.body}</p>
+        <span className="zh-pop-sm mt-4 inline-flex items-center gap-1 text-sm font-semibold text-cyan-600 transition group-hover:gap-2">
+          Open <ArrowRight className="h-4 w-4" />
+        </span>
+      </a>
+    </Tilt3D>
   )
 }
 
 function VideoFrame() {
   return (
-    <div className="relative aspect-video w-full overflow-hidden rounded-3xl border border-slate-900/10 bg-[radial-gradient(circle_at_50%_35%,#111b34,#070b16)] shadow-[0_40px_90px_-45px_rgba(15,23,42,0.6)]">
-      <ReplayableVideo src={mainVideoUrl} className="pointer-events-none h-full w-full object-cover" />
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="zh-scan absolute left-[4%] right-[4%] h-px bg-gradient-to-r from-transparent via-cyan-400/70 to-transparent shadow-[0_0_14px_2px_rgba(34,211,238,0.45)]" />
+    <Tilt3D className="rounded-3xl" max={6} lift={26} perspective={1500}>
+      <div className="relative aspect-video w-full overflow-hidden rounded-3xl border border-slate-900/10 bg-[radial-gradient(circle_at_50%_35%,#111b34,#070b16)] shadow-[0_40px_90px_-45px_rgba(15,23,42,0.6)]">
+        <ReplayableVideo src={mainVideoUrl} className="pointer-events-none h-full w-full object-cover" />
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="zh-scan absolute left-[4%] right-[4%] h-px bg-gradient-to-r from-transparent via-cyan-400/70 to-transparent shadow-[0_0_14px_2px_rgba(34,211,238,0.45)]" />
+        </div>
       </div>
-    </div>
+    </Tilt3D>
   )
 }
 

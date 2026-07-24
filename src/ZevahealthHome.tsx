@@ -29,6 +29,7 @@ import { MoveMateTrainNavLink, MoveMateTrainHeroCard } from './components/landin
 import { HeroStage } from './components/landing/HeroStage'
 import { ReplayableVideo } from './components/landing/ReplayableVideo'
 import { PlatformStage } from './components/landing/PlatformStage'
+import { Tilt3D } from './components/landing/Tilt3D'
 
 // MoveMate Train (the gym-training platform) isn't ready to launch, so its promo
 // entry points are hidden on the published landing page. The content is preserved
@@ -212,7 +213,19 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
       {/* Hero deliberately breaks the max-width grid: text hugs the left edge and
           the showcase runs full-bleed to the right edge (no right margin) so the
           video + data boxes render large. Other sections keep the centered width. */}
-      <section id="top" className="relative z-10 w-full pb-6 pt-6 sm:pt-10 lg:pt-14">
+      <section id="top" className="zh-scene relative z-10 w-full overflow-hidden pb-6 pt-6 sm:pt-10 lg:pt-14">
+        {/* Depth stage behind the hero: a grid floor receding to a horizon plus
+            two glass slabs drifting in Z, so the hero content reads as sitting
+            IN a space rather than on a page. Purely decorative. */}
+        <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden>
+          <div className="zh-slab left-[3%] top-[14%] hidden h-56 w-40 lg:block" style={{ animationDelay: '-3s' }} />
+          <div className="zh-slab right-[4%] top-[8%] hidden h-72 w-44 lg:block" style={{ animationDelay: '-9s' }} />
+          <div className="zh-floor-wrap">
+            <div className="zh-floor" />
+            <div className="zh-horizon" />
+          </div>
+        </div>
+
         {/* Free-form, draggable hero canvas (text + video + data boxes).
             Open with ?edit=1 to rearrange; see HeroStage.tsx. */}
         <HeroStage atlasUrl={atlasUrl} diagnosticUrl={diagnosticUrl} />
@@ -240,16 +253,20 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
       </section>
 
       {/* ── Stat band ───────────────────────────────────────────────────────── */}
-      <section className="relative z-10 mx-auto max-w-6xl px-5 py-14 sm:px-8">
+      <section className="zh-scene relative z-10 mx-auto max-w-6xl px-5 py-14 sm:px-8">
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {STATS.map((s, i) => (
             <Reveal key={s.label} delay={i * 70}>
-              <div className="zh-shine h-full rounded-3xl border border-slate-900/5 bg-white p-6 text-center shadow-[0_24px_60px_-35px_rgba(15,23,42,0.3)] transition hover:-translate-y-0.5">
-                <div className="bg-gradient-to-r from-cyan-600 to-teal-500 bg-clip-text text-3xl font-extrabold tracking-tight text-transparent sm:text-4xl">
-                  {s.value}
+              <Tilt3D className="h-full rounded-3xl" max={10} lift={26}>
+                {/* No .zh-shine here: its overflow-hidden sweep would flatten the
+                    3D subtree, and Tilt3D's pointer-tracking glare replaces it. */}
+                <div className="zh-3d-card h-full rounded-3xl border border-slate-900/5 bg-white p-6 text-center shadow-[0_24px_60px_-35px_rgba(15,23,42,0.3)]">
+                  <div className="zh-pop bg-gradient-to-r from-cyan-600 to-teal-500 bg-clip-text text-3xl font-extrabold tracking-tight text-transparent sm:text-4xl">
+                    {s.value}
+                  </div>
+                  <div className="zh-pop-sm mt-1.5 text-sm font-medium text-slate-500">{s.label}</div>
                 </div>
-                <div className="mt-1.5 text-sm font-medium text-slate-500">{s.label}</div>
-              </div>
+              </Tilt3D>
             </Reveal>
           ))}
         </div>
@@ -318,7 +335,7 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
       </FeatureSplit>
 
       {/* ── Why Zevahealth — benefits grid ──────────────────────────────────── */}
-      <section id="why" className="relative z-10 mx-auto max-w-6xl px-5 py-14 sm:px-8 lg:py-20">
+      <section id="why" className="zh-scene relative z-10 mx-auto max-w-6xl px-5 py-14 sm:px-8 lg:py-20">
         <Reveal>
           <PanelHeader
             eyebrow="Why Zevahealth"
@@ -331,21 +348,24 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {BENEFITS.map((b, i) => (
             <Reveal key={b.title} delay={i * 80}>
-              <div className="zh-shine group h-full rounded-3xl border border-slate-900/5 bg-white p-7 shadow-[0_24px_60px_-35px_rgba(15,23,42,0.3)] transition hover:-translate-y-1 hover:shadow-[0_30px_70px_-30px_rgba(15,23,42,0.4)]">
-                <span className={`mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl ${b.tile} transition group-hover:scale-110`}>
-                  {b.icon}
-                </span>
-                <h3 className="text-lg font-bold text-slate-900">{b.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-500">{b.body}</p>
-              </div>
+              <Tilt3D className="h-full rounded-3xl" max={9} lift={30}>
+                <div className="zh-3d-card group h-full rounded-3xl border border-slate-900/5 bg-white p-7 shadow-[0_24px_60px_-35px_rgba(15,23,42,0.3)] transition hover:shadow-[0_40px_80px_-30px_rgba(15,23,42,0.45)]">
+                  <span className={`zh-pop mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl ${b.tile} shadow-lg shadow-slate-900/10 transition group-hover:scale-110`}>
+                    {b.icon}
+                  </span>
+                  <h3 className="zh-pop-sm text-lg font-bold text-slate-900">{b.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-500">{b.body}</p>
+                </div>
+              </Tilt3D>
             </Reveal>
           ))}
         </div>
       </section>
 
       {/* ── Final CTA ───────────────────────────────────────────────────────── */}
-      <section className="relative z-10 mx-auto max-w-5xl px-5 py-20 sm:px-8 lg:py-28">
+      <section className="zh-scene relative z-10 mx-auto max-w-5xl px-5 py-20 sm:px-8 lg:py-28">
         <Reveal>
+          <Tilt3D className="rounded-[2.5rem]" max={4} lift={30} perspective={1600} glare={false}>
           <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-cyan-500 via-teal-500 to-cyan-600 p-10 text-center shadow-[0_40px_120px_-40px_rgba(8,145,178,0.8)] sm:p-16">
             {/* Decorative glows inside the card */}
             <div className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-orange-300/40 blur-[90px]" />
@@ -379,6 +399,7 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
               </div>
             </div>
           </div>
+          </Tilt3D>
         </Reveal>
       </section>
 
@@ -616,7 +637,7 @@ function MovementShowcase() {
    boxes, and the five feature cards, all deep-linking into the app. */
 function PlatformSection({ atlasUrl }: { atlasUrl: string }) {
   return (
-    <section id="platform" className="relative z-10 w-full px-4 pt-4 pb-12 sm:px-6 lg:pt-8">
+    <section id="platform" className="zh-scene relative z-10 w-full px-4 pt-4 pb-12 sm:px-6 lg:pt-8">
       <Reveal>
         <PanelHeader
           eyebrow="Explore the platform"
@@ -828,7 +849,7 @@ function PanelHeader({
         {icon}
         {eyebrow}
       </div>
-      <h2 className="mx-auto max-w-3xl text-4xl font-extrabold tracking-[-0.04em] text-slate-900 sm:text-5xl lg:text-6xl">
+      <h2 className="zh-text-depth mx-auto max-w-3xl text-4xl font-extrabold tracking-[-0.04em] text-slate-900 sm:text-5xl lg:text-6xl">
         {title}
       </h2>
       <p className="mx-auto mt-4 max-w-2xl text-base text-slate-500 sm:text-lg">{subtitle}</p>
@@ -860,7 +881,7 @@ function FeatureSplit({
       ? 'border-cyan-200 bg-cyan-50 text-cyan-700'
       : 'border-orange-200 bg-orange-50 text-orange-600'
   return (
-    <section id={id} className="relative z-10 mx-auto w-full max-w-[112rem] px-5 py-16 sm:px-8 lg:px-12 lg:py-24">
+    <section id={id} className="zh-scene relative z-10 mx-auto w-full max-w-[112rem] px-5 py-16 sm:px-8 lg:px-12 lg:py-24">
       <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,0.54fr)_minmax(0,1.46fr)] lg:gap-16">
         <Reveal>
           <div className="text-center lg:text-left">
@@ -868,7 +889,7 @@ function FeatureSplit({
               {icon}
               {eyebrow}
             </div>
-            <h2 className="text-4xl font-extrabold tracking-[-0.04em] text-slate-900 sm:text-5xl lg:text-[3.5rem] lg:leading-[1.04]">{title}</h2>
+            <h2 className="zh-text-depth text-4xl font-extrabold tracking-[-0.04em] text-slate-900 sm:text-5xl lg:text-[3.5rem] lg:leading-[1.04]">{title}</h2>
             <p className="mx-auto mt-5 max-w-md text-base text-slate-500 sm:text-lg lg:mx-0">{subtitle}</p>
           </div>
         </Reveal>
@@ -944,6 +965,7 @@ function DiagnosisStoryPanel() {
   const active = diagnosisNotes[activeIdx]
 
   return (
+    <Tilt3D className="zh-stack rounded-[2rem]" max={5} lift={26} perspective={1500}>
     <div
       ref={containerRef}
       className="zh-glow-frame relative rounded-[2rem] border border-slate-900/5 bg-white p-3 shadow-[0_40px_110px_-45px_rgba(15,23,42,0.5)]"
@@ -995,7 +1017,7 @@ function DiagnosisStoryPanel() {
           key={`d-${activeIdx}`}
           className="mm-fade-up pointer-events-none absolute hidden max-w-md -translate-x-1/2 lg:left-[38%] lg:top-6 lg:block"
         >
-          <div className="rounded-2xl border border-slate-900/10 bg-white/95 px-5 py-4 text-center shadow-[0_20px_50px_-20px_rgba(15,23,42,0.5)] backdrop-blur">
+          <div className="rounded-2xl border border-slate-900/10 bg-white/95 px-5 py-4 text-center shadow-[0_30px_60px_-20px_rgba(15,23,42,0.55)] backdrop-blur">
             <div className="flex items-center justify-center gap-1.5">
               {diagnosisNotes.map((_, i) => (
                 <span
@@ -1014,6 +1036,7 @@ function DiagnosisStoryPanel() {
         </div>
       </div>
     </div>
+    </Tilt3D>
   )
 }
 
@@ -1083,7 +1106,8 @@ function AIChatPanel() {
 
   return (
     <div ref={containerRef} className="grid gap-6 xl:grid-cols-[minmax(0,400px)_minmax(0,1fr)]">
-      <div className="flex h-[460px] flex-col overflow-hidden rounded-[2rem] border border-slate-900/5 bg-white shadow-[0_40px_110px_-45px_rgba(15,23,42,0.5)] sm:h-[520px] lg:h-[600px]">
+      <Tilt3D className="flex h-[460px] rounded-[2rem] sm:h-[520px] lg:h-[600px]" max={6} lift={22} perspective={1300}>
+      <div className="flex h-full w-full flex-col overflow-hidden rounded-[2rem] border border-slate-900/5 bg-white shadow-[0_40px_110px_-45px_rgba(15,23,42,0.5)]">
         <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-5 py-4">
           <div className="flex items-center gap-2">
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-orange-400 to-rose-500 text-white">
@@ -1129,7 +1153,9 @@ function AIChatPanel() {
           </div>
         </div>
       </div>
+      </Tilt3D>
 
+      <Tilt3D className="hidden rounded-[2rem] xl:block" max={6} lift={22} perspective={1300}>
       <div className="relative hidden aspect-[3/2] overflow-hidden rounded-[2rem] border border-slate-900/5 bg-slate-950 shadow-[0_40px_110px_-45px_rgba(15,23,42,0.5)] xl:block xl:aspect-auto xl:h-[600px]">
         <img
           src={chatBotImageBefore}
@@ -1156,6 +1182,7 @@ function AIChatPanel() {
           Likely source — shown on your body model
         </div>
       </div>
+      </Tilt3D>
     </div>
   )
 }
@@ -1209,6 +1236,7 @@ function AICoachPanel() {
   }, [inView])
 
   return (
+    <Tilt3D className="zh-stack rounded-[2rem]" max={5} lift={26} perspective={1500}>
     <div
       ref={containerRef}
       className="zh-glow-frame relative rounded-[2rem] border border-slate-900/5 bg-white p-3 shadow-[0_40px_110px_-45px_rgba(15,23,42,0.5)]"
@@ -1279,6 +1307,7 @@ function AICoachPanel() {
         </div>
       </div>
     </div>
+    </Tilt3D>
   )
 }
 

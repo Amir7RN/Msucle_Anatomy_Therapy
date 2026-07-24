@@ -192,17 +192,20 @@
   }
   .zh-scan { animation: zh-scan 3.6s ease-in-out infinite; }
 
-  /* Scroll-reveal: start hidden, .is-visible toggled by IntersectionObserver. */
+  /* Scroll-reveal: start hidden, .is-visible toggled by IntersectionObserver.
+     Rotates up out of depth rather than sliding, so sections arrive as panels
+     swinging into the viewing plane. */
   .zh-reveal {
     opacity: 0;
-    transform: translateY(28px);
+    transform: perspective(1400px) translate3d(0, 34px, -90px) rotateX(9deg);
+    transform-origin: 50% 100%;
     transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
-                transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+                transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
     will-change: opacity, transform;
   }
   .zh-reveal.is-visible {
     opacity: 1;
-    transform: translateY(0);
+    transform: perspective(1400px) translate3d(0, 0, 0) rotateX(0deg);
   }
 
   /* ── "Woooww" layer: shine sweeps, glowing borders, animated underline ──── */
@@ -269,11 +272,140 @@
   }
   .zh-cta-breathe { animation: zh-cta-breathe 3.2s ease-in-out infinite; }
 
+  /* ── 3D depth system ──────────────────────────────────────────────────────
+     The landing was a flat document with nice lighting; these turn it into a
+     shallow 3D stage: a receding grid floor under the hero, pointer-driven
+     tilt on every card (transforms written by Tilt3D.tsx), content that floats
+     above a tilting card's surface, and a reveal that rotates up out of depth. */
+
+  /* Establishes a shared vanishing point for everything inside a section. */
+  .zh-scene { perspective: 1600px; perspective-origin: 50% 30%; }
+
+  /* A card that tilts toward the pointer. Tilt3D writes the transform inline. */
+  .zh-tilt {
+    position: relative;
+    transform-style: preserve-3d;
+    will-change: transform;
+  }
+  /* Specular sheen that tracks the pointer across a tilted card. */
+  .zh-tilt-glare {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    opacity: 0;
+    pointer-events: none;
+    mix-blend-mode: soft-light;
+    transition: opacity 320ms ease;
+  }
+
+  /* Children that should sit ABOVE the surface of a tilting card, so the card
+     reads as a physical object with parts standing off it.
+     NOTE: translateZ only renders as depth while every ancestor up to the
+     tilting element keeps `transform-style: preserve-3d` AND `overflow:
+     visible` — a clipped ancestor flattens the subtree. Put .zh-3d-card on the
+     card itself (and skip overflow-hidden effects like .zh-shine there). */
+  .zh-3d-card { transform-style: preserve-3d; }
+  .zh-pop    { transform: translateZ(42px); }
+  .zh-pop-sm { transform: translateZ(20px); }
+
+  /* Ghost sheets stacked behind a panel — depth you can see without hovering.
+     Put this on a TRANSPARENT wrapper: negative-z pseudo-elements are painted
+     behind their own parent's background, so an opaque parent would hide them. */
+  .zh-stack { position: relative; transform-style: preserve-3d; }
+  .zh-stack::before,
+  .zh-stack::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: 2rem;
+    background: #fff;
+    border: 1px solid rgba(15, 23, 42, 0.06);
+    box-shadow: 0 30px 60px -45px rgba(15, 23, 42, 0.5);
+    transition: transform 600ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .zh-stack::before { transform: translate3d(0, 16px, -40px) scale(0.975); opacity: 0.75; }
+  .zh-stack::after  { transform: translate3d(0, 30px, -80px) scale(0.95);  opacity: 0.45; }
+  .zh-stack:hover::before { transform: translate3d(0, 24px, -40px) scale(0.98); }
+  .zh-stack:hover::after  { transform: translate3d(0, 44px, -80px) scale(0.96); }
+
+  /* Receding grid floor — the main "this is a stage, not a page" cue. */
+  .zh-floor-wrap {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 58%;
+    overflow: hidden;
+    pointer-events: none;
+    /* The projected floor band only occupies the bottom ~28% of this wrap
+       (height × cos 72°), so the fade has to happen inside that band — a fade
+       spread over the full wrap would leave the grid at near-full strength. */
+    -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.85) 12%, transparent 30%);
+    mask-image: linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.85) 12%, transparent 30%);
+  }
+  /* rotateX pivots on the bottom edge, so the plane collapses UPWARD from the
+     bottom of the wrap — the projected band ends up ≈ height × cos(angle) tall.
+     Keep `bottom: 0` (any negative offset pushes the whole band out of view). */
+  .zh-floor {
+    position: absolute;
+    left: -60%; right: -60%; bottom: 0;
+    height: 260%;
+    background-image:
+      linear-gradient(rgba(6, 182, 212, 0.55) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(244, 63, 94, 0.3) 1px, transparent 1px);
+    background-size: 72px 72px;
+    transform: perspective(700px) rotateX(72deg);
+    transform-origin: 50% 100%;
+    animation: zh-floor-run 7s linear infinite;
+  }
+  @keyframes zh-floor-run {
+    from { background-position: 0 0, 0 0; }
+    to   { background-position: 0 72px, 0 0; }
+  }
+
+  /* Glow sitting on the floor's vanishing line — 28% up the wrap is where the
+     projected band ends (see .zh-floor). */
+  .zh-horizon {
+    position: absolute;
+    left: 50%; bottom: 27.5%;
+    width: 78%; height: 1px;
+    transform: translateX(-50%);
+    background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.75), transparent);
+    box-shadow: 0 0 44px 12px rgba(34, 211, 238, 0.18);
+    pointer-events: none;
+  }
+
+  /* Slabs drifting in depth behind the hero — parallax without a scroll handler. */
+  @keyframes zh-drift-z {
+    0%, 100% { transform: translate3d(0, 0, 0) rotateX(14deg) rotateY(-16deg); }
+    50%      { transform: translate3d(0, -26px, 90px) rotateX(9deg) rotateY(-10deg); }
+  }
+  .zh-slab {
+    position: absolute;
+    border-radius: 1.5rem;
+    border: 1px solid rgba(6, 182, 212, 0.25);
+    background: linear-gradient(140deg, rgba(255,255,255,0.75), rgba(236,254,255,0.35));
+    box-shadow: 0 40px 80px -50px rgba(15, 23, 42, 0.5);
+    backdrop-filter: blur(2px);
+    pointer-events: none;
+    animation: zh-drift-z 16s ease-in-out infinite;
+  }
+
+  /* Section headings lifted off the page with a soft extruded edge. */
+  .zh-text-depth {
+    text-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.9),
+      0 2px 1px rgba(15, 23, 42, 0.08),
+      0 12px 28px rgba(15, 23, 42, 0.14);
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .zh-blob-a, .zh-blob-b, .zh-gradient-text, .zh-marquee-track,
     .zh-float, .zh-float-slow, .zh-spin-slow, .zh-scan { animation: none; }
     .zh-reveal { opacity: 1; transform: none; transition: none; }
     .zh-glow-frame::before, .zh-cta-breathe, .zh-underline::after { animation: none; }
     .zh-shine::after { display: none; }
+    .zh-floor, .zh-slab { animation: none; }
+    .zh-tilt { transform: none !important; }
+    .zh-stack::before, .zh-stack::after { display: none; }
   }
 }
