@@ -19,7 +19,9 @@ import { ReplayableVideo } from './ReplayableVideo'
 import { Tilt3D } from './Tilt3D'
 
 const mainVideoUrl = new URL('../../../MainVideoLanding.mp4', import.meta.url).href
-const LS_KEY = 'mm.platform.layout.v3'
+// Bumped with each baked DEFAULT_LAYOUT so a stale arrangement saved in someone's
+// browser (including the editor's own autosave) can't shadow the new one.
+const LS_KEY = 'mm.platform.layout.v4'
 
 type Box = { x: number; y: number; w: number }
 type ItemId =
@@ -40,17 +42,24 @@ const ITEM_LABEL: Record<ItemId, string> = {
 
 // Finalized arrangement — TRUE pixels (1:1). Drag/resize to change; send me the JSON.
 const DEFAULT_LAYOUT: Layout = {
-  twinCard:      { x: 0,    y: 0,   w: 300 },
-  movementCard:  { x: 0,    y: 300, w: 300 },
-  remoteCard:    { x: 0,    y: 600, w: 300 },
-  video:         { x: 340,  y: 0,   w: 760 },
-  boxTwin:       { x: 360,  y: 16,  w: 200 },
-  boxEngagement: { x: 1130, y: 0,   w: 300 },
-  boxBalance:    { x: 1130, y: 150, w: 300 },
-  boxRom:        { x: 1130, y: 300, w: 300 },
-  programCard:   { x: 340,  y: 470, w: 370 },
-  symmetryCard:  { x: 730,  y: 470, w: 370 },
+  twinCard:      { x: -206, y: 5,   w: 300 },
+  movementCard:  { x: -210, y: 300, w: 300 },
+  remoteCard:    { x: -214, y: 600, w: 300 },
+  video:         { x: 246,  y: 8,   w: 1268 },
+  boxTwin:       { x: 250,  y: 24,  w: 200 },
+  boxEngagement: { x: 741,  y: 35,  w: 300 },
+  boxBalance:    { x: 743,  y: 294, w: 300 },
+  boxRom:        { x: 743,  y: 607, w: 300 },
+  programCard:   { x: 314,  y: 762, w: 370 },
+  symmetryCard:  { x: 787,  y: 768, w: 370 },
 }
+
+// The three live-data boxes render at 0.6 of their laid-out size — the whole
+// box shrinks, text included, so they read as small telemetry chips against the
+// enlarged video. They stay 300px wide in layout coordinates (that's what the
+// editor drags), and are scaled from their top-left corner at paint time.
+const COMPACT_BOXES: ItemId[] = ['boxEngagement', 'boxBalance', 'boxRom']
+const COMPACT_SCALE = 0.6
 
 function clamp(n: number, min: number, max: number) { return Math.max(min, Math.min(max, n)) }
 
@@ -228,7 +237,9 @@ export function PlatformStage({ atlasUrl }: { atlasUrl: string }) {
     let maxB = 0
     for (const id of ITEM_IDS) {
       const el = itemRefs.current[id]
-      if (el) maxB = Math.max(maxB, layout[id].y + el.offsetHeight)
+      // offsetHeight is the pre-transform height, so compact boxes have to be
+      // discounted by their paint-time scale or the canvas over-reserves.
+      if (el) maxB = Math.max(maxB, layout[id].y + el.offsetHeight * (COMPACT_BOXES.includes(id) ? COMPACT_SCALE : 1))
     }
     if (maxB > 0) setCanvasH(maxB + 24)
   }, [layout, spark, bal, rom])
@@ -270,7 +281,12 @@ export function PlatformStage({ atlasUrl }: { atlasUrl: string }) {
 
   const live = { spark, bal, rom }
   const href = (f: string) => `${atlasUrl}&feature=${f}`
-  const canvasW = Math.max(...ITEM_IDS.map((id) => layout[id].x + layout[id].w), 1000)
+  // The editor allows placing items anywhere, including at negative x — which
+  // the overflow-x-auto scroll container would clip off the left edge. Shift the
+  // whole arrangement so its leftmost edge starts at 0. Relative positions (and
+  // the JSON the editor exports) are untouched.
+  const originX = Math.min(0, ...ITEM_IDS.map((id) => layout[id].x))
+  const canvasW = Math.max(...ITEM_IDS.map((id) => layout[id].x + layout[id].w), 1000) - originX
 
   return (
     <>
@@ -310,13 +326,20 @@ export function PlatformStage({ atlasUrl }: { atlasUrl: string }) {
                 onPointerDown={(e) => begin(id, 'move', e)}
                 className="absolute"
                 style={{
-                  left: it.x, top: it.y, width: it.w,
+                  left: it.x - originX, top: it.y, width: it.w,
                   cursor: editing ? 'move' : 'default',
                   outline: editing ? '1.5px dashed rgba(56,189,248,0.8)' : 'none',
                   outlineOffset: 4, borderRadius: 16,
                 }}
               >
-                <div style={{ pointerEvents: editing ? 'none' : 'auto' }}>
+                <div
+                  style={{
+                    pointerEvents: editing ? 'none' : 'auto',
+                    ...(COMPACT_BOXES.includes(id)
+                      ? { transform: `scale(${COMPACT_SCALE})`, transformOrigin: 'top left' }
+                      : null),
+                  }}
+                >
                   {itemContent(id, live, atlasUrl)}
                 </div>
                 {editing && (
