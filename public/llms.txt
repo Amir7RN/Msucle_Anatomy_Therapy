@@ -1,6 +1,6 @@
 # Zevahealth AI (MoveMate)
 
-> Zevahealth AI is a free, browser-based tool that helps everyday people find the muscle behind their pain or soreness, then guides them through targeted exercises with an AI form coach. No signup, no download — it runs in the browser on desktop and mobile.
+> Zevahealth AI is a browser-based tool that helps people explore possible muscle contributors to pain or soreness, then guides them through targeted exercises with live pose feedback. An account is required for personalized tools; no download is required.
 
 Site: https://zeva.health/
 Maker: Zevahealth
@@ -25,13 +25,13 @@ Audience: Desk workers, lifters, runners, weekend warriors — anyone with every
 
 ## Key facts
 
-- Price: Free. No signup, no download.
+- Access: Runs in a modern browser with no download. An account is required for personalized tools.
 - Platform: Any modern web browser (desktop or mobile). Requires JavaScript; the AI form coach needs camera access.
 - Privacy: Pose/camera processing happens in the browser.
 
 ## FAQ
 
-**Is Zevahealth AI free?** Yes — free, no signup, no download, runs in your browser.
+**Does Zevahealth AI require an account?** Yes, an account is required for personalized tools. It runs in a modern browser with no download.
 
 **How do I find which muscle is causing my pain?** Tap the sore spot on the 3D body model (or describe it in chat); the app highlights likely muscle contributors and helps you confirm the source.
 

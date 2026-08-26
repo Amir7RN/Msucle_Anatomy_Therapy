@@ -7,6 +7,7 @@ import { useAtlasStore } from './store/atlasStore'
 import { AuthProvider, useAuth } from './lib/auth/authContext'
 import { LoginPage } from './components/auth/LoginPage'
 import { supabaseConfigured } from './lib/supabase'
+import { LegalPage } from './components/legal/LegalPage'
 import './index.css'
 
 /**
@@ -89,9 +90,12 @@ function Root() {
   const params = new URLSearchParams(window.location.search)
   const showAtlas = params.has('atlas')
   const showGym = params.has('gym')
+  const legal = params.get('legal')
   const appUrl = `${import.meta.env.BASE_URL}?atlas=1`
   const diagnosticUrl = `${import.meta.env.BASE_URL}?atlas=1&diagnostic=1`
   const gymUrl = `${import.meta.env.BASE_URL}?gym=1`
+
+  if (legal === 'privacy' || legal === 'terms') return <LegalPage kind={legal} />
 
   // MoveMate Train — the separate gym-training platform (parallel to the pain app).
   // Model pages require sign-in; the landing page stays public.

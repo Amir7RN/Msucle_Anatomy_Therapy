@@ -288,8 +288,8 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
           <PanelHeader
             eyebrow="How it works"
             icon={<MousePointerClick className="h-3.5 w-3.5" />}
-            title="Diagnose, ask, and train."
-            subtitle="Pinpoint the sore muscle on a 3D model, talk it through with the AI, then train with a coach that checks every rep."
+            title="Explore, ask, and train."
+            subtitle="Explore muscle patterns around a sore area, talk symptoms through with the AI, then use camera-guided movement feedback."
             hue="orange"
           />
         </Reveal>
@@ -298,10 +298,10 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
       {/* ── Feature 1 — Pinpoint the muscle ─────────────────────────────────── */}
       <FeatureSplit
         id="pinpoint"
-        eyebrow="Muscle Pain Diagnosis"
+        eyebrow="Pain-Pattern Explorer"
         icon={<ScanSearch className="h-3.5 w-3.5" />}
-        title="Tap the spot. Find the source."
-        subtitle="AI muscle pain diagnosis on an interactive 3D anatomy model — a sore shoulder becomes a named muscle with its tension pattern."
+        title="Tap the spot. Explore contributors."
+        subtitle="The interactive anatomy model ranks muscles whose documented direct or referred patterns overlap the selected area. It is not a diagnosis."
         hue="cyan"
       >
         <DiagnosisStoryPanel />
@@ -341,7 +341,7 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
             eyebrow="Why Zevahealth"
             icon={<Sparkles className="h-3.5 w-3.5" />}
             title="Three tools. One body model."
-            subtitle="Muscle pain diagnosis, relief exercises, and an AI workout coach — one interactive anatomy model, right in your browser."
+            subtitle="Pain-pattern education, exercise guidance, and camera biofeedback — one interactive anatomy model, right in your browser."
             hue="orange"
           />
         </Reveal>
@@ -374,14 +374,14 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
 
             <div className="relative">
               <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/15 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-white backdrop-blur">
-                <PlayCircle className="h-3.5 w-3.5" /> Free · in your browser
+                <PlayCircle className="h-3.5 w-3.5" /> Browser-based · account required
               </span>
               <h2 className="mx-auto max-w-3xl text-4xl font-extrabold tracking-[-0.04em] text-white sm:text-6xl">
                 Made to move with you.
               </h2>
               <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-cyan-50">
-                The interactive muscle anatomy model for everyday muscle pain relief. Diagnose what hurts,
-                get relief exercises tuned to that muscle, and train with your AI workout coach by your side.
+                Explore possible contributors to everyday soreness, review matched movement options,
+                and train with camera-based form feedback by your side.
               </p>
               <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
                 <a
@@ -442,6 +442,12 @@ export function ZevahealthHome({ atlasUrl, diagnosticUrl, gymUrl }: ZevahealthHo
             consult a qualified professional about any medical condition or before starting an exercise program. If you
             think you may have a medical emergency, contact your local emergency services.
           </p>
+          <p className="mt-4 text-xs text-slate-500">
+            <a href={`${import.meta.env.BASE_URL}?legal=privacy`} className="font-semibold text-cyan-700 hover:underline">Privacy Notice</a>
+            <span className="mx-2">·</span>
+            <a href={`${import.meta.env.BASE_URL}?legal=terms`} className="font-semibold text-cyan-700 hover:underline">Terms of Use</a>
+            <span className="ml-2">An account is required for personalized tools.</span>
+          </p>
         </div>
       </footer>
 
@@ -467,15 +473,15 @@ const AUDIENCE = [
 
 const STATS: { value: string; label: string }[] = [
   { value: '100+', label: 'Muscles on the 3D anatomy model' },
-  { value: '3-in-1', label: 'Diagnose · Relief exercises · AI coach' },
-  { value: 'Free', label: 'AI muscle pain diagnosis' },
+  { value: '3-in-1', label: 'Explore · Exercises · Biofeedback' },
+  { value: 'Pattern', label: 'Direct and referred pain references' },
   { value: 'Live', label: 'Posture & form tracking in-browser' },
 ]
 
 const BENEFITS: { title: string; body: string; icon: React.ReactNode; tile: string }[] = [
   {
-    title: 'Muscle pain diagnosis',
-    body: 'Tap a sore spot on the 3D anatomy model and see the muscles most likely behind the hurt light up, ranked.',
+    title: 'Pain-pattern explorer',
+    body: 'Tap a sore spot and compare relative matches from direct and referred pain-pattern references. The ranking is not a diagnosis.',
     icon: <MousePointerClick className="h-6 w-6" />,
     tile: 'bg-cyan-100 text-cyan-600',
   },

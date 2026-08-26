@@ -28,13 +28,19 @@ export const EXERCISE_POSTURE: Record<string, Posture> = {
   crab_press:       'supine',   // reverse tabletop — face up
   // Rotator cuff
   side_lying_er:    'side',
-  post_shoulder:    'side',     // sleeper stretch — lying on the side
-  wand_rotation:    'standing',
+  post_shoulder:    'standing', // cross-body posterior shoulder stretch
+  wand_rotation:    'supine',
+  wall_climb:       'standing',
+  scapular_reach:   'supine',
+  pendulum:         'standing',
+  high_low_rows:    'standing',
+  up_back_stretch:  'standing',
+  supported_ext:    'seated',
   // Glutes / hamstrings
   glute_bridge:     'supine',
   hip_hinge:        'standing',
   side_clamshell:   'side',
-  hamstring_squeeze:'supine',
+  hamstring_squeeze:'seated',
   // Biceps
   bb_flex_ext:        'standing',
   bb_shoulder_flex:   'standing',
@@ -93,6 +99,12 @@ export const EXERCISE_MOVING_SEGMENTS: Record<string, SegmentId[]> = {
   hamstring_squeeze:  ['shankL', 'shankR'],
   qd_wall_squat:      ['thighL', 'thighR', 'shankL', 'shankR'],
   qd_stiff_deadlift:  ['trunk', 'thighL', 'thighR'],
+  wall_climb:         ['upperArmL', 'upperArmR'],
+  scapular_reach:     ['upperArmL', 'upperArmR'],
+  pendulum:           ['upperArmL', 'upperArmR'],
+  high_low_rows:      ['upperArmL', 'upperArmR', 'forearmL', 'forearmR'],
+  up_back_stretch:    ['upperArmL', 'upperArmR', 'forearmL', 'forearmR'],
+  supported_ext:      ['upperArmL', 'upperArmR', 'forearmL', 'forearmR'],
 
   // MoveMate Train catalogue
   push_up:          ['upperArmL', 'upperArmR', 'forearmL', 'forearmR', 'trunk'],

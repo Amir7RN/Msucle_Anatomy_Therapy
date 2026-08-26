@@ -30,7 +30,7 @@ import * as THREE from 'three'
 import {
   calculateMuscleContribution,
   filterMeshIdsBySide,
-  findZonesAtPoint,
+  findZoneMatchesAtPoint,
   loadDiagnosticMuscles,
   type DiagnosticMuscle,
   type DiagnosticResult,
@@ -87,7 +87,8 @@ export function useDiagnosticClick(
       const worldPoint: THREE.Vector3 = e.point.clone()
 
       // ── 2. Resolve to one or more BODY_ZONES keys ────────────────────────
-      const clickedZones = findZonesAtPoint(worldPoint)
+      const zoneMatches = findZoneMatchesAtPoint(worldPoint)
+      const clickedZones = zoneMatches.map((match) => match.zone)
       if (clickedZones.length === 0) {
         setDiagnostic(null)
         setCandidateMuscles([])
@@ -95,7 +96,8 @@ export function useDiagnosticClick(
       }
 
       // ── 3. Reverse-map to weighted muscle contributions ─────────────────
-      const contributions = calculateMuscleContribution(clickedZones, catalogue)
+      const spatialWeights = Object.fromEntries(zoneMatches.map((match) => [match.zone, match.spatialWeight]))
+      const contributions = calculateMuscleContribution(clickedZones, catalogue, spatialWeights)
       const candidateIds = [
         ...new Set(
           contributions.flatMap((c) => filterMeshIdsBySide(c.meshIds, worldPoint)),

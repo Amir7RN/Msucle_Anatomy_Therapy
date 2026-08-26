@@ -358,7 +358,7 @@ export function MoveMateLanding({ atlasUrl, diagnosticUrl, gymUrl }: LandingPage
             <ShieldCheck className="h-4 w-4 text-emerald-400" />
             Camera frames never leave your device — pose runs in your browser.
           </span>
-          <span className="text-[12px]">Education & biofeedback · not a medical device</span>
+          <span className="text-[12px]">Education & biofeedback · not a medical device · <a className="text-cyan-300 hover:underline" href={`${import.meta.env.BASE_URL}?legal=privacy`}>Privacy</a> · <a className="text-cyan-300 hover:underline" href={`${import.meta.env.BASE_URL}?legal=terms`}>Terms</a></span>
         </div>
       </footer>
     </main>

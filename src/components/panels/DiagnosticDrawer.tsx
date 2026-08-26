@@ -83,7 +83,7 @@ export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
     <section className="border-b border-slate-200 dark:border-slate-700 p-4">
       <header className="mb-3 flex items-center justify-between">
         <div>
-          <h3 className="text-xs font-semibold tracking-wide uppercase text-slate-500 dark:text-slate-400">Likely Sources</h3>
+          <h3 className="text-xs font-semibold tracking-wide uppercase text-slate-500 dark:text-slate-400">Pain-pattern matches</h3>
           <p className="text-[11px] text-slate-500 dark:text-slate-400">Zones: {result.clickedZones.join(', ')}</p>
         </div>
         <button onClick={closeDrawer} aria-label="Close" className="text-xs text-neutral-400 hover:text-white">✕</button>
@@ -99,6 +99,9 @@ export function DiagnosticDrawer({ result, onClose }: DiagnosticDrawerProps) {
           <i className="h-1.5 w-3 rounded-full bg-cyan-400" /> referred pattern
         </span>
       </div>
+      <p className="mb-3 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+        Percentages are relative catalogue-match scores, not diagnostic probabilities. Location alone cannot identify the cause of pain.
+      </p>
 
       <ul className="space-y-1.5">
         {sortedGroups.map((entry, rank) => {

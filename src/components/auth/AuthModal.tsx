@@ -6,7 +6,7 @@
  * AuthContext's auth-state subscription fires and any subscribed component
  * (e.g. romHistory readers) re-renders against the new session.
  *
- * Continue-as-guest: clicking the X (or the "Continue without account" link)
+ * Dismissal: clicking the X (or the "Not now" link)
  * dismisses the modal. The app keeps working against localStorage in guest
  * mode — this is intentional so the public demo still functions.
  */
@@ -75,7 +75,7 @@ export function AuthModal({ open, onClose, initialMode = 'signin' }: Props) {
           <button
             onClick={onClose}
             className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
-            title="Continue without account"
+            title="Close account dialog"
           >
             <X size={16} />
           </button>
@@ -162,9 +162,12 @@ export function AuthModal({ open, onClose, initialMode = 'signin' }: Props) {
             onClick={onClose}
             className="text-slate-500 hover:text-slate-300"
           >
-            Continue without account
+            Not now
           </button>
         </div>
+        <p className="mt-3 text-center text-[10px] text-slate-500">
+          By creating an account you agree to the <a href={`${import.meta.env.BASE_URL}?legal=terms`} className="text-cyan-400 hover:underline">Terms</a> and acknowledge the <a href={`${import.meta.env.BASE_URL}?legal=privacy`} className="text-cyan-400 hover:underline">Privacy Notice</a>.
+        </p>
       </div>
     </div>
   )

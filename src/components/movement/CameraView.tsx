@@ -205,7 +205,7 @@ export function CameraView({ active, onLandmarks, onReady, onError, maxFov, onVi
       // ── Step 2: pose model load (separate try so we know which step failed)
       let detector
       try {
-        detector = await ensureDetector()
+        detector = await ensureDetector(maxFov ? 'wide' : 'precision')
       } catch (e) {
         console.error('[camera] pose model load failed:', e)
         onError?.((e as Error).message ?? 'Pose model failed to load')

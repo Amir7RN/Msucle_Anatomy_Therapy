@@ -33,14 +33,13 @@ import {
   BIOFEEDBACK_DEFS,
   EXERCISE_TO_BIOFEEDBACK,
   evaluateExercise,
-  EXERCISE_TO_PROCEDURE,
-  EXERCISE_PROCEDURES,
+  buildExerciseProcedure,
   type FormSnapshot,
   type BiofeedbackDef,
   type StepCheck,
 } from '../../lib/movement/biofeedback'
 import { useVoiceInput, useVoiceOutput } from '../../hooks/useVoice'
-import { createRepCounter } from '../../lib/movement/repCounter'
+import { createMotionCounter } from '../../lib/movement/motionCounter'
 import { getStoredApiKey, setStoredApiKey, anthropicMessages } from '../../lib/triage/llm'
 import { completeSentences } from '../../lib/speechText'
 import { FormTrendTracker } from '../../lib/movement/coachContext'
@@ -96,10 +95,15 @@ export function ExerciseGuidance({ exerciseId: exerciseIdProp, exerciseLabel: ex
   // reference video) follows the swap.
   const [swap, setSwap]         = useState<{ id: string; label: string; src: string } | null>(null)
   const [painOpen, setPainOpen] = useState(false)
+  const [safetyCleared, setSafetyCleared] = useState(false)
+  const [painLevel, setPainLevel] = useState(0)
+  const [redFlags, setRedFlags] = useState(false)
   const exerciseId    = swap?.id    ?? exerciseIdProp
   const exerciseLabel = swap?.label ?? exerciseLabelProp
   const videoSrc      = swap?.src   ?? videoSrcProp
-  useEffect(() => { setSwap(null); setPainOpen(false) }, [exerciseIdProp])
+  useEffect(() => {
+    setSwap(null); setPainOpen(false); setSafetyCleared(false); setPainLevel(0); setRedFlags(false)
+  }, [exerciseIdProp])
   const regression = useMemo(() => regressionFor(exerciseId), [exerciseId])
 
   // Hide the 3D canvas chrome AND make absolutely sure the AI Coach's
@@ -119,10 +123,11 @@ export function ExerciseGuidance({ exerciseId: exerciseIdProp, exerciseLabel: ex
   const [cameraReady, setCameraReady] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [snapshot, setSnapshot]       = useState<FormSnapshot | null>(null)
-  // Rep counting — every form-good→form-rest cycle counts as one.
+  const isDynamic = def?.mode === 'dynamic' && !!def.motion
+  // Rep counting requires a complete measured start → target → start cycle.
   const [repCount, setRepCount]       = useState(0)
   const repTarget = 10
-  const repTrackerRef = useRef(createRepCounter(repTarget))
+  const motionTrackerRef = useRef<ReturnType<typeof createMotionCounter> | null>(null)
 
   // Live landmark ref — updated every camera frame, read by AiCoach's RAF loop
   const lmsRef = useRef<LandmarkSet | null>(null)
@@ -144,6 +149,7 @@ export function ExerciseGuidance({ exerciseId: exerciseIdProp, exerciseLabel: ex
   const [repScores, setRepScores]     = useState<number[]>([])
   // Best continuous "good form" streak in the session (seconds).
   const currentStreakRef = useRef(0)
+  const lastGoodAtRef = useRef<number | null>(null)
   const [bestHoldSec, setBestHoldSec] = useState(0)
 
   // ── Pose-readiness gate ───────────────────────────────────────────────
@@ -270,22 +276,14 @@ export function ExerciseGuidance({ exerciseId: exerciseIdProp, exerciseLabel: ex
     if (!def) return
     const snap = evaluateExercise(lms, def)
 
-    // ── Permissive "visible-good" override ──────────────────────────────
-    // The original evaluateExercise sets snap.good only when EVERY check
-    // passes — including checks whose landmarks aren't currently visible.
-    // That made FormScore + reps stick at 0 even when the visible joint
-    // was already 97 % in band.  We now treat the snapshot as "good" if
-    // every VISIBLE detail is in band (and at least one detail exists).
-    const visibleGood =
-      snap.details.length > 0 && snap.details.every((d) => d.status === 'good')
-    const snapEff: FormSnapshot = { ...snap, good: visibleGood }
+    const snapEff = snap
 
     frameBuffer.current.push(snapEff)
     if (frameBuffer.current.length > SMOOTH_FRAMES) frameBuffer.current.shift()
     if (frameBuffer.current.length < SMOOTH_FRAMES) return
     const goodCount = frameBuffer.current.filter((s) => s.good).length
     const smoothed: FormSnapshot = goodCount >= SMOOTH_FRAMES / 2
-      ? { cueText: 'Good alignment — hold it.', good: true, details: snapEff.details }
+      ? { ...snapEff, cueText: 'Good alignment — hold it.', good: true }
       : snapEff
     setSnapshot(smoothed)
 
@@ -335,23 +333,27 @@ export function ExerciseGuidance({ exerciseId: exerciseIdProp, exerciseLabel: ex
     }
     setJointAccuracy(perJoint)
 
-    // Best continuous good-form streak (seconds), assuming 30 fps.
+    // Best continuous good-form streak based on elapsed time, not assumed FPS.
+    const now = performance.now()
     if (smoothed.good) {
-      currentStreakRef.current += 1
-      const sec = currentStreakRef.current / 30
+      if (lastGoodAtRef.current === null) lastGoodAtRef.current = now
+      currentStreakRef.current += Math.min(100, now - lastGoodAtRef.current)
+      lastGoodAtRef.current = now
+      const sec = currentStreakRef.current / 1000
       setBestHoldSec((prev) => sec > prev ? Math.round(sec * 10) / 10 : prev)
     } else {
       currentStreakRef.current = 0
+      lastGoodAtRef.current = null
     }
 
     // Per-rep tally
     currentRepStatsRef.current.total += 1
     if (smoothed.good) currentRepStatsRef.current.good += 1
 
-    // Rep tracker — drive the state machine off the SMOOTHED form-good signal
-    // so a single noisy frame doesn't accidentally tally a half-rep.
-    const repState = repTrackerRef.current.update(smoothed.good)
-    if (repState.just_completed) {
+    // Dynamic exercises only: count a complete start → target → return cycle.
+    const motionValue = def.motion?.measure(lms) ?? null
+    const repState = motionTrackerRef.current?.update(motionValue)
+    if (repState?.justCompleted) {
       setRepCount(repState.count)
       const stats = currentRepStatsRef.current
       const pct = stats.total > 0 ? Math.round((stats.good / stats.total) * 100) : 0
@@ -368,6 +370,7 @@ export function ExerciseGuidance({ exerciseId: exerciseIdProp, exerciseLabel: ex
     perfHistoryRef.current = []
     currentRepStatsRef.current = { good: 0, total: 0 }
     currentStreakRef.current = 0
+    lastGoodAtRef.current = null
     poseHistRef.current = []
     setSnapshot(null)
     setFormScore(0)
@@ -377,11 +380,55 @@ export function ExerciseGuidance({ exerciseId: exerciseIdProp, exerciseLabel: ex
     setPoseLocked(false)
     setPoseHint('Step into frame…')
     lmsRef.current = null
-    repTrackerRef.current.reset()
+    motionTrackerRef.current = def?.motion
+      ? createMotionCounter(def.motion.start, def.motion.target)
+      : null
     setRepCount(0)
-  }, [exerciseId])
+  }, [exerciseId, def])
 
   if (!exerciseId) return null
+
+  if (!safetyCleared) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950 p-4 text-white">
+        <div className="w-full max-w-xl rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-cyan-300">Before the camera starts</p>
+              <h2 className="mt-1 text-xl font-semibold">Quick safety check for {exerciseLabel}</h2>
+            </div>
+            <button onClick={onClose} className="rounded-lg bg-slate-800 p-2 text-slate-300 hover:text-white"><X size={18} /></button>
+          </div>
+          <p className="mt-3 text-sm leading-relaxed text-slate-300">
+            This app can measure visible body position, but it cannot diagnose pain, feel stretch intensity, or confirm contact with a wall, floor, strap, or chair.
+          </p>
+          <label className="mt-5 block text-sm font-medium text-slate-200">
+            Pain right now: <span className="font-bold text-orange-300">{painLevel}/10</span>
+          </label>
+          <input aria-label="Pain level" type="range" min="0" max="10" value={painLevel} onChange={(e) => setPainLevel(Number(e.target.value))} className="mt-2 w-full accent-orange-500" />
+          <label className="mt-5 flex items-start gap-3 rounded-xl border border-red-900/60 bg-red-950/25 p-3 text-sm text-slate-200">
+            <input type="checkbox" checked={redFlags} onChange={(e) => setRedFlags(e.target.checked)} className="mt-0.5 h-4 w-4 accent-red-500" />
+            <span>I have a recent fall or sudden injury, major swelling/deformity, new weakness/numbness/tingling, pain traveling down the limb, chest pain, or shortness of breath.</span>
+          </label>
+          {(redFlags || painLevel >= 7) && (
+            <div className="mt-4 rounded-xl border border-red-500/50 bg-red-950/50 p-3 text-sm text-red-100">
+              Do not start this exercise. Seek prompt professional assessment; call emergency services for chest pain, breathing difficulty, or other emergency symptoms.
+            </div>
+          )}
+          <div className="mt-5 rounded-xl bg-slate-800/70 p-3 text-xs leading-relaxed text-slate-300">
+            Start only if you can stay in a gentle, comfortable range. Stop immediately if symptoms increase, become sharp, tingle, or travel.
+          </div>
+          <button
+            disabled={redFlags || painLevel >= 7}
+            onClick={() => setSafetyCleared(true)}
+            className="mt-5 w-full rounded-xl bg-cyan-600 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-500"
+          >
+            Start gentle movement check
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black text-white">
@@ -529,12 +576,12 @@ export function ExerciseGuidance({ exerciseId: exerciseIdProp, exerciseLabel: ex
               </div>
             )}
 
-            {/* Rep counter — top-right of camera feed */}
+            {/* Dynamic movements show reps; static stretches show the live hold. */}
             {cameraReady && def && (
               <div className="absolute top-1.5 right-1.5 flex items-center gap-1 rounded-md bg-black/75 px-2 py-1 backdrop-blur ring-1 ring-orange-500/40">
-                <span className="text-[9px] uppercase tracking-wider text-orange-300">Reps</span>
-                <span className="text-sm font-bold tabular-nums text-orange-200">{repCount}</span>
-                <span className="text-[10px] text-slate-400">/ {repTarget}</span>
+                <span className="text-[9px] uppercase tracking-wider text-orange-300">{isDynamic ? 'Reps' : 'Best hold'}</span>
+                <span className="text-sm font-bold tabular-nums text-orange-200">{isDynamic ? repCount : bestHoldSec.toFixed(1)}</span>
+                <span className="text-[10px] text-slate-400">{isDynamic ? `/ ${repTarget}` : 'sec'}</span>
               </div>
             )}
           </div>
@@ -563,8 +610,8 @@ export function ExerciseGuidance({ exerciseId: exerciseIdProp, exerciseLabel: ex
                 : <div className="text-[9px] text-slate-500 italic text-center">No live metric</div>}
               <div className="mt-1 flex items-center gap-1 text-[9px] text-slate-300">
                 <span className="rounded bg-slate-800 px-1.5 py-0.5">
-                  <span className="text-orange-300 font-bold tabular-nums">{repCount}</span>
-                  <span className="text-slate-500">/{repTarget}</span>
+                  <span className="text-orange-300 font-bold tabular-nums">{isDynamic ? repCount : bestHoldSec.toFixed(1)}</span>
+                  <span className="text-slate-500">{isDynamic ? `/${repTarget}` : 's hold'}</span>
                 </span>
                 <span className="rounded bg-slate-800 px-1.5 py-0.5 text-emerald-300 font-bold tabular-nums">
                   {bestHoldSec.toFixed(1)}s
@@ -634,6 +681,7 @@ export function ExerciseGuidance({ exerciseId: exerciseIdProp, exerciseLabel: ex
           repCount={repCount}
           repTarget={repTarget}
           hasDef={!!def}
+          isDynamic={isDynamic}
         />
 
         {/* AI coach rail.  display:none on mobile (just the chat UI is
@@ -840,8 +888,7 @@ function AiCoach({
   const [sending, setSending] = useState(false)
 
   // ── Step machine state ──────────────────────────────────────────────────
-  const procedureKey = def.exerciseId ? EXERCISE_TO_PROCEDURE[def.exerciseId] : undefined
-  const procedure    = procedureKey ? EXERCISE_PROCEDURES[procedureKey] : null
+  const procedure    = useMemo(() => buildExerciseProcedure(def), [def])
   const steps        = procedure?.steps ?? []
 
   const [stepIdx,     setStepIdx]     = useState(0)
@@ -1060,6 +1107,9 @@ function AiCoach({
       if (check) setStepCheck(check)
 
       if (!check || !check.done) {
+        if (!check) {
+          setStepCheck({ done: false, progress: 0, hint: 'Tracking lost — return to view. The timer is paused.' })
+        }
         // Pose broken — start grace period
         if (graceStartRef.current === null) graceStartRef.current = now
         if (now - graceStartRef.current > HOLD_GRACE_MS) {
@@ -1093,10 +1143,18 @@ function AiCoach({
 
         const nextIdx = idx + 1
         if (nextIdx >= steps.length) {
-          // All steps complete — single closing cue from the coach.
-          allDoneRef.current = true
-          setAllDone(true)
-          speakQueued('All steps complete — excellent work.')
+          if (def.mode === 'dynamic' && repCount < repTarget) {
+            // A dynamic procedure describes one start → target → return
+            // cycle. Loop it until the separately validated rep counter
+            // reaches the prescribed target.
+            setStepIdx(0)
+            stepIdxRef.current = 0
+            setStepCheck(null)
+          } else {
+            allDoneRef.current = true
+            setAllDone(true)
+            speakQueued(def.mode === 'dynamic' ? 'Set complete — excellent control.' : 'Hold complete. You returned safely to the start.')
+          }
         } else {
           // Quiet step advance — the live cue stream guides the next move.
           setStepIdx(nextIdx)
@@ -1111,7 +1169,7 @@ function AiCoach({
 
     rafId = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(rafId)
-  }, [steps, lmsRef, speakQueued]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [steps, lmsRef, speakQueued, def.mode, repCount, repTarget]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Build live form context for API calls ───────────────────────────────
   function buildFormContext(): string {
@@ -1446,10 +1504,11 @@ interface PerformanceTrackerProps {
   repCount:      number
   repTarget:     number
   hasDef:        boolean    // false → exercise has no biofeedback rules; show placeholder
+  isDynamic:     boolean
 }
 
 function PerformanceTracker({
-  formScore, jointAccuracy, repScores, bestHoldSec, repCount, repTarget, hasDef,
+  formScore, jointAccuracy, repScores, bestHoldSec, repCount, repTarget, hasDef, isDynamic,
 }: PerformanceTrackerProps) {
   if (!hasDef) {
     // No angle rules for this exercise — show a placeholder so the area
@@ -1479,12 +1538,12 @@ function PerformanceTracker({
         </div>
         <div className="mt-3 flex items-center gap-2 text-[10px] text-slate-300">
           <span className="rounded bg-slate-800 px-2 py-0.5">
-            <span className="text-orange-300 font-bold tabular-nums">{repCount}</span>
-            <span className="text-slate-500"> / {repTarget} reps</span>
+            <span className="text-orange-300 font-bold tabular-nums">{isDynamic ? repCount : bestHoldSec.toFixed(1)}</span>
+            <span className="text-slate-500">{isDynamic ? ` / ${repTarget} reps` : ' s best hold'}</span>
           </span>
-          <span className="rounded bg-slate-800 px-2 py-0.5">
+          {isDynamic && <span className="rounded bg-slate-800 px-2 py-0.5">
             best hold <span className="text-emerald-300 font-bold tabular-nums">{bestHoldSec.toFixed(1)} s</span>
-          </span>
+          </span>}
         </div>
       </div>
 
@@ -1529,8 +1588,13 @@ function PerformanceTracker({
 
       {/* ── CARD 3: Per-rep history ────────────────────────────────── */}
       <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-4 flex flex-col">
-        <div className="text-[10px] uppercase tracking-wider text-cyan-300 font-semibold mb-3">Rep History</div>
-        {repScores.length === 0 ? (
+        <div className="text-[10px] uppercase tracking-wider text-cyan-300 font-semibold mb-3">{isDynamic ? 'Rep History' : 'Hold Quality'}</div>
+        {!isDynamic ? (
+          <div className="flex flex-1 flex-col justify-center text-center">
+            <div className="text-3xl font-bold tabular-nums text-emerald-300">{bestHoldSec.toFixed(1)} s</div>
+            <div className="mt-2 text-[11px] text-slate-400">Timer pauses whenever a required joint leaves view or alignment is lost.</div>
+          </div>
+        ) : repScores.length === 0 ? (
           <div className="text-[11px] text-slate-500 italic flex-1">
             Complete a rep to start tracking your scores.
           </div>

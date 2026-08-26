@@ -944,7 +944,7 @@ function LikelySources({ result, onClose }: { result: DiagnosticResult; onClose?
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5 text-[10px] font-semibold text-amber-500 dark:text-amber-400 uppercase tracking-wide">
           <Activity size={10} />
-          Likely Sources
+          Pain-pattern matches
         </div>
         <div className="flex items-center gap-2 text-[10px] text-slate-500">
           <span className="truncate max-w-[110px]">{result.clickedZones.slice(0, 2).join(', ')}</span>
@@ -961,7 +961,7 @@ function LikelySources({ result, onClose }: { result: DiagnosticResult; onClose?
       {contributions.length === 0 ? (
         <p className="text-xs text-slate-400 px-1">No patterns match this area.</p>
       ) : (
-        <ul className="space-y-1">
+        <><p className="mb-2 px-1 text-[10px] leading-relaxed text-slate-500">Relative reference-pattern scores, not diagnostic probabilities.</p><ul className="space-y-1">
           {grouped.map((item: DiagnosticDisplayItem) => {
             if (isGrouped(item)) {
               const isExpanded = expandedGroups.has(item.label)
@@ -1066,7 +1066,7 @@ function LikelySources({ result, onClose }: { result: DiagnosticResult; onClose?
               </li>
             )
           })}
-        </ul>
+        </ul></>
       )}
     </div>
   )

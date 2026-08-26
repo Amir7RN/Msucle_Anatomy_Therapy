@@ -35,6 +35,14 @@ export interface DiagnosticMuscle {
   common_name:         string
   primary_pain_zone:   string[]
   referred_pain_zones: string[]
+  confidence?:         string
+  source?:             string
+}
+
+export interface ZoneMatch {
+  zone: string
+  /** 0..1 confidence based on distance from the calibrated ellipsoid centre. */
+  spatialWeight: number
 }
 
 export interface MuscleContribution {
@@ -423,8 +431,8 @@ export async function loadDiagnosticMuscles(): Promise<DiagnosticMuscle[]> {
 //  we fall back to the single nearest zone, measured with the same metric.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function findZonesAtPoint(point: THREE.Vector3): string[] {
-  const inside: string[] = []
+export function findZoneMatchesAtPoint(point: THREE.Vector3): ZoneMatch[] {
+  const inside: ZoneMatch[] = []
   let   bestKey = ''
   let   bestDist = Infinity
 
@@ -433,27 +441,22 @@ export function findZonesAtPoint(point: THREE.Vector3): string[] {
     const dy = (point.y - def.pos[1]) / def.scale[1]
     const dz = (point.z - def.pos[2]) / def.scale[2]
     const d2 = dx * dx + dy * dy + dz * dz
-    if (d2 <= 1) inside.push(key)
+    if (d2 <= 1.21) {
+      // Smooth falloff avoids a hard diagnostic jump at an ellipsoid edge.
+      const spatialWeight = Math.max(0.12, 1 - Math.sqrt(d2) / 1.1)
+      inside.push({ zone: key, spatialWeight })
+    }
     if (d2 < bestDist) { bestDist = d2; bestKey = key }
   }
 
-  const raw = inside.length > 0 ? inside : (bestKey ? [bestKey] : [])
-  // ── L/R symmetry: clicks on opposite sides should return the SAME muscle
-  //  differential.  We achieve this by always including the mirror zone for
-  //  any sided hit.  e.g. clicking shoulder_r returns both shoulder_r and
-  //  shoulder_l, so calculateMuscleContribution finds the same set of
-  //  bilateral muscles regardless of which side the user clicked.
-  return mirrorSidedZones(raw)
+  if (inside.length > 0) return inside.sort((a, b) => b.spatialWeight - a.spatialWeight)
+  // A click on the body mesh can fall just outside a calibrated ellipsoid.
+  // Keep a low-weight nearest match, but never fabricate the opposite side.
+  return bestKey ? [{ zone: bestKey, spatialWeight: Math.max(0.08, 1 / (1 + bestDist)) }] : []
 }
 
-/** Add the mirror counterpart for any zone ending in _r or _l. */
-function mirrorSidedZones(zones: string[]): string[] {
-  const out = new Set<string>(zones)
-  for (const z of zones) {
-    if (z.endsWith('_r'))      out.add(z.slice(0, -2) + '_l')
-    else if (z.endsWith('_l')) out.add(z.slice(0, -2) + '_r')
-  }
-  return [...out]
+export function findZonesAtPoint(point: THREE.Vector3): string[] {
+  return findZoneMatchesAtPoint(point).map((match) => match.zone)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -499,6 +502,7 @@ function zonesOverlap(clickedZones: string[], phrase: string): boolean {
 export function calculateMuscleContribution(
   clickedZones: string[],
   catalogue:    DiagnosticMuscle[],
+  spatialWeights?: Record<string, number>,
 ): MuscleContribution[] {
   if (clickedZones.length === 0) return []
 
@@ -513,7 +517,11 @@ export function calculateMuscleContribution(
       const expanded = expandAnatomicalPhrase(phrase)
       const hit = expanded.filter((z) => clickedZones.includes(z))
       if (hit.length > 0) {
-        best     = PRIMARY_WEIGHT
+        const spatial = Math.max(...hit.map((z) => spatialWeights?.[z] ?? 1))
+        // More than one independently matching phrase modestly strengthens
+        // the pattern without allowing catalogue verbosity to dominate.
+        const corroboration = 1 + Math.min(0.2, matchedZones.size * 0.05)
+        best     = Math.max(best, PRIMARY_WEIGHT * spatial * corroboration)
         bestType = 'primary'
         hit.forEach((z) => matchedZones.add(z))
       }
@@ -525,7 +533,8 @@ export function calculateMuscleContribution(
         const expanded = expandAnatomicalPhrase(phrase)
         const hit = expanded.filter((z) => clickedZones.includes(z))
         if (hit.length > 0) {
-          best     = REFERRED_WEIGHT
+          const spatial = Math.max(...hit.map((z) => spatialWeights?.[z] ?? 1))
+          best     = Math.max(best, REFERRED_WEIGHT * spatial)
           bestType = 'referred'
           hit.forEach((z) => matchedZones.add(z))
         }

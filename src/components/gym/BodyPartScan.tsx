@@ -176,7 +176,7 @@ export function BodyPartScan() {
         <button onClick={back} className="rounded-lg p-1.5 text-stone-300 hover:bg-stone-800"><ArrowLeft size={18} /></button>
         <Camera size={16} className={group.accent.text} />
         <div className="text-sm font-bold">Scan · {group.name}</div>
-        <span className="ml-2 rounded-full bg-stone-800 px-2 py-0.5 text-[10px] text-stone-400">on-device · private</span>
+        <span className="ml-2 rounded-full bg-stone-800 px-2 py-0.5 text-[10px] text-stone-400">base scan on-device</span>
       </header>
 
       <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
@@ -244,10 +244,12 @@ export function BodyPartScan() {
                   <button onClick={aiRead} disabled={aiBusy}
                     className="flex items-center gap-2 rounded-lg bg-stone-800 px-3 py-2 text-sm font-semibold text-amber-200 ring-1 ring-amber-500/30 hover:bg-stone-700 disabled:opacity-60">
                     {aiBusy ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
-                    {aiBusy ? 'Reading…' : 'Estimate with AI (1 call)'}
+                    {aiBusy ? 'Reading…' : 'Send this still to Anthropic'}
                   </button>
                 )}
-                {!getStoredApiKey() && <p className="mt-1 text-[10px] text-stone-500">Add your Anthropic key in the Triage chat to enable.</p>}
+                {!getStoredApiKey()
+                  ? <p className="mt-1 text-[10px] text-stone-500">Add your Anthropic key in the Triage chat to enable.</p>
+                  : <p className="mt-1 text-[10px] text-stone-500">Only runs when you press the button; one low-resolution camera still is sent to Anthropic.</p>}
               </div>
 
               <div className="mt-auto flex gap-2">

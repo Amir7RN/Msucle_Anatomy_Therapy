@@ -310,7 +310,12 @@ export function LoginPage() {
 
           {/* Footer */}
           <div className="mt-8 pt-6 border-t border-slate-700/50 text-center text-xs text-slate-500">
-            <p>Your data is encrypted and stored securely.</p>
+            <p>Your signed-in cloud records use per-user access controls. Some preferences and health history are also stored in this browser.</p>
+            <p className="mt-2">
+              <a href={`${import.meta.env.BASE_URL}?legal=privacy`} className="text-cyan-400 hover:underline">Privacy</a>
+              <span className="mx-2">·</span>
+              <a href={`${import.meta.env.BASE_URL}?legal=terms`} className="text-cyan-400 hover:underline">Terms</a>
+            </p>
           </div>
         </div>
       </div>

@@ -98,7 +98,7 @@ export function MoveMateHome({ atlasUrl, diagnosticUrl }: MoveMateHomeProps) {
             Explore the body <ChevronRight className="h-4 w-4" />
           </a>
         </div>
-        <p className="mt-6 text-sm text-slate-500">No signup. No download. Works in your browser.</p>
+        <p className="mt-6 text-sm text-slate-500">Create an account to use personalized tools. No download required.</p>
       </section>
 
       {/* Feature 1 — Pinpoint the muscle */}
@@ -157,7 +157,7 @@ export function MoveMateHome({ atlasUrl, diagnosticUrl }: MoveMateHomeProps) {
 
       <footer className="relative z-10 border-t border-white/10 py-8 text-center text-xs text-slate-500">
         MoveMate AI — built for every body. Suggestive, general-purpose movement guidance. Not a substitute for
-        professional advice.
+        professional advice. <a className="ml-2 text-cyan-300 hover:underline" href={`${import.meta.env.BASE_URL}?legal=privacy`}>Privacy</a> · <a className="text-cyan-300 hover:underline" href={`${import.meta.env.BASE_URL}?legal=terms`}>Terms</a>
       </footer>
     </main>
   )

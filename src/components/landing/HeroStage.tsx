@@ -116,7 +116,7 @@ function BadgeGroup() {
   return (
     <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm backdrop-blur">
       <Sparkles className="h-4 w-4 text-cyan-500" />
-      AI muscle pain diagnosis · posture &amp; movement check · free in your browser
+      Pain-pattern explorer · posture &amp; movement check · account required
     </span>
   )
 }
@@ -137,8 +137,8 @@ function HeadlineGroup() {
 function CopyGroup() {
   return (
     <p className="text-lg leading-8 text-slate-600">
-      Pinpoint what hurts on a 3D muscle anatomy model, get muscle pain relief exercises matched
-      to it, and work out with an AI coach that checks your form and posture on every rep.
+      Explore the muscles whose documented pain patterns overlap a sore area, review matched
+      movement options, and use a camera coach for visible form and posture feedback.
     </p>
   )
 }
@@ -146,7 +146,7 @@ function CopyGroup() {
 function CtaGroup({ diagnosticUrl }: { diagnosticUrl: string }) {
   return (
     <a href={diagnosticUrl} className="zh-cta-breathe group inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-gradient-to-r from-orange-500 to-rose-500 px-8 py-4 text-base font-semibold text-white transition hover:-translate-y-0.5">
-      Find my sore muscle <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+      Explore my sore area <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
     </a>
   )
 }

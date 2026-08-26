@@ -9,12 +9,12 @@
  *   • Voice coach (Web Speech) — "step back so I can see your whole body",
  *     "hold still… 3, 2, 1", "now turn to your side", "now show me your back".
  *   • Auto-capture — full-body visibility + low motion for HOLD_MS triggers it.
- *   • AI assist — if the user's stored Anthropic key is present, a still from
+ *   • Optional AI assist — after explicit opt-in, a still from
  *     each pose is sent to Claude vision for a body-composition read that is
  *     BLENDED with the geometric (BMI + build) estimate. No key → geometry only.
  *
- * Everything stays a private, on-device estimate with a range — never a medical
- * measurement.
+ * The base pose analysis stays on-device. AI assist crosses the Anthropic
+ * trust boundary and is disclosed before capture.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
@@ -118,6 +118,7 @@ export function BodyScanView({ open, input, onClose, onResult }: Props) {
   const [cameraReady, setReady] = useState(false)
   const [progress, setProgress] = useState(0)     // 0..1 hold progress
   const [inFrame, setInFrame]   = useState(false)
+  const [aiConsent, setAiConsent] = useState(false)
   const [hint, setHint]         = useState('')
   const [result, setResult]     = useState<BodyScanResult | null>(null)
   const [errMsg, setErrMsg]     = useState<string | null>(null)
@@ -263,10 +264,12 @@ export function BodyScanView({ open, input, onClose, onResult }: Props) {
         const geoConf = geo.composition.confidence
         const geoBuild = geo.composition.build ?? 'average'
         // Optional Claude-vision refinement (uses the stored key; null if none).
-        const vision = await estimateCompositionVision(
-          { front: stills.current.front, side: stills.current.side, back: stills.current.back },
-          input,
-        )
+        const vision = aiConsent
+          ? await estimateCompositionVision(
+              { front: stills.current.front, side: stills.current.side, back: stills.current.back },
+              input,
+            )
+          : null
         const blended = blendComposition(
           { bodyFatPct: geoBf, confidence: geoConf, build: geoBuild },
           vision,
@@ -298,7 +301,7 @@ export function BodyScanView({ open, input, onClose, onResult }: Props) {
         busy.current = false
       }
     })()
-  }, [phase, input, say])
+  }, [phase, input, say, aiConsent])
 
   if (!open) return null
 
@@ -311,9 +314,9 @@ export function BodyScanView({ open, input, onClose, onResult }: Props) {
         <div className="flex items-center gap-2">
           <Scan size={16} className="text-cyan-400" />
           <span className="text-sm font-semibold tracking-wide">Body Scan</span>
-          <span className="ml-1 rounded-full bg-slate-700/40 px-2 py-0.5 text-[10px] text-slate-300">on-device · private</span>
-          {bodyVisionEnabled() && (
-            <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-medium text-violet-300 ring-1 ring-violet-500/30">AI assist on</span>
+          <span className="ml-1 rounded-full bg-slate-700/40 px-2 py-0.5 text-[10px] text-slate-300">pose runs on-device</span>
+          {bodyVisionEnabled() && aiConsent && (
+            <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-medium text-violet-300 ring-1 ring-violet-500/30">AI assist sends stills</span>
           )}
         </div>
         <div className="flex items-center gap-1">
@@ -371,7 +374,7 @@ export function BodyScanView({ open, input, onClose, onResult }: Props) {
 
         {/* Instruction / result column */}
         <div className="flex w-full flex-col gap-3 overflow-y-auto p-5 lg:w-[380px] lg:border-l lg:border-slate-800">
-          {phase === 'intro' && <Intro onStart={() => setPhase('front')} input={input} aiOn={bodyVisionEnabled()} />}
+          {phase === 'intro' && <Intro onStart={() => setPhase('front')} input={input} aiAvailable={bodyVisionEnabled()} aiConsent={aiConsent} onAiConsent={setAiConsent} />}
 
           {cameraActive && (
             <div className="flex flex-1 flex-col gap-3">
@@ -418,7 +421,7 @@ export function BodyScanView({ open, input, onClose, onResult }: Props) {
 
 // ── Sub-views ────────────────────────────────────────────────────────────────
 
-function Intro({ onStart, input, aiOn }: { onStart: () => void; input: BodyScanInput; aiOn: boolean }) {
+function Intro({ onStart, input, aiAvailable, aiConsent, onAiConsent }: { onStart: () => void; input: BodyScanInput; aiAvailable: boolean; aiConsent: boolean; onAiConsent: (value: boolean) => void }) {
   return (
     <div className="flex flex-1 flex-col gap-3">
       <h2 className="text-lg font-semibold">Hands-free body scan</h2>
@@ -432,11 +435,13 @@ function Intro({ onStart, input, aiOn }: { onStart: () => void; input: BodyScanI
         <li className="flex items-center gap-2"><Dot n={3} /> Turn to show your back</li>
       </ol>
       <div className={['flex items-start gap-2 rounded-lg p-2.5 text-[11px] ring-1',
-        aiOn ? 'bg-violet-950/40 text-violet-200/90 ring-violet-700/30' : 'bg-slate-900/70 text-slate-400 ring-slate-700'].join(' ')}>
+        aiConsent ? 'bg-violet-950/40 text-violet-200/90 ring-violet-700/30' : 'bg-slate-900/70 text-slate-400 ring-slate-700'].join(' ')}>
         <Sparkles size={13} className="mt-0.5 shrink-0" />
-        {aiOn
-          ? 'AI assist is on — your scan is refined by Claude vision using the key you already set up.'
-          : 'Add your Anthropic key (in the AI Coach / Triage chat) to also get an AI-refined estimate. Works without it too.'}
+        <div>
+          {aiAvailable
+            ? <label className="flex cursor-pointer items-start gap-2"><input type="checkbox" checked={aiConsent} onChange={(e) => onAiConsent(e.target.checked)} className="mt-0.5 accent-violet-500" /><span>Send three low-resolution stills plus height, weight, age, and sex to Anthropic for optional AI refinement.</span></label>
+            : 'AI refinement is off. Add an Anthropic key in AI Coach / Triage to make the opt-in available. The scan works without it.'}
+        </div>
       </div>
       <div className="rounded-lg bg-slate-900/70 p-2.5 text-[11px] text-slate-400">
         Using height <span className="text-slate-200">{input.heightCm} cm</span>,

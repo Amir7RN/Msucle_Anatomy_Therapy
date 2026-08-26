@@ -41,7 +41,7 @@ const PAGES = [
       { name: 'Pectoralis minor', why: 'Front-shoulder tightness that pulls the shoulder forward; linked to rounded posture and can mimic impingement.' },
     ],
     faqs: [
-      { q: 'How do I know which shoulder muscle is causing my pain?', a: 'Tap the exact sore spot on Zevahealth AI\'s interactive 3D shoulder model. It highlights the likely muscle contributors, lets you isolate each one to compare, and confirms the most probable source — free, no signup.' },
+      { q: 'How do I explore which shoulder muscles may contribute to pain?', a: 'Tap the sore spot on Zevahealth AI\'s interactive 3D shoulder model. It shows relative pattern matches from its reference catalogue so you can explore possible contributors. An account is required for personalized tools.' },
       { q: 'Why does my shoulder hurt when I lift my arm?', a: 'Pain on lifting the arm often points to the supraspinatus (rotator cuff) or anterior deltoid. Zevahealth AI helps you distinguish them and suggests targeted relief exercises.' },
       { q: 'When should I see a doctor for shoulder pain?', a: 'See a professional for severe, sudden, or worsening pain, pain after trauma, loss of movement, numbness, or pain that persists beyond a couple of weeks. Zevahealth AI offers general movement guidance, not medical diagnosis.' },
     ],

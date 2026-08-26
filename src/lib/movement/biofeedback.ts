@@ -34,11 +34,26 @@ export interface BiofeedbackDef {
   title:      string
   introCue:   string
   checks:     FormCheck[]
+  /** Static stretches/holds never enter the repetition counter. */
+  mode?:      'dynamic' | 'hold'
+  /** Human-readable phase cues used to build a complete setup → move → exit flow. */
+  setupCue?:  string
+  actionCue?: string
+  exitCue?:   string
+  holdMs?:    number
+  /** A dynamic exercise needs a real rest → target → rest cycle. */
+  motion?: {
+    measure: (lms: LandmarkSet) => number | null
+    start: [number, number]
+    target: [number, number]
+  }
 }
 
 export interface FormSnapshot {
   cueText: string
   good:    boolean
+  tracking: 'good' | 'lost'
+  missing: string[]
   details: Array<{ label: string; deg: number; status: 'good' | 'low' | 'high' }>
 }
 
@@ -49,32 +64,38 @@ export interface FormSnapshot {
 export const EXERCISE_TO_BIOFEEDBACK: Record<string, string> = {
   // ── Deltoid (all 6 exercises now have guidance) ───────────────────────────
   doorway_stretch:  'doorway_stretch',
-  seated_cross_arm: 'cross_arm_stretch',
-  standing_sleeper: 'cross_arm_stretch',   // standing version uses same arm-across-chest pattern
+  seated_cross_arm: 'seated_cross_arm',
+  standing_sleeper: 'standing_sleeper',
   hand_behind_back: 'hand_behind_back',
   standing_chest:   'standing_chest',
   crab_press:       'crab_press',
   // ── Rotator cuff ─────────────────────────────────────────────────────────
   side_lying_er:    'side_lying_er',
-  post_shoulder:    'sleeper_stretch',
-  wand_rotation:    'side_lying_er',       // both monitor external-rotation angle
+  post_shoulder:    'post_shoulder',
+  wand_rotation:    'wand_rotation',
+  wall_climb:       'wall_climb',
+  scapular_reach:   'scapular_reach',
+  pendulum:         'pendulum',
+  high_low_rows:    'high_low_rows',
+  up_back_stretch:  'up_back_stretch',
+  supported_ext:    'supported_ext',
   // ── Glutes / hamstrings ───────────────────────────────────────────────────
   glute_bridge:     'glute_bridge',
   hip_hinge:        'hip_hinge',
   side_clamshell:   'side_clamshell',
-  hamstring_squeeze:'hip_hinge',           // similar hip-loading mechanics
+  hamstring_squeeze:'hamstring_squeeze',
   // ── Biceps brachii ────────────────────────────────────────────────────────
-  bb_flex_ext:         'elbow_flexion',
-  bb_shoulder_flex:    'shoulder_flexion',
-  bb_wall_stretch:     'shoulder_extension',
-  bb_ext_rotation:     'side_lying_er',    // same external-rotation pattern
-  bb_sleeper_stretch:  'sleeper_stretch',
+  bb_flex_ext:         'bb_flex_ext',
+  bb_shoulder_flex:    'bb_shoulder_flex',
+  bb_wall_stretch:     'bb_wall_stretch',
+  bb_ext_rotation:     'bb_ext_rotation',
+  bb_sleeper_stretch:  'bb_sleeper_stretch',
   // ── Quadriceps ────────────────────────────────────────────────────────────
-  qd_wall_squat:           'knee_squat',
-  qd_stiff_deadlift:       'hip_hinge',
-  qd_quad_stretch_stand:   'quad_stretch',
-  qd_quad_stretch_side:    'quad_stretch',
-  qd_hamstring_supine:     'supine_hamstring',
+  qd_wall_squat:           'qd_wall_squat',
+  qd_stiff_deadlift:       'qd_stiff_deadlift',
+  qd_quad_stretch_stand:   'qd_quad_stretch_stand',
+  qd_quad_stretch_side:    'qd_quad_stretch_side',
+  qd_hamstring_supine:     'qd_hamstring_supine',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -148,6 +169,65 @@ function pickHighElbow(lms: LandmarkSet): 'L' | 'R' | null {
   if (!hasR) return 'L'
   // Smaller image Y = higher in the frame = the arm going behind the head
   return lms[LM.L_ELBOW].y <= lms[LM.R_ELBOW].y ? 'L' : 'R'
+}
+
+function pickFlexedElbow(lms: LandmarkSet): 'L' | 'R' | null {
+  const hasL = visible(lms, LM.L_SHOULDER, LM.L_ELBOW, LM.L_WRIST)
+  const hasR = visible(lms, LM.R_SHOULDER, LM.R_ELBOW, LM.R_WRIST)
+  if (!hasL && !hasR) return null
+  if (!hasL) return 'R'
+  if (!hasR) return 'L'
+  const left = jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_ELBOW], lms[LM.L_WRIST])
+  const right = jointAngleDeg(lms[LM.R_SHOULDER], lms[LM.R_ELBOW], lms[LM.R_WRIST])
+  return left <= right ? 'L' : 'R'
+}
+
+function selectedArmAngle(lms: LandmarkSet, side: 'L' | 'R'): number | null {
+  const s = side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER
+  const e = side === 'L' ? LM.L_ELBOW : LM.R_ELBOW
+  const w = side === 'L' ? LM.L_WRIST : LM.R_WRIST
+  return visible(lms, s, e, w) ? jointAngleDeg(lms[s], lms[e], lms[w]) : null
+}
+
+function selectedKneeAngle(lms: LandmarkSet): number | null {
+  const hasL = visible(lms, LM.L_HIP, LM.L_KNEE, LM.L_ANKLE)
+  const hasR = visible(lms, LM.R_HIP, LM.R_KNEE, LM.R_ANKLE)
+  if (!hasL && !hasR) return null
+  const left = hasL ? jointAngleDeg(lms[LM.L_HIP], lms[LM.L_KNEE], lms[LM.L_ANKLE]) : 180
+  const right = hasR ? jointAngleDeg(lms[LM.R_HIP], lms[LM.R_KNEE], lms[LM.R_ANKLE]) : 180
+  return Math.min(left, right)
+}
+
+/** Rotation of the ribcage relative to the pelvis, using world X/Z when available. */
+function torsoRotationDeg(lms: LandmarkSet): number | null {
+  if (!visible(lms, LM.L_SHOULDER, LM.R_SHOULDER, LM.L_HIP, LM.R_HIP)) return null
+  const ls = lms[LM.L_SHOULDER], rs = lms[LM.R_SHOULDER]
+  const lh = lms[LM.L_HIP], rh = lms[LM.R_HIP]
+  const sx = (rs.wx ?? rs.x) - (ls.wx ?? ls.x)
+  const sz = (rs.wz ?? rs.z) - (ls.wz ?? ls.z)
+  const hx = (rh.wx ?? rh.x) - (lh.wx ?? lh.x)
+  const hz = (rh.wz ?? rh.z) - (lh.wz ?? lh.z)
+  const dot = sx * hx + sz * hz
+  const mag = Math.hypot(sx, sz) * Math.hypot(hx, hz)
+  if (mag < 1e-6) return null
+  return Math.acos(Math.max(-1, Math.min(1, dot / mag))) * 180 / Math.PI
+}
+
+function uprightDeg(lms: LandmarkSet): number | null {
+  if (!visible(lms, LM.L_SHOULDER, LM.R_SHOULDER, LM.L_HIP, LM.R_HIP)) return null
+  const hip = {
+    x: (lms[LM.L_HIP].x + lms[LM.R_HIP].x) / 2,
+    y: (lms[LM.L_HIP].y + lms[LM.R_HIP].y) / 2,
+    z: (lms[LM.L_HIP].z + lms[LM.R_HIP].z) / 2,
+    visibility: 1,
+  }
+  const shoulder = {
+    x: (lms[LM.L_SHOULDER].x + lms[LM.R_SHOULDER].x) / 2,
+    y: (lms[LM.L_SHOULDER].y + lms[LM.R_SHOULDER].y) / 2,
+    z: (lms[LM.L_SHOULDER].z + lms[LM.R_SHOULDER].z) / 2,
+    visibility: 1,
+  }
+  return Math.abs(vectorVerticalAngleDeg(hip, shoulder))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -617,6 +697,176 @@ export const BIOFEEDBACK_DEFS: Record<string, BiofeedbackDef> = {
   },
 }
 
+// Every shipped exercise gets its own definition. Similar-looking movements
+// may share a measurement, but never inherit the wrong posture or coaching.
+const elbowFlexionMeasure = BIOFEEDBACK_DEFS.elbow_flexion.checks[0].measure
+const shoulderFlexionMeasure = BIOFEEDBACK_DEFS.shoulder_flexion.checks[0].measure
+const hipFlexionMeasure = BIOFEEDBACK_DEFS.hip_hinge.checks[0].measure
+const kneeFlexionMeasure = BIOFEEDBACK_DEFS.knee_squat.checks[0].measure
+
+Object.assign(BIOFEEDBACK_DEFS, {
+  seated_cross_arm: {
+    ...BIOFEEDBACK_DEFS.cross_arm_stretch,
+    exerciseId: 'seated_cross_arm', mode: 'hold', holdMs: 15000,
+    setupCue: 'Sit tall with both shoulders visible and let the arm start relaxed.',
+    actionCue: 'Bring one straight arm across your chest and use the other arm for gentle support. Keep the working shoulder down.',
+    exitCue: 'Release the supporting arm and slowly return the stretched arm to your side.',
+  },
+  standing_sleeper: {
+    exerciseId: 'standing_sleeper', title: 'Standing Sleeper Rotation', mode: 'hold', holdMs: 12000,
+    introCue: 'Stand tall. Raise the working upper arm to shoulder height, bend the elbow to 90 degrees, then rotate only within a gentle range.',
+    setupCue: 'Face the camera with the working elbow level with the shoulder.',
+    actionCue: 'Keep the elbow at shoulder height and slowly rotate the forearm downward. Do not force the shoulder.',
+    exitCue: 'Return the forearm upright first, then lower the arm.',
+    checks: [
+      { label: 'Upper arm height', ideal: [75, 105], measure: (lms: LandmarkSet) => {
+        const side = pickRaisedArm(lms); if (!side) return null
+        return jointAngleDeg(lms[side === 'L' ? LM.L_HIP : LM.R_HIP], lms[side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER], lms[side === 'L' ? LM.L_ELBOW : LM.R_ELBOW])
+      }, belowCue: 'Raise the elbow to shoulder height.', aboveCue: 'Lower the elbow to shoulder height.' },
+      { label: 'Elbow bend', ideal: [75, 105], measure: (lms: LandmarkSet) => { const s = pickRaisedArm(lms); return s ? selectedArmAngle(lms, s) : null }, belowCue: 'Bend the elbow closer to 90 degrees.', aboveCue: 'Bend the elbow closer to 90 degrees.' },
+    ],
+  },
+  post_shoulder: {
+    ...BIOFEEDBACK_DEFS.cross_arm_stretch,
+    exerciseId: 'post_shoulder', title: 'Posterior Shoulder Stretch', mode: 'hold', holdMs: 15000,
+    setupCue: 'Stand tall with the shoulder relaxed away from your ear.',
+    actionCue: 'Draw one straight arm across the chest. Apply gentle pressure above the elbow, never on the joint.',
+    exitCue: 'Release the pressure and slowly lower the arm.',
+  },
+  wand_rotation: {
+    exerciseId: 'wand_rotation', title: 'Supine Wand Rotation', mode: 'dynamic',
+    introCue: 'Lie on your back with both elbows bent and use the wand to guide one forearm outward without lifting the shoulder.',
+    setupCue: 'Lie fully supported, elbows bent about 90 degrees and upper arms close to your sides.',
+    actionCue: 'Use the opposite hand to guide the working forearm outward slowly. Keep both elbows bent and shoulders relaxed.',
+    exitCue: 'Guide the forearm back to the starting position; do not let it drop.',
+    checks: [{ label: 'Elbow bend', ideal: [75, 105], measure: (lms: LandmarkSet) => { const s = pickFlexedElbow(lms); return s ? selectedArmAngle(lms, s) : null }, belowCue: 'Open the elbow slightly toward 90 degrees.', aboveCue: 'Bend the elbow toward 90 degrees.' }],
+  },
+  wall_climb: {
+    exerciseId: 'wall_climb', title: 'Wall Climb', mode: 'dynamic',
+    introCue: 'Face the wall and walk your fingers upward only as far as the shoulder stays relaxed and symptoms do not increase.',
+    setupCue: 'Stand close to the wall with the hand at chest height and elbow nearly straight.',
+    actionCue: 'Walk the fingers up slowly. Keep the shoulder down and do not lean or arch to gain height.',
+    exitCue: 'Walk the fingers back down under control.',
+    checks: [{ label: 'Arm elevation', ideal: [125, 175], measure: shoulderFlexionMeasure, belowCue: 'Walk the hand a little higher without shrugging.', aboveCue: 'Stop at your comfortable ceiling; do not arch for more range.' }],
+    motion: { measure: shoulderFlexionMeasure, start: [10, 60], target: [120, 180] },
+  },
+  scapular_reach: {
+    exerciseId: 'scapular_reach', title: 'Supine Scapular Reach', mode: 'dynamic',
+    introCue: 'Lie on your back with the arm pointing to the ceiling. Reach the hand upward by moving the shoulder blade, then settle it back down.',
+    setupCue: 'Keep the arm vertical and the elbow straight.', actionCue: 'Reach the hand toward the ceiling without bending the elbow or rolling the trunk.', exitCue: 'Lower the shoulder blade gently back to the floor.',
+    checks: [{ label: 'Elbow extension', ideal: [155, 180], measure: (lms: LandmarkSet) => { const s = pickRaisedArm(lms); return s ? selectedArmAngle(lms, s) : null }, belowCue: 'Straighten the elbow so the reach comes from the shoulder blade.', aboveCue: '' }],
+  },
+  pendulum: {
+    exerciseId: 'pendulum', title: 'Shoulder Pendulum', mode: 'dynamic',
+    introCue: 'Support yourself with one hand, hinge at the hips, and let the other arm hang completely relaxed while your body makes a small sway.',
+    setupCue: 'Hinge forward with one hand supported and let the working arm hang loose.', actionCue: 'Use a small body sway to make a gentle circle; do not actively swing from the shoulder.', exitCue: 'Let the circle get smaller, stop, then stand up using your support.',
+    checks: [
+      { label: 'Torso hinge', ideal: [35, 80], measure: (lms: LandmarkSet) => { const u = uprightDeg(lms); return u }, belowCue: 'Hinge a little farther so the arm can hang freely.', aboveCue: 'Come up slightly; keep a comfortable supported hinge.' },
+      { label: 'Relaxed straight arm', ideal: [150, 180], measure: (lms: LandmarkSet) => { const side = pickFlexedElbow(lms); return side ? selectedArmAngle(lms, side === 'L' ? 'R' : 'L') : null }, belowCue: 'Let the hanging elbow soften toward straight.', aboveCue: '' },
+    ],
+  },
+  high_low_rows: {
+    exerciseId: 'high_low_rows', title: 'High-to-Low Row', mode: 'dynamic',
+    introCue: 'Start with the arms forward, then draw the elbows down and back while keeping the ribs and shoulders quiet.',
+    setupCue: 'Stand tall with arms reaching forward and shoulders relaxed.', actionCue: 'Pull elbows toward your back pockets. Pause without shrugging or leaning.', exitCue: 'Return the arms forward slowly until the elbows are nearly straight.',
+    checks: [{ label: 'Row elbow bend', ideal: [55, 100], measure: elbowFlexionMeasure, belowCue: 'Ease the pull slightly.', aboveCue: 'Draw the elbows farther back and down.' }],
+    motion: { measure: elbowFlexionMeasure, start: [145, 180], target: [45, 105] },
+  },
+  up_back_stretch: {
+    exerciseId: 'up_back_stretch', title: 'Up-the-Back Stretch', mode: 'hold', holdMs: 12000,
+    introCue: 'Reach one hand behind the lower back and slide it upward only within a comfortable range.',
+    setupCue: 'Stand tall with the working hand resting behind the hip.', actionCue: 'Slide the hand up the spine gently while the shoulder stays down and the chest stays tall.', exitCue: 'Slide the hand back down before bringing it around to your side.',
+    checks: [{ label: 'Working elbow bend', ideal: [35, 110], measure: (lms: LandmarkSet) => { const s = pickFlexedElbow(lms); return s ? selectedArmAngle(lms, s) : null }, belowCue: 'Ease the reach; do not force the hand higher.', aboveCue: 'Bend the elbow as the hand slides gently up the back.' }],
+  },
+  supported_ext: {
+    exerciseId: 'supported_ext', title: 'Supported Shoulder Extension', mode: 'hold', holdMs: 10000,
+    introCue: 'Sit or stand tall with the forearm supported, then move only through a gentle shoulder range.',
+    setupCue: 'Set the support so you can relax your neck and keep the trunk still.', actionCue: 'Move the supported arm slowly without shrugging or twisting the back.', exitCue: 'Return the arm to neutral while it stays supported.',
+    checks: [{ label: 'Upright trunk', ideal: [0, 20], measure: uprightDeg, belowCue: '', aboveCue: 'Keep the trunk tall; do not lean to create the motion.' }],
+  },
+  hamstring_squeeze: {
+    exerciseId: 'hamstring_squeeze', title: 'Seated Hamstring Squeeze', mode: 'hold', holdMs: 8000,
+    introCue: 'Sit tall with the heel planted slightly in front of the knee. Pull the heel backward into the floor without letting it move.',
+    setupCue: 'Sit near the chair edge, heel planted and knee comfortably bent.', actionCue: 'Dig the heel down and back as if dragging it toward the chair, but keep the foot still.', exitCue: 'Gradually reduce the pressure before relaxing the leg.',
+    checks: [
+      { label: 'Knee position', ideal: [75, 120], measure: selectedKneeAngle, belowCue: 'Move the heel slightly forward to open the knee angle.', aboveCue: 'Bring the heel a little closer so the knee is comfortably bent.' },
+      { label: 'Tall posture', ideal: [0, 20], measure: uprightDeg, belowCue: '', aboveCue: 'Sit tall rather than leaning over the working leg.' },
+    ],
+  },
+  bb_flex_ext: {
+    ...BIOFEEDBACK_DEFS.elbow_flexion, exerciseId: 'bb_flex_ext', mode: 'dynamic',
+    setupCue: 'Stand tall with the upper arm beside the ribs and elbow almost straight.', actionCue: 'Curl the palm toward the shoulder without letting the elbow drift forward.', exitCue: 'Lower slowly until the elbow is straight, not locked.',
+    motion: { measure: elbowFlexionMeasure, start: [145, 180], target: [35, 95] },
+  },
+  bb_shoulder_flex: {
+    ...BIOFEEDBACK_DEFS.shoulder_flexion, exerciseId: 'bb_shoulder_flex', mode: 'dynamic',
+    setupCue: 'Stand tall with the arm at your side and ribs relaxed.', actionCue: 'Lift the straight arm forward and overhead without shrugging or arching your back.', exitCue: 'Lower the arm slowly to your side.',
+    motion: { measure: shoulderFlexionMeasure, start: [0, 40], target: [140, 180] },
+  },
+  bb_wall_stretch: {
+    exerciseId: 'bb_wall_stretch', title: 'Wall Biceps Stretch', mode: 'hold', holdMs: 15000,
+    introCue: 'Stand beside the wall. Place your palm slightly behind you with the elbow straight. Keep the shoulder relaxed, then slowly turn your chest away until you feel only a mild stretch through the front of the upper arm or chest.',
+    setupCue: 'Stand beside the wall with the palm slightly behind you and the whole arm visible to the camera.',
+    actionCue: 'Keep the elbow straight and shoulder down. Slowly turn your chest away. Stop for sharp shoulder pain, tingling, or pain traveling down the arm.',
+    exitCue: 'Turn your chest back toward the arm first, then release the hand from the wall.',
+    checks: [
+      { label: 'Arm at shoulder height', ideal: [70, 110], measure: (lms: LandmarkSet) => { const s = pickWallArm(lms); if (!s) return null; const S = s === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER, E = s === 'L' ? LM.L_ELBOW : LM.R_ELBOW; return visible(lms, S, E) ? Math.abs(vectorVerticalAngleDeg(lms[S], lms[E])) : null }, belowCue: 'Raise the wall arm toward shoulder height.', aboveCue: 'Lower the wall arm to shoulder height.' },
+      { label: 'Elbow extension', ideal: [155, 180], measure: (lms: LandmarkSet) => { const s = pickWallArm(lms); return s ? selectedArmAngle(lms, s) : null }, belowCue: 'Straighten the wall-side elbow without locking it hard.', aboveCue: '' },
+      { label: 'Torso turn', ideal: [10, 45], measure: torsoRotationDeg, belowCue: 'Keep the palm set and slowly turn your chest away.', aboveCue: 'Reduce the turn; this should be a mild stretch, not a forced twist.' },
+      { label: 'Shoulder relaxed', ideal: [0, 22], measure: uprightDeg, belowCue: '', aboveCue: 'Relax the shoulder away from your ear and avoid leaning.' },
+    ],
+  },
+  bb_ext_rotation: {
+    ...BIOFEEDBACK_DEFS.side_lying_er, exerciseId: 'bb_ext_rotation', title: 'Reclining External Rotation', mode: 'dynamic',
+    setupCue: 'Recline with the elbow supported and bent to 90 degrees.', actionCue: 'Rotate the forearm outward while the elbow stays planted.', exitCue: 'Return the forearm slowly without letting the shoulder roll forward.',
+  },
+  bb_sleeper_stretch: {
+    ...BIOFEEDBACK_DEFS.sleeper_stretch, exerciseId: 'bb_sleeper_stretch', mode: 'hold', holdMs: 12000,
+    setupCue: 'Lie on the working side with the shoulder and elbow each at about 90 degrees.', actionCue: 'Use the top hand to guide the forearm down gently; keep the shoulder blade settled.', exitCue: 'Release the top hand and let the forearm return upright before rolling away.',
+  },
+  qd_wall_squat: {
+    ...BIOFEEDBACK_DEFS.knee_squat, exerciseId: 'qd_wall_squat', mode: 'dynamic',
+    setupCue: 'Place your back on the wall, feet forward and about hip-width apart.', actionCue: 'Slide down with knees tracking over the feet; stop before pain or loss of control.', exitCue: 'Press through both feet and slide back to standing.',
+    motion: { measure: kneeFlexionMeasure, start: [150, 180], target: [75, 110] },
+  },
+  qd_stiff_deadlift: {
+    ...BIOFEEDBACK_DEFS.hip_hinge, exerciseId: 'qd_stiff_deadlift', title: 'Stiff-Leg Hip Hinge', mode: 'dynamic',
+    setupCue: 'Stand tall with soft—not locked—knees and the load close to your thighs.', actionCue: 'Push the hips back while the spine stays long and the load stays close.', exitCue: 'Drive the floor away and bring the hips forward to stand tall.',
+    checks: [
+      ...BIOFEEDBACK_DEFS.hip_hinge.checks,
+      { label: 'Soft straight knees', ideal: [150, 178], measure: selectedKneeAngle, belowCue: 'Straighten the knees slightly while keeping them soft.', aboveCue: 'Unlock the knees; do not force them backward.' },
+    ],
+    motion: { measure: hipFlexionMeasure, start: [0, 25], target: [45, 100] },
+  },
+  qd_quad_stretch_stand: {
+    ...BIOFEEDBACK_DEFS.quad_stretch, exerciseId: 'qd_quad_stretch_stand', mode: 'hold', holdMs: 15000,
+    setupCue: 'Stand beside a stable support and bend one knee.', actionCue: 'Hold the ankle and bring the heel toward the buttock while the knees stay close and trunk stays tall.', exitCue: 'Release slowly and place the foot down under control.',
+  },
+  qd_quad_stretch_side: {
+    ...BIOFEEDBACK_DEFS.quad_stretch, exerciseId: 'qd_quad_stretch_side', title: 'Side-Lying Quad Stretch', mode: 'hold', holdMs: 15000,
+    setupCue: 'Lie on your side with hips stacked and the lower leg comfortable.', actionCue: 'Bend the top knee and guide the heel toward the buttock without arching the back.', exitCue: 'Release the ankle slowly and straighten the leg before rolling up.',
+  },
+  qd_hamstring_supine: {
+    ...BIOFEEDBACK_DEFS.supine_hamstring, exerciseId: 'qd_hamstring_supine', mode: 'hold', holdMs: 15000,
+    setupCue: 'Lie on your back with both hips level and loop a strap behind one thigh or foot.', actionCue: 'Raise the working leg until you feel a mild back-of-thigh stretch while keeping the knee nearly straight.', exitCue: 'Bend the knee slightly, then lower the leg with the strap under control.',
+    checks: [
+      ...BIOFEEDBACK_DEFS.supine_hamstring.checks,
+      { label: 'Knee extension', ideal: [150, 180], measure: (lms: LandmarkSet) => { const hasL = visible(lms, LM.L_HIP, LM.L_KNEE, LM.L_ANKLE), hasR = visible(lms, LM.R_HIP, LM.R_KNEE, LM.R_ANKLE); if (!hasL && !hasR) return null; const l = hasL ? jointAngleDeg(lms[LM.L_HIP], lms[LM.L_KNEE], lms[LM.L_ANKLE]) : 0, r = hasR ? jointAngleDeg(lms[LM.R_HIP], lms[LM.R_KNEE], lms[LM.R_ANKLE]) : 0; return Math.max(l, r) }, belowCue: 'Straighten the raised knee only as comfort allows.', aboveCue: '' },
+    ],
+  },
+} satisfies Record<string, BiofeedbackDef>)
+
+const leftHipAngle = (lms: LandmarkSet) => visible(lms, LM.L_SHOULDER, LM.L_HIP, LM.L_KNEE)
+  ? jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_HIP], lms[LM.L_KNEE]) : null
+const clamAngle = (lms: LandmarkSet) => {
+  const angle = leftHipAngle(lms); return angle === null ? null : Math.abs(180 - angle)
+}
+Object.assign(BIOFEEDBACK_DEFS.crab_press, { mode: 'dynamic', setupCue: 'Sit with hands behind you and feet planted.', actionCue: 'Press the hips up to a tabletop without shrugging.', exitCue: 'Lower the hips slowly to the floor.', motion: { measure: leftHipAngle, start: [80, 135], target: [145, 180] } })
+Object.assign(BIOFEEDBACK_DEFS.side_lying_er, { mode: 'dynamic', setupCue: 'Lie on your side with the elbow pinned to your ribs and bent 90 degrees.', actionCue: 'Rotate the forearm upward without letting the elbow leave your side.', exitCue: 'Lower the forearm slowly to the start.' })
+Object.assign(BIOFEEDBACK_DEFS.glute_bridge, { mode: 'dynamic', setupCue: 'Lie on your back with feet planted and knees bent.', actionCue: 'Drive through the feet and lift until shoulders, hips and knees form a line.', exitCue: 'Lower one segment at a time without dropping.', motion: { measure: leftHipAngle, start: [75, 135], target: [150, 180] } })
+Object.assign(BIOFEEDBACK_DEFS.side_clamshell, { mode: 'dynamic', setupCue: 'Lie on your side with knees bent and hips stacked.', actionCue: 'Open the top knee while heels stay together and pelvis stays still.', exitCue: 'Lower the knee slowly until the legs meet.', motion: { measure: clamAngle, start: [0, 18], target: [22, 55] } })
+Object.assign(BIOFEEDBACK_DEFS.hip_hinge, { mode: 'dynamic', setupCue: 'Stand tall with soft knees.', actionCue: 'Push the hips back with a long neutral spine.', exitCue: 'Squeeze the glutes and return to standing.', motion: { measure: hipFlexionMeasure, start: [0, 25], target: [55, 105] } })
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Step-by-step Procedure system
 //
@@ -680,22 +930,128 @@ function nearTarget(v: number, target: number, maxDev: number): number {
   return clamp01(1 - Math.abs(v - target) / maxDev)
 }
 
+function inRange(value: number, range: [number, number], tolerance = 0): boolean {
+  return value >= range[0] - tolerance && value <= range[1] + tolerance
+}
+
+/**
+ * Safe fallback procedure used for every definition that does not have a
+ * hand-authored sequence. It never advances without visible measurements.
+ */
+export function buildExerciseProcedure(def: BiofeedbackDef): ExerciseProcedure {
+  const canMeasure = (lms: LandmarkSet) => def.checks.every((check) => check.measure(lms) !== null)
+  const targetCheck = (lms: LandmarkSet): StepCheck | null => {
+    if (!canMeasure(lms)) return null
+    const snap = evaluateExercise(lms, def)
+    const good = snap.details.filter((d) => d.status === 'good').length
+    return {
+      done: snap.good,
+      progress: def.checks.length ? good / def.checks.length : 0,
+      hint: snap.cueText || 'Move slowly toward the demonstrated position.',
+    }
+  }
+
+  if (def.mode === 'dynamic' && def.motion) {
+    return {
+      exerciseId: def.exerciseId,
+      steps: [
+        {
+          id: 'start', instruction: def.setupCue ?? def.introCue,
+          completionText: 'Starting position found.', holdMs: 500,
+          check(lms) {
+            const v = def.motion!.measure(lms)
+            return v === null ? null : { done: inRange(v, def.motion!.start, 5), progress: inRange(v, def.motion!.start, 5) ? 1 : 0.2, hint: def.setupCue ?? 'Return to the starting position.' }
+          },
+        },
+        {
+          id: 'target', instruction: def.actionCue ?? def.introCue,
+          completionText: 'Target position reached.', holdMs: 500,
+          check(lms) {
+            const v = def.motion!.measure(lms)
+            if (v === null || !canMeasure(lms)) return null
+            return { done: inRange(v, def.motion!.target, 5), progress: inRange(v, def.motion!.target, 5) ? 1 : 0.35, hint: evaluateExercise(lms, def).cueText || def.actionCue || 'Move toward the target.' }
+          },
+        },
+        {
+          id: 'return', instruction: def.exitCue ?? 'Return slowly to the starting position.',
+          completionText: 'One controlled repetition complete.', holdMs: 400,
+          check(lms) {
+            const v = def.motion!.measure(lms)
+            return v === null ? null : { done: inRange(v, def.motion!.start, 5), progress: inRange(v, def.motion!.start, 5) ? 1 : 0.25, hint: def.exitCue ?? 'Return slowly to the start.' }
+          },
+        },
+      ],
+    }
+  }
+
+  return {
+    exerciseId: def.exerciseId,
+    steps: [
+      {
+        id: 'setup', instruction: def.setupCue ?? def.introCue,
+        completionText: 'I can see the required joints.', holdMs: 500,
+        check(lms) { return canMeasure(lms) ? { done: true, progress: 1, hint: '' } : null },
+      },
+      {
+        id: 'enter', instruction: def.actionCue ?? def.introCue,
+        completionText: 'Position found. Keep breathing.', holdMs: 800,
+        check: targetCheck,
+      },
+      {
+        id: 'hold', instruction: `Hold gently. ${def.actionCue ?? ''}`.trim(),
+        completionText: 'Hold complete. Ease out slowly.', holdMs: def.holdMs ?? 10000,
+        isTimedHold: true, holdLabel: 'Gentle hold…', check: targetCheck,
+      },
+      {
+        id: 'exit', instruction: def.exitCue ?? 'Ease out slowly and return to a relaxed starting position.',
+        completionText: 'Safe return complete.', holdMs: 600,
+        check(lms) {
+          if (!canMeasure(lms)) return null
+          const first = def.checks[0]
+          const value = first.measure(lms)
+          if (value === null) return null
+          const outside = !inRange(value, first.ideal, 10)
+          return { done: outside, progress: outside ? 1 : 0.3, hint: def.exitCue ?? 'Ease out of the stretch slowly.' }
+        },
+      },
+    ],
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Exercise ID → procedure key
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const EXERCISE_TO_PROCEDURE: Record<string, string> = {
   doorway_stretch:  'doorway_stretch',
-  seated_cross_arm: 'cross_arm_stretch',
-  standing_sleeper: 'cross_arm_stretch',
+  seated_cross_arm: 'seated_cross_arm',
+  standing_sleeper: 'standing_sleeper',
   hand_behind_back: 'hand_behind_back',
   standing_chest:   'standing_chest',
   crab_press:       'crab_press',
   side_lying_er:    'side_lying_er',
-  post_shoulder:    'sleeper_stretch',
+  post_shoulder:    'post_shoulder',
+  wand_rotation:    'wand_rotation',
+  wall_climb:       'wall_climb',
+  scapular_reach:   'scapular_reach',
+  pendulum:         'pendulum',
+  high_low_rows:    'high_low_rows',
+  up_back_stretch:  'up_back_stretch',
+  supported_ext:    'supported_ext',
   glute_bridge:     'glute_bridge',
   hip_hinge:        'hip_hinge',
   side_clamshell:   'side_clamshell',
+  hamstring_squeeze:'hamstring_squeeze',
+  bb_flex_ext: 'bb_flex_ext',
+  bb_shoulder_flex: 'bb_shoulder_flex',
+  bb_wall_stretch: 'bb_wall_stretch',
+  bb_ext_rotation: 'bb_ext_rotation',
+  bb_sleeper_stretch: 'bb_sleeper_stretch',
+  qd_wall_squat: 'qd_wall_squat',
+  qd_stiff_deadlift: 'qd_stiff_deadlift',
+  qd_quad_stretch_stand: 'qd_quad_stretch_stand',
+  qd_quad_stretch_side: 'qd_quad_stretch_side',
+  qd_hamstring_supine: 'qd_hamstring_supine',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -766,11 +1122,11 @@ export const EXERCISE_PROCEDURES: Record<string, ExerciseProcedure> = {
         holdLabel: 'Hold the stretch…',
         check(lms) {
           const side = pickWallArm(lms)
-          if (!side) return { done: true, progress: 1, hint: '' }  // can't see: benefit of doubt
+          if (!side) return null
           if (!visible(lms, side === 'L' ? LM.L_HIP : LM.R_HIP,
                             side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER,
                             side === 'L' ? LM.L_ELBOW : LM.R_ELBOW))
-            return { done: true, progress: 1, hint: '' }
+            return null
           const angle = jointAngleDeg(
             lms[side === 'L' ? LM.L_HIP      : LM.R_HIP],
             lms[side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER],
@@ -841,7 +1197,7 @@ export const EXERCISE_PROCEDURES: Record<string, ExerciseProcedure> = {
         check(lms) {
           const hasL = visible(lms, LM.L_HIP, LM.L_SHOULDER, LM.L_ELBOW)
           const hasR = visible(lms, LM.R_HIP, LM.R_SHOULDER, LM.R_ELBOW)
-          if (!hasL && !hasR) return { done: true, progress: 1, hint: '' }
+          if (!hasL && !hasR) return null
           const angL = hasL ? jointAngleDeg(lms[LM.L_HIP], lms[LM.L_SHOULDER], lms[LM.L_ELBOW]) : 90
           const angR = hasR ? jointAngleDeg(lms[LM.R_HIP], lms[LM.R_SHOULDER], lms[LM.R_ELBOW]) : 90
           return {
@@ -921,11 +1277,11 @@ export const EXERCISE_PROCEDURES: Record<string, ExerciseProcedure> = {
         holdLabel: 'Hold the pull…',
         check(lms) {
           const side = pickRaisedArm(lms)
-          if (!side) return { done: true, progress: 1, hint: '' }
+          if (!side) return null
           const hipSide = side === 'L' ? LM.L_HIP : LM.R_HIP
           const sSide   = side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER
           const eSide   = side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW
-          if (!visible(lms, hipSide, sSide, eSide)) return { done: true, progress: 1, hint: '' }
+          if (!visible(lms, hipSide, sSide, eSide)) return null
           const angle = jointAngleDeg(lms[hipSide], lms[sSide], lms[eSide])
           return {
             done:     angle >= 60 && angle <= 120,
@@ -988,10 +1344,10 @@ export const EXERCISE_PROCEDURES: Record<string, ExerciseProcedure> = {
         holdLabel: 'Hold…',
         check(lms) {
           const side = pickHighElbow(lms)
-          if (!side) return { done: true, progress: 1, hint: '' }
+          if (!side) return null
           const sSide = side === 'L' ? LM.L_SHOULDER : LM.R_SHOULDER
           const eSide = side === 'L' ? LM.L_ELBOW    : LM.R_ELBOW
-          if (!visible(lms, sSide, eSide)) return { done: true, progress: 1, hint: '' }
+          if (!visible(lms, sSide, eSide)) return null
           const angle = Math.abs(vectorVerticalAngleDeg(lms[sSide], lms[eSide]))
           return {
             done:     angle <= 75,
@@ -1047,7 +1403,7 @@ export const EXERCISE_PROCEDURES: Record<string, ExerciseProcedure> = {
         holdLabel: 'Hold the table…',
         check(lms) {
           if (!visible(lms, LM.L_SHOULDER, LM.L_HIP, LM.L_KNEE))
-            return { done: true, progress: 1, hint: '' }
+            return null
           const angle = jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_HIP], lms[LM.L_KNEE])
           return {
             done:     angle >= 148,
@@ -1103,7 +1459,7 @@ export const EXERCISE_PROCEDURES: Record<string, ExerciseProcedure> = {
         holdLabel: 'Hold the pressure…',
         check(lms) {
           if (!visible(lms, LM.L_SHOULDER, LM.L_ELBOW, LM.L_WRIST))
-            return { done: true, progress: 1, hint: '' }
+            return null
           const angle = jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_ELBOW], lms[LM.L_WRIST])
           return {
             done:     angle >= 55 && angle <= 100,
@@ -1158,7 +1514,7 @@ export const EXERCISE_PROCEDURES: Record<string, ExerciseProcedure> = {
         isTimedHold: true,
         holdLabel: 'Hold at the top…',
         check(lms) {
-          if (!visible(lms, LM.L_ELBOW, LM.L_WRIST)) return { done: true, progress: 1, hint: '' }
+          if (!visible(lms, LM.L_ELBOW, LM.L_WRIST)) return null
           const done = lms[LM.L_WRIST].y < lms[LM.L_ELBOW].y
           return {
             done,
@@ -1214,7 +1570,7 @@ export const EXERCISE_PROCEDURES: Record<string, ExerciseProcedure> = {
         holdLabel: 'Hold the bridge…',
         check(lms) {
           if (!visible(lms, LM.L_SHOULDER, LM.L_HIP, LM.L_KNEE))
-            return { done: true, progress: 1, hint: '' }
+            return null
           const angle = jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_HIP], lms[LM.L_KNEE])
           return {
             done:     angle >= 148,
@@ -1269,7 +1625,7 @@ export const EXERCISE_PROCEDURES: Record<string, ExerciseProcedure> = {
         holdLabel: 'Hold it open…',
         check(lms) {
           if (!visible(lms, LM.L_SHOULDER, LM.L_HIP, LM.L_KNEE))
-            return { done: true, progress: 1, hint: '' }
+            return null
           const abduction = Math.abs(180 - jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_HIP], lms[LM.L_KNEE]))
           return {
             done:     abduction >= 15,
@@ -1325,7 +1681,7 @@ export const EXERCISE_PROCEDURES: Record<string, ExerciseProcedure> = {
         holdLabel: 'Hold the hinge…',
         check(lms) {
           if (!visible(lms, LM.L_SHOULDER, LM.L_HIP, LM.L_KNEE))
-            return { done: true, progress: 1, hint: '' }
+            return null
           const flexion = 180 - jointAngleDeg(lms[LM.L_SHOULDER], lms[LM.L_HIP], lms[LM.L_KNEE])
           return {
             done:     flexion >= 50 && flexion <= 115,
@@ -1351,12 +1707,13 @@ const FORM_TOLERANCE_DEG = 7
 
 export function evaluateExercise(lms: LandmarkSet, def: BiofeedbackDef): FormSnapshot {
   const details: FormSnapshot['details'] = []
+  const missing: string[] = []
   let firstBadCue = ''
   let allGood = true
 
   for (const check of def.checks) {
     const v = check.measure(lms)
-    if (v === null) { allGood = false; continue }
+    if (v === null) { allGood = false; missing.push(check.label); continue }
     const [lo, hi] = check.ideal
     // Apply tolerance: only flag as bad when clearly outside the range
     if (v < lo - FORM_TOLERANCE_DEG) {
@@ -1373,8 +1730,12 @@ export function evaluateExercise(lms: LandmarkSet, def: BiofeedbackDef): FormSna
   }
 
   return {
-    cueText: allGood ? 'Good alignment — hold it.' : firstBadCue,
+    cueText: missing.length > 0
+      ? `Tracking lost — return to view (${missing.join(', ')}).`
+      : allGood ? 'Good alignment — hold it.' : firstBadCue,
     good:    allGood,
+    tracking: missing.length > 0 ? 'lost' : 'good',
+    missing,
     details,
   }
 }

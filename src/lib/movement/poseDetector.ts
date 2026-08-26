@@ -39,10 +39,28 @@ const MODEL_URL  = 'https://storage.googleapis.com/mediapipe-models/pose_landmar
 
 let _detector: PoseLandmarker | null = null
 let _initPromise: Promise<PoseLandmarker> | null = null
+let _profile: PoseProfile | null = null
 
-export async function ensureDetector(): Promise<PoseLandmarker> {
-  if (_detector) return _detector
-  if (_initPromise) return _initPromise
+export type PoseProfile = 'precision' | 'wide'
+
+const PROFILE_CONFIDENCE: Record<PoseProfile, {
+  detection: number
+  presence: number
+  tracking: number
+}> = {
+  // Coached ROM/form work: reject uncertain landmarks instead of turning a
+  // model guess into a confident angle or completed hold.
+  precision: { detection: 0.55, presence: 0.55, tracking: 0.60 },
+  // Full-body/far-camera activities need a little more acquisition tolerance.
+  wide:      { detection: 0.35, presence: 0.35, tracking: 0.40 },
+}
+
+export async function ensureDetector(profile: PoseProfile = 'precision'): Promise<PoseLandmarker> {
+  if (_detector && _profile === profile) return _detector
+  if (_detector && _profile !== profile) disposeDetector()
+  if (_initPromise && _profile === profile) return _initPromise
+  _profile = profile
+  const confidence = PROFILE_CONFIDENCE[profile]
 
   _initPromise = (async () => {
     console.log('[pose] resolving WASM fileset from', WASM_BASE)
@@ -58,13 +76,9 @@ export async function ensureDetector(): Promise<PoseLandmarker> {
         baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
         runningMode: 'VIDEO',
         numPoses:    1,
-        // Lowered from 0.5 → 0.35 so the detector keeps emitting/tracking a
-        // SMALL, FAR subject (wide-FOV walking test with the phone on the
-        // floor). Per-landmark visibility gating downstream still filters out
-        // genuinely unreliable joints, so close-up ROM tests are unaffected.
-        minPoseDetectionConfidence: 0.35,
-        minPosePresenceConfidence:  0.35,
-        minTrackingConfidence:      0.35,
+        minPoseDetectionConfidence: confidence.detection,
+        minPosePresenceConfidence:  confidence.presence,
+        minTrackingConfidence:      confidence.tracking,
       })
       console.log('[pose] detector ready (GPU delegate)')
     } catch (gpuErr) {
@@ -74,10 +88,9 @@ export async function ensureDetector(): Promise<PoseLandmarker> {
           baseOptions: { modelAssetPath: MODEL_URL, delegate: 'CPU' },
           runningMode: 'VIDEO',
           numPoses:    1,
-          // See note in the GPU branch — lenient so far/small subjects keep tracking.
-          minPoseDetectionConfidence: 0.35,
-          minPosePresenceConfidence:  0.35,
-          minTrackingConfidence:      0.35,
+          minPoseDetectionConfidence: confidence.detection,
+          minPosePresenceConfidence:  confidence.presence,
+          minTrackingConfidence:      confidence.tracking,
         })
         console.log('[pose] detector ready (CPU delegate)')
       } catch (cpuErr) {
@@ -135,5 +148,6 @@ export function disposeDetector(): void {
     try { _detector.close() } catch {}
     _detector = null
     _initPromise = null
+    _profile = null
   }
 }
