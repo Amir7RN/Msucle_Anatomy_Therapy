@@ -150,14 +150,17 @@ function Ground() {
   )
 }
 
-const AXIS_X = new THREE.Vector3(1, 0, 0)
 const AXIS_Y = new THREE.Vector3(0, 1, 0)
 const AXIS_Z = new THREE.Vector3(0, 0, 1)
 function postureToQuat(posture: Posture | null | undefined, out: THREE.Quaternion): THREE.Quaternion {
   switch (posture) {
-    case 'supine': return out.setFromAxisAngle(AXIS_X, -Math.PI / 2)   // lie on back
-    case 'prone':  return out.setFromAxisAngle(AXIS_X,  Math.PI / 2)   // lie face down
-    case 'side':   return out.setFromAxisAngle(AXIS_Z,  Math.PI / 2)   // lie on side
+    // Floor postures rotate in the SCREEN plane. Rotating around X made the
+    // body point toward/away from the fixed camera, reducing the full humanoid
+    // to an edge-on sliver (or apparently nothing). The twin is a readable
+    // biofeedback diagram, so its whole silhouette must remain visible.
+    case 'supine': return out.setFromAxisAngle(AXIS_Z,  Math.PI / 2)
+    case 'prone':  return out.setFromAxisAngle(AXIS_Z, -Math.PI / 2)
+    case 'side':   return out.setFromAxisAngle(AXIS_Z,  Math.PI / 2)
     default:       return out.identity()                              // standing / seated
   }
 }
@@ -255,7 +258,12 @@ function Rig({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMa
     if (isFinite(box.current.min.y)) {
       const intrinsicFootY = box.current.min.y - rig.outer.position.y    // foot height sans offset
       const jump = (rootYRef?.current ?? 0) * JUMP_WORLD
-      const targetY = (GROUND_Y - intrinsicFootY) + jump
+      const posture = postureRef?.current
+      const floorPose = posture === 'supine' || posture === 'prone' || posture === 'side'
+      // Keep floor exercises centered enough to see the complete horizontal
+      // body instead of pinning the silhouette against the bottom edge.
+      const displayLift = floorPose ? 0.62 : 0
+      const targetY = (GROUND_Y - intrinsicFootY) + jump + displayLift
       const grounded = groundedRef?.current ?? true
       // The instant the feet make contact, kill the vertical momentum so the
       // model lands exactly when the user does (no floaty overshoot or drift).
