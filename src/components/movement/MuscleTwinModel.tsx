@@ -166,7 +166,7 @@ useGLTF.preload(MODEL_PATH, true, true)
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface MeshDesc { mat: THREE.MeshStandardMaterial; stem: string; side: 'L' | 'R' | 'C' }
+interface MeshDesc { mat: THREE.MeshBasicMaterial; stem: string; side: 'L' | 'R' | 'C' }
 interface RigData {
   outer:   THREE.Group
   groups:  Partial<Record<SegmentId, THREE.Group>>
@@ -403,10 +403,10 @@ function buildRig(scene: THREE.Object3D): RigData {
     // Forearm: render the GLB's OWN forearm meshes (restored). They're segmented
     // to forearmL/R and attached to the forearm group below, so they pivot at the
     // elbow and bend with the arm — the muscular lower arm, no procedural cylinder.
-    const mat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#6b5b4a'), roughness: 0.6, metalness: 0.0,
-      emissive: new THREE.Color('#6b5b4a'), emissiveIntensity: 0.65,
+    const mat = new THREE.MeshBasicMaterial({
+      color: new THREE.Color('#9a7359'),
       side: THREE.DoubleSide,   // renders correctly even if normals are inverted
+      toneMapped: false,
     })
     o.material = mat
     meshes.push({ mat, stem: meshStem(o.name), side: meshSide(o.name) })
@@ -528,12 +528,12 @@ function buildRig(scene: THREE.Object3D): RigData {
       if (parts.proximal) {
         cloned.add(parts.proximal)
         ;(bySeg[upSeg] ??= []).push(parts.proximal)
-        meshes.push({ mat: parts.proximal.material as THREE.MeshStandardMaterial, stem: meshStem(m.name), side: meshSide(m.name) })
+        meshes.push({ mat: parts.proximal.material as THREE.MeshBasicMaterial, stem: meshStem(m.name), side: meshSide(m.name) })
       }
       if (parts.distal) {
         cloned.add(parts.distal)
         distalMeshes.push(parts.distal)
-        meshes.push({ mat: parts.distal.material as THREE.MeshStandardMaterial, stem: meshStem(m.name), side: meshSide(m.name) })
+        meshes.push({ mat: parts.distal.material as THREE.MeshBasicMaterial, stem: meshStem(m.name), side: meshSide(m.name) })
       }
     }
     bySeg[seg] = distalMeshes
@@ -577,18 +577,18 @@ function buildRig(scene: THREE.Object3D): RigData {
 
 // ── Colour ramp ───────────────────────────────────────────────────────────────
 
-const C_BASE = new THREE.Color('#6b5b4a')
+const C_BASE = new THREE.Color('#9a7359')
 const C_MID  = new THREE.Color('#f59e0b')
 const C_HOT  = new THREE.Color('#b91c1c')
 
-function paint(mat: THREE.MeshStandardMaterial, level: number, time: number) {
+function paint(mat: THREE.MeshBasicMaterial, level: number, time: number) {
   const t = Math.max(0, Math.min(1, (level - BASELINE) / (1 - BASELINE)))
   if (t < 0.5) mat.color.copy(C_BASE).lerp(C_MID, t / 0.5)
   else         mat.color.copy(C_MID).lerp(C_HOT, (t - 0.5) / 0.5)
-  mat.emissive.copy(mat.color)
   const pulse = 1 + 0.12 * t * Math.sin(time * 4)
-  // Floor of 0.65 so the model is always visibly tan regardless of scene lighting
-  mat.emissiveIntensity = (0.65 + t * 1.1) * pulse
+  // Basic material deliberately ignores unreliable/inverted source normals.
+  // Pulse activation through colour intensity while the baseline stays visible.
+  mat.color.multiplyScalar(0.92 + 0.08 * pulse)
 }
 
 // ── Name → activation key helpers ──────────────────────────────────────────────
