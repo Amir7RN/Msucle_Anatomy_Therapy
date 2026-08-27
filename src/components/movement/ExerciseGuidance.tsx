@@ -620,7 +620,8 @@ export function ExerciseGuidance({ exerciseId: exerciseIdProp, exerciseLabel: ex
             </div>
             {/* Muscle Activation - JUST the 3D body, no header/label/target text */}
             <div className="flex-1 min-w-0 relative bg-gradient-to-b from-slate-900 to-black overflow-hidden">
-              <MuscleTwinModel activationsRef={liveActsRef} boneDirsRef={liveBoneRef} postureRef={posturePriorRef} />
+              <MuscleTwinModel activationsRef={liveActsRef} boneDirsRef={liveBoneRef} postureRef={posturePriorRef}
+                               targetMuscleId={muscleId} />
             </div>
           </div>
           {/* Rep history - compact horizontal bar chart spanning full width */}
@@ -1789,8 +1790,9 @@ function ActivationOverlay({
       </div>
       {/* 3D anatomical viewer - faded body + pulsing target muscle. Tall and
           contrasty so the pulse reads from across the room. */}
-      <div className="flex-1 min-h-0 md:min-h-[360px] rounded-md bg-gradient-to-b from-slate-900 to-black ring-1 ring-orange-500/30 overflow-hidden relative">
-        <MuscleTwinModel activationsRef={activationsRef} boneDirsRef={boneDirsRef} postureRef={postureRef} />
+      <div className="flex-1 min-h-[150px] rounded-md bg-gradient-to-b from-slate-900 to-black ring-1 ring-orange-500/30 overflow-hidden relative">
+        <MuscleTwinModel activationsRef={activationsRef} boneDirsRef={boneDirsRef} postureRef={postureRef}
+                         targetMuscleId={targetMuscleId} />
         {/* Soft halo pulse around the frame - independent of the WebGL
             canvas so the user notices the activity even before the muscle
             mesh renders. */}
@@ -1798,8 +1800,10 @@ function ActivationOverlay({
              style={{ boxShadow: 'inset 0 0 30px rgba(249, 115, 22, 0.18)' }} />
       </div>
       {/* Quantitative readout of the muscles actually engaged for THIS
-          exercise (live, from the pose-driven engine). */}
-      <div className="mt-2">
+          exercise (live, from the pose-driven engine). Capped + scrollable so a
+          long list can never push the 3-D twin below the panel's visible area -
+          that is what used to leave only a sliver of the body on screen. */}
+      <div className="mt-2 flex-shrink-0 max-h-[40%] overflow-y-auto">
         <div className="mb-1 flex items-center justify-between">
           <span className="text-[10px] uppercase tracking-wider text-cyan-300 font-semibold">Engaged now</span>
           {targetMuscleId && (

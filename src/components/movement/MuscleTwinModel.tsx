@@ -46,6 +46,9 @@ const MODEL_PATH = `${import.meta.env.BASE_URL}models/human-muscular-system.glb`
 
 const SLERP    = 0.32
 const BASELINE = 0.12
+// Floor activation applied to the exercise's target muscle so it always reads
+// as "this is the one you're working", even with no live pose yet.
+const TARGET_GLOW = 0.5
 // The twin is a MIRROR (the user faces it): the user's left side drives the
 // model's right and vice-versa. poseRig already mirrors the MOTION; here we
 // mirror the ACTIVATION side too so the limb that moves is the limb that lights
@@ -100,6 +103,10 @@ interface Props {
   /** Optional per-family angular agility (De Leva inertia) — heavier limbs move
    *  with more momentum. */
   agilityRef?:    MutableRefObject<Partial<Record<SegmentFamily, number>>>
+  /** Optional target muscle for the current exercise (atlas id, e.g.
+   *  "MUSC_DELTOID_R"). It gets a steady pre-glow so the user can see WHICH
+   *  muscle they are working before the pose engine has anything to report. */
+  targetMuscleId?: string
   /** Opt-in user camera controls (drag-rotate / pinch-zoom). OFF by default so
    *  the live twin keeps its fixed mirror camera; static views (e.g. the
    *  health-data training-balance map) turn it on. Same OrbitControls setup as
@@ -107,7 +114,7 @@ interface Props {
   orbit?:         boolean
 }
 
-export function MuscleTwinModel({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMassRef, groundedRef, agilityRef, orbit }: Props) {
+export function MuscleTwinModel({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMassRef, groundedRef, agilityRef, targetMuscleId, orbit }: Props) {
   // Live world-space bounds of the posed twin, published by <Rig> and consumed
   // by <FitCamera> so the WHOLE body always stays inside the panel.
   const fitBoxRef = useRef(new THREE.Box3())
@@ -129,7 +136,8 @@ export function MuscleTwinModel({ activationsRef, boneDirsRef, postureRef, yawRe
       <Suspense fallback={null}>
         <Rig activationsRef={activationsRef} boneDirsRef={boneDirsRef} postureRef={postureRef}
              yawRef={yawRef} rootYRef={rootYRef} bodyMassRef={bodyMassRef}
-             groundedRef={groundedRef} agilityRef={agilityRef} fitBoxRef={fitBoxRef} />
+             groundedRef={groundedRef} agilityRef={agilityRef} targetMuscleId={targetMuscleId}
+             fitBoxRef={fitBoxRef} />
       </Suspense>
       {/* Fixed-camera views auto-frame the twin; orbit views are user-driven. */}
       {!orbit && <FitCamera boxRef={fitBoxRef} />}
@@ -158,6 +166,7 @@ const FIT_MAX_DIST = 9
 function FitCamera({ boxRef }: { boxRef: MutableRefObject<THREE.Box3> }) {
   const dist   = useRef(3.7)
   const eyeY   = useRef(0.15)
+  const eyeX   = useRef(0)
   const size   = useRef(new THREE.Vector3())
   const centre = useRef(new THREE.Vector3())
   useFrame(({ camera, size: vp }, delta) => {
@@ -173,12 +182,19 @@ function FitCamera({ boxRef }: { boxRef: MutableRefObject<THREE.Box3> }) {
     const halfW = (Math.max(size.current.x, 0.1) / 2) * FIT_MARGIN
     const need = Math.min(FIT_MAX_DIST, Math.max(FIT_MIN_DIST,
       Math.max(halfH / Math.tan(vFov / 2), halfW / Math.tan(hFov / 2)) + size.current.z / 2 + 0.2))
-    const dt = Math.min(0.1, Math.max(1e-3, delta))
-    const k = need > dist.current ? 7 : 1.4      // zoom out fast, in slowly
-    dist.current += (need - dist.current) * Math.min(1, k * dt)
-    eyeY.current  += (centre.current.y - eyeY.current) * Math.min(1, 2 * dt)
-    cam.position.set(0, eyeY.current, dist.current)
-    cam.lookAt(0, eyeY.current, 0)
+    const dt = Math.min(0.25, Math.max(1e-3, delta))
+    // Exponential easing on TIME, not on frames: the panel canvas shares the
+    // GPU with the camera feed, MediaPipe and the reference video, so it can
+    // run far below 60 fps - a per-frame fraction would crawl there.
+    const k = 1 - Math.exp(-(need > dist.current ? 7 : 1.4) * dt)
+    const kc = 1 - Math.exp(-3 * dt)
+    dist.current += (need - dist.current) * k
+    // Track the body's centre in BOTH axes. A lying/rotated twin swings its
+    // centre sideways; without this it slides out of the side of the panel.
+    eyeX.current += (centre.current.x - eyeX.current) * kc
+    eyeY.current += (centre.current.y - eyeY.current) * kc
+    cam.position.set(eyeX.current, eyeY.current, dist.current)
+    cam.lookAt(eyeX.current, eyeY.current, 0)
     cam.updateProjectionMatrix()
   })
   return null
@@ -188,14 +204,17 @@ function FitCamera({ boxRef }: { boxRef: MutableRefObject<THREE.Box3> }) {
 function Ground() {
   return (
     <group position={[0, GROUND_Y, 0]}>
+      {/* Smaller and darker than the body tone: in the narrow exercise panel a
+          wide, warm floor filled a third of the frame and competed with the
+          muscles for attention. */}
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[2.8, 56]} />
-        <meshStandardMaterial color="#5b4a37" roughness={1} metalness={0} />
+        <circleGeometry args={[1.8, 56]} />
+        <meshStandardMaterial color="#3d3227" roughness={1} metalness={0} />
       </mesh>
       {/* faint contact ring for depth */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]}>
         <ringGeometry args={[0.95, 1.0, 48]} />
-        <meshBasicMaterial color="#3f3328" transparent opacity={0.6} />
+        <meshBasicMaterial color="#2c241b" transparent opacity={0.6} />
       </mesh>
     </group>
   )
@@ -239,9 +258,18 @@ interface RigData {
 
 type RigProps = Props & { fitBoxRef?: MutableRefObject<THREE.Box3> }
 
-function Rig({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMassRef, groundedRef, agilityRef, fitBoxRef }: RigProps) {
+function Rig({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMassRef, groundedRef, agilityRef, targetMuscleId, fitBoxRef }: RigProps) {
   const { scene } = useGLTF(MODEL_PATH, true, true) as any
   const rig = useMemo<RigData>(() => buildRig(scene), [scene])
+  // Target muscle -> mesh stem + (mirrored) side, resolved once per exercise.
+  const target = useMemo(() => {
+    if (!targetMuscleId) return null
+    const raw = meshSide(targetMuscleId)
+    return {
+      stem: actStem(targetMuscleId),
+      side: raw === 'C' ? 'C' : MIRROR ? (raw === 'L' ? 'R' : 'L') : raw,
+    } as { stem: string; side: 'L' | 'R' | 'C' }
+  }, [targetMuscleId])
 
   const worldQuat  = useRef<Record<string, THREE.Quaternion>>({})  // achieved world per segment
   const desiredW   = useRef<Record<string, THREE.Quaternion>>({})  // desired world per segment
@@ -266,12 +294,17 @@ function Rig({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMa
     const dirs = boneDirsRef.current || {}
     const t = state.clock.elapsedTime
     const { right, up, ant } = rig.axes
+    // How many 60 fps frames' worth of time this tick covers. Every easing and
+    // slew below was tuned per-frame; scaling by this keeps the twin's response
+    // identical at 60 fps and stops it crawling (or freezing mid-rotation) when
+    // the panel canvas is starved by the camera + pose pipeline.
+    const fr = Math.min(4, Math.max(0.2, delta * 60))
 
     // ── Global orientation: facing yaw ∘ posture tilt (gravity awareness) ──────
     tmpYaw.current.setFromAxisAngle(AXIS_Y, yawRef?.current ?? 0)
     postureToQuat(postureRef?.current, tmpPosture.current)
     tmpOuter.current.copy(tmpPosture.current).multiply(tmpYaw.current)
-    rig.outer.quaternion.slerp(tmpOuter.current, 0.15)
+    rig.outer.quaternion.slerp(tmpOuter.current, Math.min(0.9, 0.15 * fr))
 
     // ── 1. Each segment's DESIRED world orientation from its own pose dir ──────
     for (const seg of SEGMENT_ORDER) {
@@ -308,7 +341,7 @@ function Rig({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMa
       // Inertia/momentum: heavier limbs (low agility) track a touch slower.
       const fam = familyOf(seg)
       const ag = fam ? (agilityRef?.current?.[fam] ?? 1) : 1
-      slewQuat(group.quaternion, tmpLocal.current, MAX_STEP_DEG * ag, Math.min(0.5, SLERP * ag))
+      slewQuat(group.quaternion, tmpLocal.current, MAX_STEP_DEG * ag * fr, Math.min(0.85, SLERP * ag * fr))
       // achieved world = parentWorld ∘ achievedLocal
       worldQuat.current[seg].copy(parentWQ).multiply(group.quaternion)
     }
@@ -360,6 +393,12 @@ function Rig({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMa
         const aSide = raw === 'C' ? 'C' : MIRROR ? (raw === 'L' ? 'R' : 'L') : raw
         if (aSide !== 'C' && md.side !== 'C' && aSide !== md.side) continue
         if (a.level > level) level = a.level
+      }
+      // Pre-glow the exercise's target muscle so it is identifiable even before
+      // the pose engine reports anything; live activation overrides it upward.
+      if (target && target.stem === md.stem
+          && (target.side === 'C' || md.side === 'C' || target.side === md.side)) {
+        level = Math.max(level, TARGET_GLOW)
       }
       paint(md.mat, level, t)
     }
@@ -689,6 +728,10 @@ function meshStem(name: string): string {
 }
 function actStem(muscleId: string): string {
   let s = muscleId.toUpperCase()
+  // Atlas ids arrive as MUSC_DELTOID_R while the GLB meshes are Deltoid_R -
+  // normalise both ends so exercise targets actually resolve to a mesh.
+  if (s.startsWith('MUSC_')) s = s.slice(5)
+  if (s.endsWith('_L') || s.endsWith('_R')) s = s.slice(0, -2)
   for (const suf of ['_ANTERIOR', '_LATERAL', '_POSTERIOR', '_UPPER', '_MIDDLE', '_LOWER']) {
     if (s.endsWith(suf)) { s = s.slice(0, -suf.length); break }
   }
