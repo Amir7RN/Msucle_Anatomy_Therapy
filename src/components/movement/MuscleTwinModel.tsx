@@ -503,6 +503,17 @@ function splitMeshAtWorldY(mesh: THREE.Mesh, worldY: number): { proximal: THREE.
 
 function buildRig(scene: THREE.Object3D): RigData {
   const cloned = scene.clone(true)
+  // The atlas viewer (HumanModel) drives Hide / Isolate / Ghost by setting
+  // `visible = false` DIRECTLY on the shared useGLTF scene - it does not clone.
+  // Object3D.clone() copies that flag, so a twin built while a muscle was
+  // isolated inherited a body with almost every mesh switched off: the user saw
+  // a couple of floating slivers instead of an anatomy. The twin has its own
+  // notion of what to show, so every node starts visible here.
+  cloned.traverse((o: THREE.Object3D) => {
+    o.visible = true
+    o.renderOrder = 0
+    o.layers.set(0)
+  })
   cloned.position.set(0, 0, 0); cloned.scale.set(1, 1, 1); cloned.rotation.set(0, 0, 0)
   cloned.updateMatrixWorld(true)
 

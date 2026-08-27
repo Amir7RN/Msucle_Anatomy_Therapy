@@ -99,6 +99,9 @@ function ActivationModel({ lookup }: { lookup: Map<string, number> }) {
   // axis convention the source GLB uses.
   const cloned = useMemo(() => {
     const c = scene.clone(true)
+    // The atlas viewer hides meshes on the SHARED useGLTF scene (Hide /
+    // Isolate) and clone() copies those flags - reset them for this view.
+    c.traverse((o: THREE.Object3D) => { o.visible = true })
     const box = new THREE.Box3().setFromObject(c)
     const centre = box.getCenter(new THREE.Vector3())
     c.position.sub(centre)            // shift so geometry centre = (0,0,0)

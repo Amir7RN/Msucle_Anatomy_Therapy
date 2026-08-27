@@ -99,6 +99,9 @@ function Model({ highlight, levelRef, projRef }: ModelProps) {
 
   const cloned = useMemo(() => {
     const c = scene.clone(true) as THREE.Object3D
+    // Reset visibility: the atlas viewer hides meshes on the SHARED useGLTF
+    // scene (Hide / Isolate), and clone() copies those flags.
+    c.traverse((o: THREE.Object3D) => { o.visible = true })
     // Recompute normals from winding order — the GLB has inverted vertex normals
     // which makes every face dark under directional lighting. computeVertexNormals()
     // derives normals from the geometry faces (winding correct) so lighting works.
@@ -444,6 +447,9 @@ function LiveModel({ activationsRef }: { activationsRef: import('react').Mutable
   const { scene } = useGLTF(MODEL_PATH, true, true) as any
   const { cloned, meshes } = useMemo(() => {
     const c = scene.clone(true) as THREE.Object3D
+    // Reset visibility: the atlas viewer hides meshes on the SHARED useGLTF
+    // scene (Hide / Isolate), and clone() copies those flags.
+    c.traverse((o: THREE.Object3D) => { o.visible = true })
     // Recompute normals from winding order to fix inverted-normal black model
     c.traverse((o: THREE.Object3D) => {
       if (!(o instanceof THREE.Mesh)) return
