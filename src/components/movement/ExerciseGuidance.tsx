@@ -54,7 +54,7 @@ import { computeActivation } from '../../lib/movement/muscleActivation'
 import { MuscleActivationViewer } from './MuscleActivationViewer'
 import { MuscleTwinModel } from './MuscleTwinModel'
 import { LiveActivationEngine, type LiveMuscleActivation } from '../../lib/movement/liveMuscleActivation'
-import { MuscleStatusEngine, type MuscleStatusFrame, STATE_META } from '../../lib/movement/muscleStatus'
+import { MuscleStatusEngine } from '../../lib/movement/muscleStatus'
 import { saveSession } from '../../lib/movement/muscleSessionLog'
 import { buildPersonalization } from '../../lib/profile/personalization'
 import { loadProfile, subscribeProfile } from '../../lib/profile/userProfile'
@@ -189,9 +189,6 @@ export function ExerciseGuidance({ exerciseId: exerciseIdProp, exerciseLabel: ex
     poseRigRef.current?.reset()
   }, [exerciseId])
   useEffect(() => () => { poseRigRef.current?.reset(); poseRigRef.current = null }, [])
-  // Throttled list of the muscles actually engaged (for the quantitative readout).
-  const [engagedMuscles, setEngagedMuscles] = useState<{ muscleId: string; level: number }[]>([])
-  const lastEngagedRef = useRef(0)
   useEffect(() => () => { liveEngineRef.current?.reset(); liveEngineRef.current = null }, [])
 
   // ── Personalised muscle-status engine (fatigue / work / state) ──────────
@@ -199,8 +196,6 @@ export function ExerciseGuidance({ exerciseId: exerciseIdProp, exerciseLabel: ex
   // profile so fatigue reads consistently across the app. Updates live if the
   // profile changes, and persists the session so the weekly trend keeps building.
   const statusEngineRef = useRef<MuscleStatusEngine | null>(null)
-  const [muscleStatus, setMuscleStatus] = useState<MuscleStatusFrame | null>(null)
-  const lastStatusRef = useRef(0)
   useEffect(() => {
     statusEngineRef.current = new MuscleStatusEngine(buildPersonalization(loadProfile()))
     const unsub = subscribeProfile(() => {
@@ -228,26 +223,11 @@ export function ExerciseGuidance({ exerciseId: exerciseIdProp, exerciseLabel: ex
     if (!poseRigRef.current) poseRigRef.current = new PoseRigEngine()
     liveBoneRef.current = poseRigRef.current.update(lms, liveNow, { holdSegments: holdSegmentsRef.current }).dirs
     // Integrate the personalised fatigue/work model (same engine as the Twin).
-    const statusFrame = statusEngineRef.current?.update(liveFrame, liveNow)
-    if (statusFrame && liveNow - lastStatusRef.current > 250) {
-      lastStatusRef.current = liveNow
-      setMuscleStatus(statusFrame)
-    }
-    // Surface the few muscles actually engaged for THIS exercise (top distinct,
-    // above baseline) as a throttled quantitative readout.
-    if (liveNow - lastEngagedRef.current > 220) {
-      lastEngagedRef.current = liveNow
-      const seen = new Set<string>()
-      const top: { muscleId: string; level: number }[] = []
-      for (const a of liveFrame.activations) {
-        if (a.level <= 0.18) break
-        if (seen.has(a.muscleId)) continue
-        seen.add(a.muscleId)
-        top.push({ muscleId: a.muscleId, level: a.level })
-        if (top.length >= 5) break
-      }
-      setEngagedMuscles(top)
-    }
+    // Nothing in this modal renders it any more - the activation panel is just
+    // the body now - so the frame keeps the engine's internal history warm
+    // without pushing state and re-rendering the whole modal several times a
+    // second while the camera and pose pipeline compete for the GPU.
+    statusEngineRef.current?.update(liveFrame, liveNow)
 
     // Torso-anchor readiness check — runs even when there's no biofeedback def
     const ls = lms[LM.L_SHOULDER], rs = lms[LM.R_SHOULDER]
@@ -671,7 +651,7 @@ export function ExerciseGuidance({ exerciseId: exerciseIdProp, exerciseLabel: ex
             rendered in red, with a pulse keyed to activation intensity.
             The rest of the body is a faint translucent shell so the user
             sees clearly where the load is going. */}
-        <ActivationOverlay snapshot={snapshot} hasDef={!!def} targetMuscleId={muscleId} activationsRef={liveActsRef} boneDirsRef={liveBoneRef} postureRef={posturePriorRef} engaged={engagedMuscles} muscleStatus={muscleStatus} />
+        <ActivationOverlay snapshot={snapshot} hasDef={!!def} targetMuscleId={muscleId} activationsRef={liveActsRef} boneDirsRef={liveBoneRef} postureRef={posturePriorRef} />
 
         {/* Performance tracker — fills the previously-empty area */}
         <PerformanceTracker
@@ -1761,7 +1741,7 @@ function ReferenceVideo({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ActivationOverlay({
-  snapshot, hasDef, targetMuscleId, activationsRef, boneDirsRef, postureRef, engaged, muscleStatus,
+  snapshot, hasDef, targetMuscleId, activationsRef, boneDirsRef, postureRef,
 }: {
   snapshot:        FormSnapshot | null
   hasDef:          boolean
@@ -1769,8 +1749,6 @@ function ActivationOverlay({
   activationsRef:  React.MutableRefObject<LiveMuscleActivation[]>
   boneDirsRef:     React.MutableRefObject<BoneDirs>
   postureRef:      React.MutableRefObject<Posture | null>
-  engaged:         { muscleId: string; level: number }[]
-  muscleStatus:    MuscleStatusFrame | null
 }) {
   // Render whenever we know at least the target muscle id - even without a
   // biofeedback def we can still pre-glow the targeted muscle so the user
@@ -1799,89 +1777,6 @@ function ActivationOverlay({
         <div className="pointer-events-none absolute inset-0 ring-2 ring-orange-500/0 animate-pulse"
              style={{ boxShadow: 'inset 0 0 30px rgba(249, 115, 22, 0.18)' }} />
       </div>
-      {/* Quantitative readout of the muscles actually engaged for THIS
-          exercise (live, from the pose-driven engine). Capped + scrollable so a
-          long list can never push the 3-D twin below the panel's visible area -
-          that is what used to leave only a sliver of the body on screen. */}
-      <div className="mt-2 flex-shrink-0 max-h-[40%] overflow-y-auto">
-        <div className="mb-1 flex items-center justify-between">
-          <span className="text-[10px] uppercase tracking-wider text-cyan-300 font-semibold">Engaged now</span>
-          {targetMuscleId && (
-            <span className="text-[9px] text-orange-400 font-semibold">target: {targetMuscleId.replace(/_/g, ' ')}</span>
-          )}
-        </div>
-        {engaged.length === 0 ? (
-          <div className="text-[10px] text-slate-400 italic">
-            {targetMuscleId
-              ? `Move into the ${targetMuscleId.replace(/_/g, ' ')} position to engage it.`
-              : 'Move into position to engage muscles…'}
-          </div>
-        ) : (
-          <div className="space-y-1">
-            {engaged.map((a) => {
-              const pct = Math.round(a.level * 100)
-              const color = a.level < 0.4 ? '#22d3ee' : a.level < 0.7 ? '#f59e0b' : '#ef4444'
-              return (
-                <div key={a.muscleId} className="flex items-center gap-2">
-                  <span className="w-24 truncate text-[10px] text-slate-300">{a.muscleId.replace(/_/g, ' ')}</span>
-                  <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-slate-800">
-                    <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
-                  </div>
-                  <span className="w-9 text-right text-[10px] font-mono tabular-nums text-slate-200">{pct}%</span>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Live fatigue — same model + colours as the Live Muscle Twin, so the
-          fatigue read is consistent across the app. Only worked regions show. */}
-      <FatigueStrip status={muscleStatus} />
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  FatigueStrip — compact per-region fatigue battery for the exercise panel.
-//  Mirrors the standalone Twin's MuscleStatusPanel (same STATE_META colours and
-//  fatigue-as-a-bar metaphor) so the user sees one consistent fatigue model.
-// ─────────────────────────────────────────────────────────────────────────────
-
-function FatigueStrip({ status }: { status: MuscleStatusFrame | null }) {
-  const rows = (status?.regions ?? [])
-    .filter((r) => r.fatigue > 0.04 || r.work > 0.05 || r.activation > 0.08)
-    .sort((a, b) => b.fatigue - a.fatigue || b.work - a.work)
-    .slice(0, 5)
-
-  return (
-    <div className="mt-3 border-t border-slate-800 pt-2">
-      <div className="mb-1 flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-wider text-cyan-300 font-semibold">Fatigue</span>
-        {status && status.maxFatigue > 0.04 && (
-          <span className="text-[9px] text-slate-500">peak {Math.round(status.maxFatigue * 100)}%</span>
-        )}
-      </div>
-      {rows.length === 0 ? (
-        <div className="text-[10px] text-slate-500 italic">Builds as you work — fresh → working → fatigued.</div>
-      ) : (
-        <div className="space-y-1">
-          {rows.map((r) => {
-            const m = STATE_META[r.state]
-            return (
-              <div key={r.region} className="flex items-center gap-2">
-                <span className="w-14 shrink-0 truncate text-[10px] text-slate-300">{r.label}</span>
-                <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-slate-800">
-                  <div className="h-full rounded-full transition-[width] duration-300" style={{ width: `${Math.round(r.fatigue * 100)}%`, background: m.color }} />
-                </div>
-                <span className="w-7 shrink-0 text-right text-[9px] tabular-nums text-slate-500">{Math.round(r.fatigue * 100)}%</span>
-                <span className="rounded-full px-1 py-0.5 text-[8px] font-semibold uppercase" style={{ color: m.color, background: `${m.color}1f` }}>{m.label}</span>
-                {r.caution && <span className="text-[8px] font-bold text-amber-400" title="Flagged region — easy does it">⚠</span>}
-              </div>
-            )
-          })}
-        </div>
-      )}
     </div>
   )
 }
