@@ -55,6 +55,10 @@ const MIRROR = true
 // limit on top of the slerp so a single bad pose frame can't fling a limb.
 const MAX_STEP_DEG = 13
 
+// Base (unactivated) muscle tone. Warm tan so an idle twin still reads as a
+// full anatomical body against the dark panel.
+const BASE_HEX = '#7d6550'
+
 // Where the floor sits (model world units) and how a unit of jump maps to it.
 const GROUND_Y     = -1.28
 const JUMP_WORLD   = 0.7    // rig rootY (≈1 person-height units) → world units
@@ -104,6 +108,9 @@ interface Props {
 }
 
 export function MuscleTwinModel({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMassRef, groundedRef, agilityRef, orbit }: Props) {
+  // Live world-space bounds of the posed twin, published by <Rig> and consumed
+  // by <FitCamera> so the WHOLE body always stays inside the panel.
+  const fitBoxRef = useRef(new THREE.Box3())
   return (
     <Canvas
       gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
@@ -122,8 +129,10 @@ export function MuscleTwinModel({ activationsRef, boneDirsRef, postureRef, yawRe
       <Suspense fallback={null}>
         <Rig activationsRef={activationsRef} boneDirsRef={boneDirsRef} postureRef={postureRef}
              yawRef={yawRef} rootYRef={rootYRef} bodyMassRef={bodyMassRef}
-             groundedRef={groundedRef} agilityRef={agilityRef} />
+             groundedRef={groundedRef} agilityRef={agilityRef} fitBoxRef={fitBoxRef} />
       </Suspense>
+      {/* Fixed-camera views auto-frame the twin; orbit views are user-driven. */}
+      {!orbit && <FitCamera boxRef={fitBoxRef} />}
       {orbit && (
         <OrbitControls enablePan={false} enableZoom minDistance={2.2} maxDistance={6}
           minPolarAngle={Math.PI * 0.1} maxPolarAngle={Math.PI * 0.92}
@@ -131,6 +140,48 @@ export function MuscleTwinModel({ activationsRef, boneDirsRef, postureRef, yawRe
       )}
     </Canvas>
   )
+}
+
+/**
+ * Keeps the ENTIRE posed twin inside the viewport.
+ *
+ * The panel this renders into is narrow (≈320 px) and its height varies, so a
+ * hard-coded camera distance cropped the body — a lying/wide pose or a tall
+ * panel would leave only a couple of limbs on screen. Each frame we take the
+ * rig's live world bounds and solve the camera distance that fits them in BOTH
+ * axes (vertical fov and the aspect-derived horizontal fov), then ease toward
+ * it: out quickly (never clip the body), back in gently (no zoom jitter).
+ */
+const FIT_MARGIN = 1.14
+const FIT_MIN_DIST = 2.4
+const FIT_MAX_DIST = 9
+function FitCamera({ boxRef }: { boxRef: MutableRefObject<THREE.Box3> }) {
+  const dist   = useRef(3.7)
+  const eyeY   = useRef(0.15)
+  const size   = useRef(new THREE.Vector3())
+  const centre = useRef(new THREE.Vector3())
+  useFrame(({ camera, size: vp }, delta) => {
+    const box = boxRef.current
+    if (box.isEmpty() || !isFinite(box.min.y) || !isFinite(box.max.y)) return
+    const cam = camera as THREE.PerspectiveCamera
+    box.getSize(size.current)
+    box.getCenter(centre.current)
+    const aspect = Math.max(0.25, vp.width / Math.max(1, vp.height))
+    const vFov = (cam.fov * Math.PI) / 180
+    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect)
+    const halfH = (Math.max(size.current.y, 0.1) / 2) * FIT_MARGIN
+    const halfW = (Math.max(size.current.x, 0.1) / 2) * FIT_MARGIN
+    const need = Math.min(FIT_MAX_DIST, Math.max(FIT_MIN_DIST,
+      Math.max(halfH / Math.tan(vFov / 2), halfW / Math.tan(hFov / 2)) + size.current.z / 2 + 0.2))
+    const dt = Math.min(0.1, Math.max(1e-3, delta))
+    const k = need > dist.current ? 7 : 1.4      // zoom out fast, in slowly
+    dist.current += (need - dist.current) * Math.min(1, k * dt)
+    eyeY.current  += (centre.current.y - eyeY.current) * Math.min(1, 2 * dt)
+    cam.position.set(0, eyeY.current, dist.current)
+    cam.lookAt(0, eyeY.current, 0)
+    cam.updateProjectionMatrix()
+  })
+  return null
 }
 
 /** Solid soil-coloured floor so the user can see the ground / grounding. */
@@ -152,16 +203,24 @@ function Ground() {
 
 const AXIS_Y = new THREE.Vector3(0, 1, 0)
 const AXIS_Z = new THREE.Vector3(0, 0, 1)
+const _spin = new THREE.Quaternion()
 function postureToQuat(posture: Posture | null | undefined, out: THREE.Quaternion): THREE.Quaternion {
+  // Floor postures lay the body down IN THE SCREEN PLANE (roll about Z), so the
+  // whole silhouette stays visible to the fixed front camera — rotating about X
+  // pointed the body at the lens and reduced it to an edge-on sliver. Which
+  // SURFACE faces the viewer is then chosen with a yaw spin, so supine (front),
+  // prone (back) and side (lateral) stay anatomically distinguishable.
   switch (posture) {
-    // Floor postures rotate in the SCREEN plane. Rotating around X made the
-    // body point toward/away from the fixed camera, reducing the full humanoid
-    // to an edge-on sliver (or apparently nothing). The twin is a readable
-    // biofeedback diagram, so its whole silhouette must remain visible.
-    case 'supine': return out.setFromAxisAngle(AXIS_Z,  Math.PI / 2)
-    case 'prone':  return out.setFromAxisAngle(AXIS_Z, -Math.PI / 2)
-    case 'side':   return out.setFromAxisAngle(AXIS_Z,  Math.PI / 2)
-    default:       return out.identity()                              // standing / seated
+    case 'supine':
+      return out.setFromAxisAngle(AXIS_Z, Math.PI / 2)
+    case 'prone':
+      return out.setFromAxisAngle(AXIS_Z, -Math.PI / 2)
+        .multiply(_spin.setFromAxisAngle(AXIS_Y, Math.PI))          // show the back
+    case 'side':
+      return out.setFromAxisAngle(AXIS_Z, Math.PI / 2)
+        .multiply(_spin.setFromAxisAngle(AXIS_Y, Math.PI / 2))      // lateral view
+    default:
+      return out.identity()                                          // standing / seated
   }
 }
 
@@ -169,7 +228,7 @@ useGLTF.preload(MODEL_PATH, true, true)
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface MeshDesc { mat: THREE.MeshBasicMaterial; stem: string; side: 'L' | 'R' | 'C' }
+interface MeshDesc { mat: THREE.MeshStandardMaterial; stem: string; side: 'L' | 'R' | 'C' }
 interface RigData {
   outer:   THREE.Group
   groups:  Partial<Record<SegmentId, THREE.Group>>
@@ -178,7 +237,9 @@ interface RigData {
   axes:    { right: THREE.Vector3; up: THREE.Vector3; ant: THREE.Vector3 }
 }
 
-function Rig({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMassRef, groundedRef, agilityRef }: Props) {
+type RigProps = Props & { fitBoxRef?: MutableRefObject<THREE.Box3> }
+
+function Rig({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMassRef, groundedRef, agilityRef, fitBoxRef }: RigProps) {
   const { scene } = useGLTF(MODEL_PATH, true, true) as any
   const rig = useMemo<RigData>(() => buildRig(scene), [scene])
 
@@ -255,15 +316,13 @@ function Rig({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMa
     // ── 3. Ground the model + apply the jump offset (mass-tuned, no overshoot) ─
     rig.outer.updateMatrixWorld(true)
     box.current.setFromObject(rig.outer)
+    const prevOuterY = rig.outer.position.y
     if (isFinite(box.current.min.y)) {
       const intrinsicFootY = box.current.min.y - rig.outer.position.y    // foot height sans offset
       const jump = (rootYRef?.current ?? 0) * JUMP_WORLD
-      const posture = postureRef?.current
-      const floorPose = posture === 'supine' || posture === 'prone' || posture === 'side'
-      // Keep floor exercises centered enough to see the complete horizontal
-      // body instead of pinning the silhouette against the bottom edge.
-      const displayLift = floorPose ? 0.62 : 0
-      const targetY = (GROUND_Y - intrinsicFootY) + jump + displayLift
+      // No display fudge here: <FitCamera> frames whatever the body actually
+      // does, so floor poses stay fully visible without being shoved upward.
+      const targetY = (GROUND_Y - intrinsicFootY) + jump
       const grounded = groundedRef?.current ?? true
       // The instant the feet make contact, kill the vertical momentum so the
       // model lands exactly when the user does (no floaty overshoot or drift).
@@ -281,6 +340,13 @@ function Rig({ activationsRef, boneDirsRef, postureRef, yawRef, rootYRef, bodyMa
         const accel = stiffness * (targetY - rig.outer.position.y) - damping * jumpVel.current
         jumpVel.current += accel * dt
         rig.outer.position.y += jumpVel.current * dt
+      }
+      if (fitBoxRef) {
+        // Same bounds, shifted by however far the grounding moved the rig this
+        // frame — cheaper and jitter-free vs. a second setFromObject() pass.
+        fitBoxRef.current.copy(box.current)
+        fitBoxRef.current.min.y += rig.outer.position.y - prevOuterY
+        fitBoxRef.current.max.y += rig.outer.position.y - prevOuterY
       }
     }
 
@@ -411,10 +477,20 @@ function buildRig(scene: THREE.Object3D): RigData {
     // Forearm: render the GLB's OWN forearm meshes (restored). They're segmented
     // to forearmL/R and attached to the forearm group below, so they pivot at the
     // elbow and bend with the arm — the muscular lower arm, no procedural cylinder.
-    const mat = new THREE.MeshBasicMaterial({
-      color: new THREE.Color('#9a7359'),
-      side: THREE.DoubleSide,   // renders correctly even if normals are inverted
-      toneMapped: false,
+    // The GLB primitives ship with NO normal attribute at all, so three's loader
+    // falls back to flat shading and (with the source winding) the model rendered
+    // black — which is why it was previously switched to an unlit BasicMaterial.
+    // That flattened every muscle into one featureless tan silhouette, so the
+    // body read as a couple of shapeless blobs. Recomputing normals from the
+    // winding order (exactly what MuscleMap3D does) makes a lit material work,
+    // which is what gives each muscle belly its readable 3-D form.
+    o.geometry = o.geometry.clone()
+    o.geometry.computeVertexNormals()
+    const mat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(BASE_HEX),
+      roughness: 0.55, metalness: 0.05,
+      emissive: new THREE.Color('#2a1f15'), emissiveIntensity: 0.32,
+      side: THREE.DoubleSide,   // correct even where the source winding is flipped
     })
     o.material = mat
     meshes.push({ mat, stem: meshStem(o.name), side: meshSide(o.name) })
@@ -536,12 +612,12 @@ function buildRig(scene: THREE.Object3D): RigData {
       if (parts.proximal) {
         cloned.add(parts.proximal)
         ;(bySeg[upSeg] ??= []).push(parts.proximal)
-        meshes.push({ mat: parts.proximal.material as THREE.MeshBasicMaterial, stem: meshStem(m.name), side: meshSide(m.name) })
+        meshes.push({ mat: parts.proximal.material as THREE.MeshStandardMaterial, stem: meshStem(m.name), side: meshSide(m.name) })
       }
       if (parts.distal) {
         cloned.add(parts.distal)
         distalMeshes.push(parts.distal)
-        meshes.push({ mat: parts.distal.material as THREE.MeshBasicMaterial, stem: meshStem(m.name), side: meshSide(m.name) })
+        meshes.push({ mat: parts.distal.material as THREE.MeshStandardMaterial, stem: meshStem(m.name), side: meshSide(m.name) })
       }
     }
     bySeg[seg] = distalMeshes
@@ -585,18 +661,19 @@ function buildRig(scene: THREE.Object3D): RigData {
 
 // ── Colour ramp ───────────────────────────────────────────────────────────────
 
-const C_BASE = new THREE.Color('#9a7359')
+const C_BASE = new THREE.Color(BASE_HEX)
 const C_MID  = new THREE.Color('#f59e0b')
 const C_HOT  = new THREE.Color('#b91c1c')
 
-function paint(mat: THREE.MeshBasicMaterial, level: number, time: number) {
+function paint(mat: THREE.MeshStandardMaterial, level: number, time: number) {
   const t = Math.max(0, Math.min(1, (level - BASELINE) / (1 - BASELINE)))
   if (t < 0.5) mat.color.copy(C_BASE).lerp(C_MID, t / 0.5)
   else         mat.color.copy(C_MID).lerp(C_HOT, (t - 0.5) / 0.5)
+  // Emissive carries the activation glow; the lit diffuse term keeps the muscle
+  // shape readable, so an idle body is a full tan anatomy rather than a blob.
+  mat.emissive.copy(mat.color)
   const pulse = 1 + 0.12 * t * Math.sin(time * 4)
-  // Basic material deliberately ignores unreliable/inverted source normals.
-  // Pulse activation through colour intensity while the baseline stays visible.
-  mat.color.multiplyScalar(0.92 + 0.08 * pulse)
+  mat.emissiveIntensity = (0.32 + t * 1.15) * pulse
 }
 
 // ── Name → activation key helpers ──────────────────────────────────────────────
